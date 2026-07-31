@@ -97,6 +97,23 @@ model Recipe {
 
   ingredients RecipeIngredient[]
   dailyMeals  DailyMealServed[]
+  costHistory RecipeCostHistory[]
+}
+
+model RecipeCostHistory {
+  id          String   @id @default(cuid())
+  recipeId    String
+  cost        Float    // total cost for baseServings at time of recording
+  costPerServing Float // cost / baseServings
+  servings    Int      // snapshot of recipe.baseServings at time of recording
+  trigger     String   @default("manual") // manual, ingredient_price_change, recipe_edit
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId])
+  @@index([createdAt])
 }
 
 model RecipeIngredient {

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline — RCS Canteen</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#ea580c" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 50%, #fed7aa 100%);
+      color: #1c1917;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .container {
+      max-width: 28rem;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(8px);
+      border-radius: 1rem;
+      padding: 2.5rem 2rem;
+      box-shadow: 0 10px 40px -10px rgba(234, 88, 12, 0.2);
+      border: 1px solid rgba(251, 191, 36, 0.4);
+    }
+    .icon-wrap {
+      width: 5rem;
+      height: 5rem;
+      margin: 0 auto 1.5rem;
+      background: linear-gradient(135deg, #f59e0b, #ea580c);
+      border-radius: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 8px 24px -6px rgba(234, 88, 12, 0.4);
+    }
+    .icon-wrap svg { width: 2.5rem; height: 2.5rem; color: white; }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: #1c1917;
+    }
+    p {
+      color: #57534e;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+    }
+    .retry-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: linear-gradient(135deg, #f59e0b, #ea580c);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+      box-shadow: 0 4px 12px -2px rgba(234, 88, 12, 0.4);
+    }
+    .retry-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px -2px rgba(234, 88, 12, 0.5);
+    }
+    .retry-btn:active { transform: translateY(0); }
+    .status {
+      margin-top: 1.5rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(234, 88, 12, 0.08);
+      border-radius: 0.375rem;
+      font-size: 0.75rem;
+      color: #9a3412;
+      font-weight: 500;
+    }
+    .brand {
+      margin-top: 1.5rem;
+      font-size: 0.75rem;
+      color: #a8a29e;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+      </svg>
+    </div>
+    <h1>You're Offline</h1>
+    <p>
+      RCS Canteen can't reach the server right now. Please check your internet
+      connection and try again. Your data is safe — once you're back online,
+      the app will reload automatically.
+    </p>
+    <button class="retry-btn" onclick="window.location.reload()">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width:1rem;height:1rem">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992V4.356M19.66 9.35a8.25 8.25 0 1 0-3.34 8.017M12 3v2.25m0 13.5V21m9-9h-2.25M5.25 12H3" />
+      </svg>
+      Try Again
+    </button>
+    <div class="status" id="status">Last checked: just now</div>
+    <div class="brand">RCS Canteen · Stock &amp; Cost Management</div>
+  </div>
+  <script>
+    // Auto-reload when back online
+    window.addEventListener('online', () => {
+      document.getElementById('status').textContent = 'Back online — reloading...';
+      setTimeout(() => window.location.reload(), 500);
+    });
+
+    // Update timestamp
+    setInterval(() => {
+      const el = document.getElementById('status');
+      if (el) el.textContent = 'Still offline — checking connection...';
+    }, 10000);
+  </script>
+</body>
+</html>

@@ -12,6 +12,7 @@ import {
   Receipt,
   Settings,
   Flame,
+  Wallet,
 } from "lucide-react";
 
 import {
@@ -38,6 +39,7 @@ export type ViewId =
   | "suppliers"
   | "wastage"
   | "reports"
+  | "budget"
   | "expenses"
   | "settings";
 
@@ -56,6 +58,7 @@ const navItems: NavItem[] = [
   { id: "suppliers", label: "Suppliers", icon: Truck },
   { id: "wastage", label: "Wastage", icon: Trash2 },
   { id: "reports", label: "Reports", icon: BarChart3 },
+  { id: "budget", label: "Budget", icon: Wallet },
   { id: "expenses", label: "Expenses", icon: Receipt },
   { id: "settings", label: "Settings", icon: Settings },
 ];

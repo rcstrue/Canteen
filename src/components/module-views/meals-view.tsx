@@ -89,7 +89,18 @@ import {
   Upload,
   ImagePlus,
   Loader2,
+  History,
+  Camera,
 } from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -125,6 +136,50 @@ interface Recipe {
   createdAt: string;
   updatedAt: string;
   ingredients: RecipeIngredient[];
+  latestCostVariance?: LatestCostVariance | null;
+}
+
+interface LatestCostVariance {
+  current: number;
+  previous: number | null;
+  absolute: number;
+  percentage: number;
+  direction: "up" | "down" | "none";
+  recordedAt: string;
+}
+
+interface CostHistoryEntry {
+  id: string;
+  cost: number;
+  costPerServing: number;
+  servings: number;
+  trigger: string;
+  notes: string | null;
+  createdAt: string;
+}
+
+interface CostHistorySnapshot {
+  id: string;
+  cost: number;
+  costPerServing: number;
+  servings: number;
+  trigger: string;
+  notes: string | null;
+  recordedAt: string;
+}
+
+interface CostHistoryData {
+  recipeId: string;
+  recipeName: string;
+  current: CostHistorySnapshot | null;
+  previous: CostHistorySnapshot | null;
+  variance: {
+    absolute: number;
+    percentage: number;
+    direction: "up" | "down" | "none";
+  };
+  history: CostHistoryEntry[];
+  trend: { date: string; cost: number; servings: number; trigger: string }[];
 }
 
 interface IngredientRow {
@@ -274,6 +329,65 @@ function calcCostTrend(ingredients: RecipeIngredient[]): {
   return { direction: pctChange > 0 ? "up" : "down", percentChange: pctChange };
 }
 
+// Format ISO date as DD/MM for compact chart axis labels.
+function formatDateShort(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `${dd}/${mm}`;
+  } catch {
+    return "—";
+  }
+}
+
+// Format ISO date as "DD Mon YYYY, HH:MM" for table rows.
+function formatDateTime(iso: string): string {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch {
+    return iso;
+  }
+}
+
+const TRIGGER_STYLES: Record<
+  string,
+  { label: string; badge: string }
+> = {
+  manual: {
+    label: "Manual",
+    badge:
+      "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  },
+  ingredient_price_change: {
+    label: "Price Change",
+    badge:
+      "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  },
+  recipe_edit: {
+    label: "Recipe Edit",
+    badge:
+      "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  },
+  default: {
+    label: "Other",
+    badge:
+      "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  },
+};
+
+function getTriggerStyle(trigger: string) {
+  return TRIGGER_STYLES[trigger] ?? TRIGGER_STYLES.default;
+}
+
 // ─── Recipe Image Component ─────────────────────────────────────
 
 interface RecipeImageProps {
@@ -329,6 +443,369 @@ function RecipeImage({
   );
 }
 
+// ─── Latest Cost Variance Badge (used in recipe list/grid) ──────
+
+/**
+ * Compact badge shown next to recipe cards/rows when there's a meaningful
+ * cost variance in the latest RecipeCostHistory snapshot.
+ * - ⬆ red badge if variance > +5%
+ * - ⬇ green badge if variance < -5%
+ * - nothing rendered if within ±5% or no history
+ */
+function LatestCostVarianceBadge({
+  variance,
+}: {
+  variance: LatestCostVariance | null | undefined;
+}) {
+  if (!variance) return null;
+  if (variance.direction === "none") return null;
+  if (Math.abs(variance.percentage) < 5) return null;
+
+  const isUp = variance.percentage > 0;
+  const tooltipText =
+    variance.previous != null
+      ? `Cost changed from ${formatRupee(variance.previous)} to ${formatRupee(
+          variance.current
+        )} on ${formatDateShort(variance.recordedAt)}`
+      : `Cost recorded at ${formatRupee(variance.current)} on ${formatDateShort(
+          variance.recordedAt
+        )}`;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+            isUp
+              ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+              : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+          )}
+        >
+          {isUp ? (
+            <TrendingUp className="h-3 w-3" />
+          ) : (
+            <TrendingDown className="h-3 w-3" />
+          )}
+          {Math.abs(variance.percentage).toFixed(0)}%
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-xs">
+        {tooltipText}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ─── Cost History Section (used inside recipe detail dialog) ─────
+
+interface CostHistorySectionProps {
+  recipeId: string;
+  liveCostPerServing: number;
+  costHistory: CostHistoryData | null;
+  loading: boolean;
+  recording: boolean;
+  onRecord: () => void;
+}
+
+function CostHistorySection({
+  recipeId,
+  liveCostPerServing,
+  costHistory,
+  loading,
+  recording,
+  onRecord,
+}: CostHistorySectionProps) {
+  // Use the live computed value as the "current cost" so it always reflects
+  // the latest ingredient prices — even before a snapshot is recorded.
+  const currentCostPerServing = liveCostPerServing;
+  const currentSnapshot = costHistory?.current ?? null;
+  const previousSnapshot = costHistory?.previous ?? null;
+  const variance = costHistory?.variance ?? {
+    absolute: 0,
+    percentage: 0,
+    direction: "none" as const,
+  };
+
+  // Show variance badge relative to the most recent snapshot (since the live
+  // number may differ slightly from the last snapshot). If no snapshots yet,
+  // there's no variance to show.
+  const showVarianceBadge =
+    !!currentSnapshot &&
+    !!previousSnapshot &&
+    variance.direction !== "none";
+
+  const varianceBadgeClasses =
+    variance.direction === "up"
+      ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+      : variance.direction === "down"
+      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+      : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
+
+  // Alert banner trigger: >10% increase vs the previous snapshot.
+  const showAlertBanner =
+    !!currentSnapshot &&
+    !!previousSnapshot &&
+    variance.direction === "up" &&
+    variance.percentage > 10;
+
+  const trendData = (costHistory?.trend ?? []).map((t) => ({
+    date: formatDateShort(t.date),
+    cost: t.cost,
+    rawDate: t.date,
+  }));
+
+  return (
+    <div className="space-y-3">
+      {/* Alert banner — slides in when variance > 10% increase */}
+      <AnimatePresence>
+        {showAlertBanner && previousSnapshot && currentSnapshot && (
+          <motion.div
+            key="cost-alert-banner"
+            initial={{ opacity: 0, y: -8, height: 0 }}
+            animate={{ opacity: 1, y: 0, height: "auto" }}
+            exit={{ opacity: 0, y: -8, height: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="flex-1">
+                <p className="font-medium text-amber-900 dark:text-amber-200">
+                  ⚠ Cost increased by {Math.abs(variance.percentage).toFixed(1)}%
+                  since last snapshot
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-300">
+                  {formatRupee(previousSnapshot.costPerServing)} →{" "}
+                  {formatRupee(currentSnapshot.costPerServing)} per serving.
+                  Review ingredient prices.
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="rounded-lg border p-4 space-y-4">
+        {/* Header */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-medium flex items-center gap-2">
+            <History className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            Cost History
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 text-xs"
+            disabled={recording || loading}
+            onClick={onRecord}
+          >
+            {recording ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Camera className="h-3.5 w-3.5" />
+            )}
+            Record Snapshot
+          </Button>
+        </div>
+
+        {/* Current Cost card */}
+        <div className="flex flex-wrap items-end justify-between gap-3 rounded-md bg-gradient-to-br from-orange-50 to-amber-50 p-3 dark:from-orange-950/20 dark:to-amber-950/10">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-orange-700 dark:text-orange-400">
+              Current Cost / Serving
+            </p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-bold text-orange-600 dark:text-orange-400">
+                {formatRupee(currentCostPerServing)}
+              </span>
+              {showVarianceBadge && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                    varianceBadgeClasses
+                  )}
+                >
+                  {variance.direction === "up" ? (
+                    <TrendingUp className="h-3 w-3" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3" />
+                  )}
+                  {variance.absolute >= 0 ? "+" : "−"}
+                  {formatRupee(Math.abs(variance.absolute))} (
+                  {variance.percentage >= 0 ? "+" : "−"}
+                  {Math.abs(variance.percentage).toFixed(1)}%)
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {currentSnapshot
+                ? `Last snapshot ${formatDateTime(currentSnapshot.recordedAt)}`
+                : "No snapshots yet — click \"Record Snapshot\" to start tracking."}
+            </p>
+          </div>
+          {previousSnapshot && (
+            <div className="text-right text-[11px] text-muted-foreground">
+              <p>Previous snapshot</p>
+              <p className="font-semibold text-foreground">
+                {formatRupee(previousSnapshot.costPerServing)}
+              </p>
+              <p>{formatDateTime(previousSnapshot.recordedAt)}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Trend mini-chart */}
+        {loading ? (
+          <div className="h-[200px] w-full animate-pulse rounded-md bg-muted/60" />
+        ) : trendData.length > 1 ? (
+          <div className="h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={trendData}
+                margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="costTrendFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f97316" stopOpacity={0.5} />
+                    <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="currentColor"
+                  className="text-muted-foreground/20"
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 10 }}
+                  stroke="currentColor"
+                  className="text-muted-foreground"
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  stroke="currentColor"
+                  className="text-muted-foreground"
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
+                  tickFormatter={(v: number) =>
+                    "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 0 })
+                  }
+                />
+                <RechartsTooltip
+                  contentStyle={{
+                    borderRadius: 8,
+                    border: "1px solid var(--border, #e5e7eb)",
+                    background: "var(--background, #fff)",
+                    fontSize: 12,
+                  }}
+                  labelStyle={{ fontWeight: 600 }}
+                  formatter={(value: number, _name: string, item: { payload?: { rawDate?: string } }) => [
+                    formatRupee(value),
+                    `Cost / serving · ${item?.payload?.rawDate ? formatDateTime(item.payload.rawDate) : ""}`,
+                  ]}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="cost"
+                  stroke="#f97316"
+                  strokeWidth={2}
+                  fill="url(#costTrendFill)"
+                  dot={{ r: 3, fill: "#f97316", strokeWidth: 0 }}
+                  activeDot={{ r: 5, fill: "#ea580c", strokeWidth: 0 }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="flex h-[120px] flex-col items-center justify-center gap-1 text-center text-xs text-muted-foreground">
+            <History className="h-5 w-5 opacity-40" />
+            <p>Not enough snapshots to draw a trend yet.</p>
+            <p className="text-[10px]">
+              Record at least 2 snapshots to see the cost trend chart.
+            </p>
+          </div>
+        )}
+
+        {/* History table */}
+        {loading ? (
+          <div className="space-y-1.5">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-7 w-full animate-pulse rounded bg-muted/50"
+              />
+            ))}
+          </div>
+        ) : costHistory && costHistory.history.length > 0 ? (
+          <div className="max-h-72 overflow-y-auto rounded-md border">
+            <Table>
+              <TableHeader className="sticky top-0 bg-muted/60 backdrop-blur">
+                <TableRow>
+                  <TableHead className="text-xs">Date</TableHead>
+                  <TableHead className="text-right text-xs">Cost/Serving</TableHead>
+                  <TableHead className="text-right text-xs">Total Cost</TableHead>
+                  <TableHead className="text-right text-xs">Servings</TableHead>
+                  <TableHead className="text-xs">Trigger</TableHead>
+                  <TableHead className="text-xs">Notes</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {costHistory.history.map((entry) => {
+                  const trigger = getTriggerStyle(entry.trigger);
+                  return (
+                    <TableRow key={entry.id} className="text-xs">
+                      <TableCell className="whitespace-nowrap font-medium">
+                        {formatDateTime(entry.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold text-orange-600 dark:text-orange-400">
+                        {formatRupee(entry.costPerServing)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {formatRupee(entry.cost)}
+                      </TableCell>
+                      <TableCell className="text-right text-muted-foreground">
+                        {entry.servings}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            trigger.badge
+                          )}
+                        >
+                          {trigger.label}
+                        </span>
+                      </TableCell>
+                      <TableCell className="max-w-[160px] truncate text-muted-foreground">
+                        {entry.notes || "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed py-6 text-center text-xs text-muted-foreground">
+            <Camera className="h-5 w-5 opacity-40" />
+            <p>No cost snapshots recorded yet.</p>
+            <p className="text-[10px]">
+              Click &quot;Record Snapshot&quot; above to capture the current cost.
+            </p>
+          </div>
+        )}
+
+        {/* Tiny reference id (helps debugging without taking visual space) */}
+        <p className="sr-only">Recipe ID: {recipeId}</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────
 
 export function MealsView() {
@@ -371,6 +848,11 @@ export function MealsView() {
 
   // Delete confirmation
   const [deleteConfirm, setDeleteConfirm] = useState<Recipe | null>(null);
+
+  // Cost history (for detail dialog)
+  const [costHistory, setCostHistory] = useState<CostHistoryData | null>(null);
+  const [costHistoryLoading, setCostHistoryLoading] = useState(false);
+  const [recordingSnapshot, setRecordingSnapshot] = useState(false);
 
   // ─── LocalStorage hydration ──────────────────────────────────
 
@@ -775,6 +1257,60 @@ export function MealsView() {
   const openDetail = (recipe: Recipe) => {
     setDetailRecipe(recipe);
     setScalingServings("600");
+    // Reset + fetch cost history whenever a recipe detail dialog opens.
+    setCostHistory(null);
+    void fetchCostHistory(recipe.id);
+  };
+
+  // ─── Cost History ──────────────────────────────────────────
+
+  const fetchCostHistory = useCallback(async (recipeId: string) => {
+    setCostHistoryLoading(true);
+    try {
+      const res = await fetch(`/api/recipes/${recipeId}/cost-history`);
+      if (res.ok) {
+        const data: CostHistoryData = await res.json();
+        setCostHistory(data);
+      } else {
+        setCostHistory(null);
+      }
+    } catch (err) {
+      console.error("Error fetching cost history:", err);
+      setCostHistory(null);
+    } finally {
+      setCostHistoryLoading(false);
+    }
+  }, []);
+
+  const handleRecordSnapshot = async (recipeId: string) => {
+    setRecordingSnapshot(true);
+    try {
+      const res = await fetch(`/api/recipes/${recipeId}/cost-snapshot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (res.ok) {
+        sonnerToast.success("Cost snapshot recorded", {
+          description: "A new cost history entry has been added.",
+        });
+        await fetchCostHistory(recipeId);
+        // Also refresh the recipe list so the latest variance indicator badge updates.
+        fetchRecipes();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        sonnerToast.error("Failed to record snapshot", {
+          description: (data && data.error) || "Unknown error",
+        });
+      }
+    } catch (err) {
+      console.error("Error recording snapshot:", err);
+      sonnerToast.error("Failed to record snapshot", {
+        description: "Network error.",
+      });
+    } finally {
+      setRecordingSnapshot(false);
+    }
   };
 
   // ─── Render helpers ─────────────────────────────────────────
@@ -1193,6 +1729,7 @@ export function MealsView() {
                           {recipe.ingredients.length} ingredient
                           {recipe.ingredients.length !== 1 ? "s" : ""}
                         </span>
+                        <LatestCostVarianceBadge variance={recipe.latestCostVariance} />
                       </div>
 
                       {/* Cost breakdown bar */}
@@ -1453,7 +1990,10 @@ export function MealsView() {
                           </span>
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">
-                          {formatRupee(costFor600)}
+                          <div className="flex items-center justify-end gap-1.5">
+                            <span>{formatRupee(costFor600)}</span>
+                            <LatestCostVarianceBadge variance={recipe.latestCostVariance} />
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">
                           <div
@@ -1760,6 +2300,19 @@ export function MealsView() {
                     </CardContent>
                   </Card>
                 </div>
+
+                {/* ─── Cost History Section ─────────────────────────── */}
+                <CostHistorySection
+                  recipeId={detailRecipe.id}
+                  liveCostPerServing={calcCostPerMeal(
+                    detailRecipe.ingredients,
+                    detailRecipe.baseServings
+                  )}
+                  costHistory={costHistory}
+                  loading={costHistoryLoading}
+                  recording={recordingSnapshot}
+                  onRecord={() => handleRecordSnapshot(detailRecipe.id)}
+                />
 
                 {/* Scaling Section */}
                 <div className="rounded-lg border p-4">

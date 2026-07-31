@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { logAudit, getAuditContext } from '@/lib/audit'
+import { recordRecipeCost } from '@/lib/recipe-cost'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/recipes/[id] - Get single recipe with ingredients
@@ -105,6 +106,13 @@ export async function PUT(
       description: `Updated recipe "${recipe.name}"`,
       metadata: { before: existing, after: { name: recipe.name, mealType: recipe.mealType, baseServings: recipe.baseServings } },
     })
+
+    // Track cost changes when recipes are edited — fire and forget
+    // (don't block the response on the snapshot write). recordRecipeCost
+    // is non-throwing internally, so a failure here cannot break the PUT.
+    void recordRecipeCost(recipe.id, 'recipe_edit', undefined, request).catch(
+      (err) => console.error('[recipes] auto cost snapshot failed:', err)
+    )
 
     return NextResponse.json(recipe)
   } catch (error) {

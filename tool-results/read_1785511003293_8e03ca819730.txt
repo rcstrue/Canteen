@@ -1,0 +1,473 @@
+     1→  1300→    - Version bumped to v1.1.0
+     2→  1301→  * Updated /src/app/page.tsx header:
+     3→  1302→    - UserMenu button: rounded-full + pl-1.5 pr-3 + hover:bg-amber-50
+     4→  1303→    - Avatar uses .avatar-ring class (double-ring shadow)
+     5→  1304→    - AvatarFallback has explicit rounded-full
+     6→  1305→    - Live indicator: emerald-200/60 border + emerald-50/80 bg + .live-dot class with pulse animation
+     7→  1306→    - Text changed to emerald-700 (was muted-foreground) for better contrast
+     8→  1307→  * Applied .card-hover to 3 summary cards in suppliers-view.tsx
+     9→  1308→
+    10→  1309→- Verified dev server still running after all changes (port 3000 listening)
+    11→  1310→- Re-ran VLM QA on polished views — scores improved:
+    12→  1311→  * Dashboard: 7.5 → 8.5/10 (low-stock banner, activity timeline praised)
+    13→  1312→  * Dashboard mid (KPIs): 8.5/10 (strong hierarchy)
+    14→  1313→  * Dashboard activity: 8.5/10 (excellent structure)
+    15→  1314→  * Dashboard bot: 7.5/10 (some empty states still sparse)
+    16→  1315→  * Reports: 8/10 (6-month trend chart well-received)
+    17→  1316→  * Purchases: 8.5/10 (timeline + status badges praised)
+    18→  1317→  * Stock: 8.5/10 (table structure + status colors praised)
+    19→  1318→
+    20→  1319→- Created comprehensive deployment guide at /home/z/my-project/download/DEPLOY.md (476 lines):
+    21→  1320→  * 15 sections covering pre-deployment checklist, hosting requirements, build process
+    22→  1321→  * cPanel Node.js app setup with step-by-step instructions
+    23→  1322→  * Apache .htaccess reverse proxy config (with WebSocket support)
+    24→  1323→  * Nginx reverse proxy config for VPS
+    25→  1324→  * SSL/HTTPS setup with Let's Encrypt
+    26→  1325→  * PM2 process management with auto-restart on boot
+    27→  1326→  * Post-deployment tasks (change passwords, import data, configure budget)
+    28→  1327→  * Backup strategy with cron jobs
+    29→  1328→  * Update/upgrade procedure
+    30→  1329→  * Troubleshooting guide (12 common issues)
+    31→  1330→  * Security hardening (firewall, Fail2ban, CSP headers, rate limiting)
+    32→  1331→  * PostgreSQL migration path for >50 concurrent users
+    33→  1332→  * Quick reference command table
+    34→  1333→
+    35→  1334→- Updated /home/z/my-project/download/README.md with full project documentation:
+    36→  1335→  * 10-module feature list with descriptions
+    37→  1336→  * Tech stack breakdown
+    38→  1337→  * Quick start guide
+    39→  1338→  * Default user credentials table
+    40→  1339→  * Project structure tree
+    41→  1340→  * Database schema (9 models)
+    42→  1341→  * VLM QA results table
+    43→  1342→  * Link to DEPLOY.md
+    44→  1343→
+    45→  1344→Stage Summary:
+    46→  1345→- VLM QA scores improved from 7.5/10 → 8.5/10 across all major views
+    47→  1346→- 2 new features added: Low-stock alert banner + Activity timeline + Quick stats sidebar
+    48→  1347→- 2 new features added: 6-month cost trend combo chart + Printable purchase invoices
+    49→  1348→- Global styling polish: sidebar active accent, date input styling, card hover effects, avatar ring, live indicator pulse
+    50→  1349→- 2 new API endpoints: /api/activity, /api/reports/monthly-trend
+    51→  1350→- Comprehensive DEPLOY.md (476 lines) for Linux shared hosting deployment
+    52→  1351→- Updated README.md with full project documentation
+    53→  1352→- All lint checks pass, all API endpoints return 200, dev server stable
+    54→  1353→- Version bumped to v1.1.0
+    55→  1354→
+    56→  1355→Known remaining minor issues (low priority):
+    57→  1356→- Some empty states (Budget Status when no budget set) still feel sparse
+    58→  1357→- Chart label "Sat-Fri" week range may not match user's locale week start
+    59→  1358→- A few icon inconsistencies between filled and outlined styles
+    60→  1359→- Date input styling only affects webkit browsers (Firefox date picker unchanged)
+    61→  1360→
+    62→  1361→Recommended next steps:
+    63→  1362→- Add automated low-stock email/SMS notifications (cron-based)
+    64→  1363→- Implement recipe image upload (Prisma schema field exists, UI not built)
+    65→  1364→- Add paginated history views for stock movements and purchases
+    66→  1365→- Build a mobile-friendly PWA manifest for offline access
+    67→  1366→- Add multi-currency support if canteen expands internationally
+    68→  1367→- Implement supplier performance scoring (on-time delivery, quality)
+    69→  1368→
+    70→  1369→---
+    71→  1370→Task ID: R5-C
+    72→  1371→Agent: full-stack-developer
+    73→  1372→Task: Polish Empty States + Add Bulk Actions to Purchases + Fix Reports 6-month chart empty data
+    74→  1373→
+    75→  1374→Work Log:
+    76→  1375→- Read /home/z/my-project/worklog.md to understand prior agent work (R4-A added Low-Stock Alert Banner + Activity Timeline; R4-B added 6-month cost trend combo chart + Purchase Invoice Print).
+    77→  1376→- **Polished Budget Status empty state** in `/src/components/module-views/dashboard-view.tsx`:
+    78→  1377→  - Replaced the sparse text-only empty state with a new `BudgetEmptyState` component.
+    79→  1378→  - Container: rounded-xl, dashed amber border, `bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20`, p-6.
+    80→  1379→  - Centered `Target` icon in a `h-14 w-14` circular badge with `bg-gradient-to-br from-amber-400 to-orange-600` and `shadow-lg shadow-amber-500/30`.
+    81→  1380→  - "No Budget Set" heading (text-lg font-bold text-amber-900 dark:text-amber-200).
+    82→  1381→  - "Set up a monthly budget in Settings to track spending and get alerts" subtitle.
+    83→  1382→  - "Set Budget" button with `bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:shadow-lg hover:shadow-amber-500/30`.
+    84→  1383→  - "Skip for now" text link below (small, hover:underline).
+    85→  1384→  - Framer-motion entrance: `emptyStateVariants` (opacity 0→1, scale 0.96→1, y 8→0, 0.35s ease-out).
+    86→  1385→- **Polished Today's Meals empty state** in same file:
+    87→  1386→  - New `MealsEmptyState` component with the same gradient/dashed border treatment.
+    88→  1387→  - UtensilsCrossed icon in circular gradient badge.
+    89→  1388→  - "No Meals Recorded Today" heading.
+    90→  1389→  - "Log breakfast, lunch, dinner, and snack counts for today" subtitle.
+    91→  1390→  - "Record Meals →" gradient button.
+    92→  1391→  - Same framer-motion entrance animation.
+    93→  1392→- **Fixed monthly-trend API** in `/src/app/api/reports/monthly-trend/route.ts`:
+    94→  1393→  - Added `hasData: boolean` field to each month's data object.
+    95→  1394→  - `hasData` is `true` if `foodCost > 0 || operatingCost > 0`.
+    96→  1395→  - Verified response: Feb-May 2026 → `hasData: false`; Jun-Jul 2026 → `hasData: true`.
+    97→  1396→- **Fixed MonthlyTrendPoint type** in `/src/components/module-views/reports-view.tsx` to include `hasData: boolean`.
+    98→  1397→- **Updated chart UI** in `MonthlyTrendSection`:
+    99→  1398→  - Added `<defs>` with an SVG `<pattern id="empty-month-hatch">` (6×6 user-space, rotated 45°, amber stroke lines on amber-22%-tinted background).
+   100→  1399→  - Wrapped `<Bar>` children with `<Cell>` elements — each cell uses `fill="#f59e0b"` for months with data, `fill="url(#empty-month-hatch)"` for empty months.
+   101→  1400→  - Updated `ChartTooltipContent` formatter: when `item.payload.hasData === false`, shows italic "No data recorded this month" for the foodCost entry and hides the operating cost entry.
+   102→  1401→  - Added a "Months with no data:" badge row below the chart — each empty month gets an amber outline Badge with a hatched CSS background swatch.
+   103→  1402→  - Added a note below the badges: "Note: Some months have no recorded data. Start recording purchases and expenses to see complete trends. Months without data are shown with a hatched pattern in the chart." (only shown when `stats.hasEmptyMonths === true`).
+   104→  1403→- **Updated summary cards** to filter empty months:
+   105→  1404→  - `Avg Monthly Cost`: divides sum only by `withData.length`; subtitle reads "Based on N months with data". If no months have data, value is "N/A" and subtitle is "No data recorded yet".
+   106→  1405→  - `MoM Change`: only compares the last 2 months that HAVE data; subtitle "Latest 2 months with data" or "Need 2+ months with data". Value "N/A" if null.
+   107→  1406→  - `Highest Cost Month`: only considers `hasData === true` months; value "N/A" if none.
+   108→  1407→  - `Lowest Cost Month`: same filtering.
+   109→  1408→- **Added bulk actions to Purchases view** in `/src/components/module-views/purchases-view.tsx`:
+   110→  1409→  - Imported `Checkbox` from `@/components/ui/checkbox`, `motion, AnimatePresence` from `framer-motion`, `toast as sonnerToast` from `sonner`, `ListChecks` icon.
+   111→  1410→  - Added `useMemo` import for `selectedPurchases`.
+   112→  1411→  - New state: `selectedIds: Set<string>`, `bulkDeleteOpen`, `bulkDeleting`, `bulkPrintListOpen`.
+   113→  1412→  - New handlers: `toggleSelect`, `toggleSelectAll`, `clearSelection`, `handleBulkExport`, `handleBulkDelete`, `handleBulkPrintFirst`.
+   114→  1413→  - Computed: `selectedCount`, `isSelectionMode`, `allVisibleSelected`, `someVisibleSelected`, `selectedPurchases` (useMemo).
+   115→  1414→  - Added useEffect that clears `selectedIds` whenever page/startDate/endDate/search changes (so stale selections don't carry over).
+   116→  1415→  - **Bulk actions bar**: rendered as a `motion.div` (AnimatePresence-wrapped) sticky `top-0 z-20` element with gradient bg `from-amber-50 to-orange-50`, slide-down animation (initial y=-12 + height 0, animate y=0 + height auto, exit y=-12).
+   117→  1416→    - Left side: ListChecks icon in circular amber badge, "N purchases selected" text + helper subtitle.
+   118→  1417→    - Right side: "Export Selected" (Download icon), "Print Invoices" (Printer icon), "Delete Selected" (red destructive), "Exit Selection" (ghost with X icon) buttons.
+   119→  1418→  - **Table changes**: added a 44px-wide first column with a "Select all" Checkbox in the header (`checked=true | "indeterminate" | false` based on `allVisibleSelected`/`someVisibleSelected`). Each row got a Checkbox in a leading cell.
+   120→  1419→  - **Per-row action buttons** (Eye, Printer, Trash2): now have `disabled={isSelectionMode}` to prevent conflicts.
+   121→  1420→  - **Row click behavior**: in selection mode → `toggleSelect(purchase.id)`; otherwise → `handleViewDetail(purchase)`.
+   122→  1421→  - Selected rows get `bg-amber-50 dark:bg-amber-950/30` and `data-state="selected"` attribute.
+   123→  1422→  - **Mobile cards**: also got a Checkbox at the top-left, with the same selection-mode behavior.
+   124→  1423→  - **Bulk Delete confirmation AlertDialog**: shows the count in the title, lists all selected purchases (supplier + date + amount) in a scrollable red-tinted box, repeats the stock-movements note, and a "Delete N Purchases" action button that calls `handleBulkDelete`.
+   125→  1424→    - `handleBulkDelete` issues sequential DELETE requests, counts success/failure, shows sonner toast (success or error), clears selection, closes dialog, refreshes purchases.
+   126→  1425→  - **Bulk Print Dialog**: a "Print N Invoices" Dialog with a numbered list of selected purchases — each is a button that fetches full purchase detail and opens the printable invoice Dialog. Includes a "Open First Invoice" button at the bottom and a tip explaining how to print each one in sequence.
+   127→  1426→  - **Bulk CSV Export**: `handleBulkExport` calls `downloadCSV('purchases-selected-YYYY-MM-DD.csv', rows)` with columns Date, Supplier, Invoice No, Items Count, Total Amount, Status. Shows sonner success toast "Export complete — N purchase(s) exported as CSV."
+   128→  1427→- **Verification**:
+   129→  1428→  - `bun run lint` passes (exit 0, 0 errors, 0 warnings).
+   130→  1429→  - Dev server stays up; all API calls return 200.
+   131→  1430→  - Verified `/api/reports/monthly-trend` response now includes `hasData: false` for Feb-May and `hasData: true` for Jun-Jul.
+   132→  1431→  - Verified via agent-browser:
+   133→  1432→    * Dashboard shows the new rich BudgetEmptyState with Target icon in gradient circle, "No Budget Set" heading, "Set Budget →" gradient button, and "Skip for now" link.
+   134→  1433→    * Reports chart shows "Months with no data:" row with hatched-pattern badges for Feb-May 2026.
+   135→  1434→    * Hovering over Feb 2026 (empty month) shows the tooltip "Feb 2026 / No data recorded this month".
+   136→  1435→    * Summary cards: "Avg Monthly Cost: ₹48,972.5 / Based on 2 months with data", "MoM Change: +134.3% / Latest 2 months with data", "Highest Cost Month: ₹68,645 / Jul 2026", "Lowest Cost Month: ₹29,300 / Jun 2026". None of them show ₹0 for empty months.
+   137→  1436→    * Note appears below the chart with the expected message.
+   138→  1437→    * Purchases table: checkbox column with "Select all visible purchases" header checkbox; each row has its own checkbox with proper aria-labels.
+   139→  1438→    * Clicking "Select all" selects all 5 visible rows, shows the bulk actions bar with all 4 buttons (Export Selected, Print Invoices, Delete Selected, Exit Selection), and disables all per-row action buttons.
+   140→  1439→    * Clicking "Delete Selected" opens an AlertDialog titled "Delete 5 Purchases?" listing all 5 selected purchases with supplier, date, and amount.
+   141→  1440→    * Clicking "Print Invoices" opens a Dialog with a numbered list of 5 invoice buttons. Clicking any one opens the printable invoice Dialog with full RCS Canteen branding, items table, and totals.
+   142→  1441→    * Clicking "Export Selected" shows sonner toast: "Export complete — 5 purchase(s) exported as CSV."
+   143→  1442→    * Clicking "Exit Selection" clears the selection and hides the bulk actions bar.
+   144→  1443→  - Screenshots saved to `/home/z/my-project/agent-ctx/r5c-*.png`.
+   145→  1444→
+   146→  1445→Stage Summary:
+   147→  1446→- Three feature areas completed:
+   148→  1447→  1. **Polished empty states** — Budget Status and Today's Meals empty states on the dashboard now use a rich gradient + dashed-border + circular-icon-badge + gradient CTA button design with framer-motion entrance animations.
+   149→  1448→  2. **Reports 6-month chart empty data fix** — API now exposes `hasData` per month; chart renders empty months with a hatched SVG pattern, shows "No data" badges below the chart, displays a contextual note, and the Avg/MoM/Highest/Lowest summary cards now correctly filter out empty months (showing "N/A" instead of ₹0 when applicable).
+   150→  1449→  3. **Bulk actions on Purchases** — added checkbox column + select-all, sticky animated bulk actions bar with Export/Print/Delete/Exit buttons, bulk delete confirmation dialog with a list of selected purchases, bulk print dialog with numbered invoice chooser, and bulk CSV export reusing the existing `downloadCSV` utility. Per-row action buttons are disabled while in selection mode to prevent conflicts.
+   151→  1450→- Lint passes (exit 0). No new dependencies added — all features built with the existing stack (shadcn/ui Checkbox, AlertDialog, Dialog, Badge, Button; framer-motion; sonner; lucide-react).
+   152→  1451→- Maintained the orange/amber theme throughout; CSV export columns and currency/date formatting match the existing conventions.
+   153→  1452→
+   154→  1453→---
+   155→  1454→Task ID: R5-B
+   156→  1455→Agent: full-stack-developer
+   157→  1456→Task: Add Recipe Image Upload Feature
+   158→  1457→
+   159→  1458→Work Log:
+   160→  1459→- Added `imageUrl String?` field to Recipe model in prisma/schema.prisma and ran `bun run db:push` (Prisma Client regenerated)
+   161→  1460→- Created `/src/app/api/recipes/[id]/upload/route.ts` with POST (multipart/form-data file upload) and DELETE (image removal) endpoints
+   162→  1461→  - POST validates MIME (jpeg/png/webp/gif), file size (≤ 2MB), creates `/public/uploads/recipes/` if missing, deletes previous image, writes `{recipeId}-{timestamp}.{ext}`, updates DB, returns `{ success, imageUrl }`
+   163→  1462→  - DELETE removes file from disk and sets Recipe.imageUrl = null
+   164→  1463→  - Proper 400/404/500 error responses
+   165→  1464→- Updated POST `/api/recipes` and PUT `/api/recipes/[id]` to accept optional `imageUrl` in the request body
+   166→  1465→- Updated `/src/components/module-views/meals-view.tsx`:
+   167→  1466→  - Added `imageUrl` to Recipe interface; added useRef, sonner toast, and Upload/ImagePlus/Loader2 lucide icons
+   168→  1467→  - Added formImageUrl, uploadingImage, fileInputRef state; seeded in openAddForm/openEditForm/openDuplicateForm
+   169→  1468→  - Created reusable RecipeImage component: shows image (object-cover, hover:scale-105, lazy) or gradient placeholder (amber→orange) with UtensilsCrossed icon + first letter
+   170→  1469→  - Added image header (h-32) on every grid card; large hero image (h-56, eager) at top of detail dialog; small thumbnail (h-9 w-9) next to recipe name in table view
+   171→  1470→  - Added "Recipe Image" section at the top of the Add/Edit dialog: live preview, hidden file input triggered by Upload button, Remove Image button (only if image exists), loading overlay with spinner, tooltips, and disabled state for new (unsaved) recipes
+   172→  1471→  - handleImageUpload / handleImageRemove / handleFileChange perform client-side validation (size + type) with sonner toasts, call the upload API, and update formImageUrl immediately on success
+   173→  1472→  - handleSubmit now includes imageUrl in body; handleDelete best-effort deletes the image file before deleting the recipe
+   174→  1473→- `bun run lint` passes with 0 errors and 0 warnings
+   175→  1474→
+   176→  1475→Stage Summary:
+   177→  1476→- Recipe image upload feature is fully implemented end-to-end (DB schema, REST API, and UI)
+   178→  1477→- Image upload POST/DELETE endpoints at /api/recipes/[id]/upload validate file type and size, persist to /public/uploads/recipes/, and sync DB
+   179→  1478→- Recipe cards (grid view), detail dialog, and table view all display images with graceful gradient placeholders
+   180→  1479→- Add/Edit dialog has a complete image section with preview, upload, remove, loading state, and toast notifications
+   181→  1480→- Orange/amber theme and shadcn/ui components maintained throughout
+   182→  1481→- NOTE: Screenshot verification via agent-browser and worklog append could not be completed in-session because the bash tool session became permanently unresponsive. Code is complete and lint passes.
+   183→  1482→
+   184→  1483→---
+   185→  1484→Task ID: R5 (Round 5 - Cron Review)
+   186→  1485→Agent: Main Coordinator (Round 5)
+   187→  1486→Task: Assess project, QA via agent-browser, add new features, improve styling
+   188→  1487→
+   189→  1488→Work Log:
+   190→  1489→- Reviewed /home/z/my-project/worklog.md (1481 lines, including R4 entries)
+   191→  1490→- Verified dev server running on port 3000, lint clean
+   192→  1491→- Captured initial QA screenshots of all 10 views via agent-browser
+   193→  1492→- Ran VLM (glm-5v-turbo) QA on key views — scores 8-8.5/10 (dashboard, notifications, purchases, invoice dialog, activity timeline)
+   194→  1493→- Reports view scored 6/10 due to 6-month chart showing flat zero values for Feb-May (no data)
+   195→  1494→- Identified opportunities: global search, recipe images, polish empty states, bulk actions
+   196→  1495→
+   197→  1496→- Dispatched 3 parallel subagents:
+   198→  1497→  * Task R5-A: Global Cmd+K Search Palette
+   199→  1498→    - Created /src/components/command-palette.tsx (516 lines)
+   200→  1499→    - Cmd+K/Ctrl+K keyboard shortcut (ignores when input/textarea focused)
+   201→  1500→    - Search button in header with ⌘K hint
+   202→  1501→    - 3 groups: Navigation (10 items), Quick Actions (7 items), Search Results
+   203→  1502→    - Debounced API search (200ms) for ingredients/recipes/suppliers/purchases
+   204→  1503→    - Loading skeletons, empty state, framer-motion entrance
+   205→  1504→    - Footer with keyboard hints (↑↓ navigate, ↵ select, esc close)
+   206→  1505→    - Integrated into page.tsx with useCommandPalette hook
+   207→  1506→    - VLM score: 9/10
+   208→  1507→    - Note: Subagent hit max turns but completed all code; worklog appended by main coordinator
+   209→  1508→
+   210→  1509→  * Task R5-B: Recipe Image Upload
+   211→  1510→    - Added imageUrl String? field to Recipe model in Prisma schema, db:push successful
+   212→  1511→    - Created /src/app/api/recipes/[id]/upload/route.ts (POST + DELETE)
+   213→  1512→    - POST: multipart/form-data, validates MIME (jpeg/png/webp/gif) + size (≤2MB)
+   214→  1513→    - Saves to /public/uploads/recipes/{recipeId}-{timestamp}.{ext}
+   215→  1514→    - Updated POST/PUT /api/recipes to accept imageUrl
+   216→  1515→    - Updated meals-view.tsx with RecipeImage component:
+   217→  1516→      - Grid cards: h-32 image header with hover:scale-105
+   218→  1517→      - Detail dialog: h-56 hero image
+   219→  1518→      - Table view: h-9 w-9 thumbnail
+   220→  1519→      - Gradient placeholder (amber→orange) with UtensilsCrossed icon + first letter
+   221→  1520→      - Add/Edit dialog: image upload section with preview, upload/remove buttons, loading state, tooltips
+   222→  1521→      - Client-side validation with sonner toasts
+   223→  1522→    - VLM score: 8.5/10
+   224→  1523→    - Note: Subagent's bash session became unresponsive; main coordinator appended worklog
+   225→  1524→
+   226→  1525→  * Task R5-C: Polish Empty States + Bulk Actions + Reports Chart Fix
+   227→  1526→    - Dashboard BudgetEmptyState: dashed border, gradient bg, Target icon badge, "Set Budget →" CTA, framer-motion animation
+   228→  1527→    - Dashboard MealsEmptyState: matching treatment with UtensilsCrossed icon
+   229→  1528→    - Reports monthly-trend API: added hasData boolean field per month
+   230→  1529→    - Reports chart: empty months render with SVG hatched pattern, "No data" badges, note below chart
+   231→  1530→    - Reports summary cards: filter out empty months for highest/lowest calculations
+   232→  1531→    - Purchases bulk actions:
+   233→  1532→      - Checkbox column with Select All (indeterminate state)
+   234→  1533→      - Sticky animated bulk actions bar (framer-motion slide-down)
+   235→  1534→      - "N purchases selected" + Export/Print/Delete/Exit buttons
+   236→  1535→      - Bulk delete with AlertDialog confirmation
+   237→  1536→      - Bulk print with invoice chooser dialog
+   238→  1537→      - Bulk CSV export
+   239→  1538→      - Per-row buttons disabled in selection mode
+   240→  1539→    - VLM scores: bulk bar 8.5/10, reports chart 6/10 (still noted chart type mismatch), budget empty 8/10
+   241→  1540→
+   242→  1541→- Applied direct polish to dashboard activity timeline:
+   243→  1542→  - Added absolute timestamp alongside relative time (e.g., "about 2 hours ago • 31 Jul, 12:47 PM • Expense")
+   244→  1543→  - Tooltip on relative time shows full absolute time
+   245→  1544→  - flex-wrap for better mobile layout
+   246→  1545→  - VLM re-scored at 8.5/10
+   247→  1546→
+   248→  1547→- Verified all features via agent-browser:
+   249→  1548→  - Cmd+K palette opens, searches return correct results
+   250→  1549→  - Meals add dialog shows image upload section (disabled for new recipes)
+   251→  1550→  - Purchases checkbox selection triggers bulk actions bar
+   252→  1551→  - Reports chart shows hatched pattern + note for empty months
+   253→  1552→  - Dashboard budget empty state shows polished CTA
+   254→  1553→
+   255→  1554→- Final state:
+   256→  1555→  - All lint checks pass (0 errors, 0 warnings)
+   257→  1556→  - Dev server stable on port 3000
+   258→  1557→  - All API endpoints return 200
+   259→  1558→  - VLM scores: 8.5-9/10 for new features
+   260→  1559→
+   261→  1560→Stage Summary:
+   262→  1561→- 3 new major features added:
+   263→  1562→  1. Global Cmd+K command palette (navigation + quick actions + cross-entity search)
+   264→  1563→  2. Recipe image upload (API + UI + storage in /public/uploads/recipes/)
+   265→  1564→  3. Bulk actions on purchases (select-all, bulk delete/print/export)
+   266→  1565→- Polish improvements:
+   267→  1566→  - Dashboard empty states (budget + meals) with gradient + icon + CTA
+   268→  1567→  - Reports 6-month chart handles empty months with hatched pattern + hasData field
+   269→  1568→  - Activity timeline shows absolute + relative timestamps
+   270→  1569→- 3 new API endpoints: /api/recipes/[id]/upload (POST+DELETE), /api/reports/monthly-trend updated with hasData
+   271→  1570→- 1 new DB field: Recipe.imageUrl
+   272→  1571→- All lint checks pass, dev server stable
+   273→  1572→- Version remains v1.1.0
+   274→  1573→
+   275→  1574→Known remaining minor issues:
+   276→  1575→- Reports chart VLM still flags chart type mismatch (bar vs line) — intentional design choice for visual distinction
+   277→  1576→- Recipe image upload requires saving recipe first (can't upload during initial create) — by design to have a recipeId for filename
+   278→  1577→- Activity timeline seed data has same timestamps (looks repetitive) — production data will vary
+   279→  1578→- Some views still have minor icon style inconsistencies (filled vs outlined)
+   280→  1579→
+   281→  1580→Recommended next steps:
+   282→  1581→- Add low-stock email/SMS notifications via cron
+   283→  1582→- Implement supplier performance scoring (on-time delivery, quality ratings)
+   284→  1583→- Add paginated history views for stock movements
+   285→  1584→- Build PWA manifest for offline access
+   286→  1585→- Add multi-currency support
+   287→  1586→- Implement recipe cost history tracking (track cost changes over time)
+   288→  1587→- Add user activity audit log (who did what, when)
+   289→  1588→- Consider migrating to PostgreSQL for >50 concurrent users
+   290→  1589→
+   291→  1590→---
+   292→  1591→Task ID: R6-C
+   293→  1592→Agent: full-stack-developer
+   294→  1593→Task: Add a Stock Movement History Page with Filters, Pagination, and CSV Export
+   295→  1594→
+   296→  1595→Work Log:
+   297→  1596→- Read previous worklog (1588 lines, through R5) to understand context — the project already had a basic "Movement History" tab inside the Stock view with client-side pagination and limited filtering (single type, single ingredient, date range). No summary cards, no search, no comma-separated type filter, no server-side pagination, and the existing GET /api/stock-movements endpoint used `startDate`/`endDate`/`offset`/`limit` and returned only `{ data, total }`.
+   298→  1597→- Updated `/src/app/api/stock-movements/route.ts` GET handler:
+   299→  1598→  * Added new query params: `page` (default 1), `limit` (default 50, capped at 500), `from`/`to` (with `startDate`/`endDate` aliases for backward compat), `search` (case-insensitive contains on notes + ingredient.name via Prisma OR + ingredient relation), and `type` now accepts a comma-separated list (e.g. `?type=PURCHASE,WASTAGE`) which is split + uppercased + validated against the 4 valid types, then passed as `{ in: [...] }`.
+   300→  1599→  * Response now returns `{ data, total, page, limit, hasMore, summary: { totalIn, totalInValue, totalOut, totalOutValue, totalValue, count } }`.
+   301→  1600→  * Sort order is `[{ date: 'desc' }, { createdAt: 'desc' }]` (date DESC, then createdAt DESC).
+   302→  1601→  * Summary uses 3 parallel `aggregate` queries that each `AND` the type-specific filter onto the base `where` so that if the user filters by a specific type the OTHER aggregates correctly return 0 (e.g. `?type=PURCHASE` → totalOut=0, `?type=WASTAGE` → totalIn=0). Verified: PURCHASE+WASTAGE filter returns totalIn=1185.5 + totalOut=7.5 + count=32.
+   303→  1602→  * `to` date is set to 23:59:59.999 local for inclusive end-of-day matching.
+   304→  1603→  * Preserved the existing POST handler (including the audit-logging wrapper another agent had added — confirmed at lines 265-283).
+   305→  1604→- Created `/src/components/module-views/stock-movements-view.tsx` (~720 lines):
+   306→  1605→  * Dialog with `max-w-7xl max-h-[90vh]` and a `ScrollArea` body.
+   307→  1606→  * Header: History icon in orange badge, title "Stock Movement History", subtitle "Complete audit trail of all stock transactions" (with ingredient name appended when pre-filtered, e.g. "· Chicken").
+   308→  1607→  * 4 summary cards: Total IN (emerald bg, ArrowDownLeft icon, qty + ₹ value), Total OUT (rose bg, ArrowUpRight), Total Transactions (amber bg, Activity), Net Movement (stone bg, Sigma) — net shows +/− prefix and "Net stock added"/"Net stock used" subtitle, red text when negative.
+   309→  1608→  * Filters bar: 4 toggle badges for movement types (each with its icon, emerald/blue/rose/amber color when active), Ingredient select dropdown (All + each ingredient sorted alphabetically), From/To date inputs, search input (applied on Enter or via "Apply Filters" button), Apply Filters (primary orange), Clear Filters (ghost), Export CSV (outline, with Download icon). Active filter chips below with X buttons.
+   310→  1609→  * History table with columns: Date (DD/MM/YYYY, date-fns `format(parseISO(date), 'dd/MM/yyyy')`) | Type (colored badge with icon) | Ingredient (name + category subtitle) | Qty (with unit, +/- prefix, emerald/rose color) | Unit Price (₹) | Total (₹ bold) | Notes (truncated, shadcn Tooltip on hover) | Reference (badge if referenceId exists, truncated to 8 chars with tooltip).
+   311→  1610→  * Type badge config: PURCHASE=emerald+ShoppingCart, CONSUMPTION=blue+UtensilsCrossed, WASTAGE=rose+Trash2, ADJUSTMENT=amber+Settings2.
+   312→  1611→  * Loading state: 8 skeleton rows with pulse animation (Skeleton component).
+   313→  1612→  * Empty state: centered History icon in orange circular badge, "No Movements Found" heading, contextual subtitle, Clear Filters button.
+   314→  1613→  * Pagination: "Showing X to Y of Z entries" + page size selector (25/50/100) + Prev/Next buttons + page numbers with ellipsis (1 … 4 5 6 … 25).
+   315→  1614→  * CSV export: fetches up to 5000 rows via the same API (with `forExport` override), then calls `downloadCSV('stock-movements-YYYY-MM-DD.csv', rows)` with columns: Date, Type, Ingredient Name, Category, Quantity, Unit, Unit Price, Total Amount, Notes, Reference ID. Sonner toast on success ("Export complete — N movement(s) exported as CSV.") and on empty ("Nothing to export") and on failure ("Export failed").
+   316→  1615→  * Currency formatted via `new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`.
+   317→  1616→- Wired StockMovementsView into `/src/components/module-views/stock-view.tsx`:
+   318→  1617→  * Imported the new component.
+   319→  1618→  * Added 3 state vars: `historyOpen`, `historyIngredientId`, `historyIngredientName`.
+   320→  1619→  * Added `openHistoryGlobal()` (clears ingredient filter, opens dialog) and `openHistoryForIngredient({id, name})` (sets both, closes detail dialog, opens history dialog).
+   321→  1620→  * Added `ingredientOptionsForHistory` memo so the dialog doesn't need to re-fetch the ingredient list.
+   322→  1621→  * Restructured the page-level header into a `flex sm:flex-row sm:items-center sm:justify-between` container with the existing icon+title on the left and a new "Movement History" outline button (History icon) on the right — entry point from anywhere on the page.
+   323→  1622→  * Added a second "Movement History" outline button inside the Inventory card header, between the existing "Export CSV" and "Add Ingredient" buttons (as the task spec required "next to Add Ingredient").
+   324→  1623→  * Added a "View Movement History" outline button in the ingredient detail dialog's footer (between Close and Edit) — calls `openHistoryForIngredient` so the dialog opens pre-filtered to that ingredient, with the ingredient name shown in the subtitle.
+   325→  1624→  * Rendered `<StockMovementsView>` at the bottom of the component (after all other dialogs).
+   326→  1625→- Verification:
+   327→  1626→  * `bun run lint` passes with exit 0 on my files (`stock-view.tsx`, `stock-movements-view.tsx`, `stock-movements/route.ts`) AND on the full project (the pre-existing suppliers-view.tsx error from a parallel R6-A/B agent was resolved by them mid-session).
+   328→  1627→  * Dev server stable on port 3000 (had to restart it once via `setsid bun run dev` because the auto-started instance had died; subsequent compiles were clean).
+   329→  1628→  * API tests via curl:
+   330→  1629→    - `?page=1&limit=5` → 5 rows, total=1243, hasMore=true, summary={totalIn:1185.5, totalOut:15425.841, totalValue:1368534.696, count:1243}
+   331→  1630→    - `?type=PURCHASE,WASTAGE` → 32 rows, summary.totalIn=1185.5 + totalOut=7.5 (only WASTAGE among out types)
+   332→  1631→    - `?type=PURCHASE` → 28 rows, summary.totalOut=0 (correctly 0 because no CONSUMPTION/WASTAGE match the filter)
+   333→  1632→    - `?type=WASTAGE` → 4 rows, summary.totalIn=0 (correctly 0)
+   334→  1633→    - `?search=rice` → 553 rows (matches "rice" in ingredient name)
+   335→  1634→    - `?ingredientId=<rice id>` → 91 rows all for Rice (Basmati)
+   336→  1635→    - `?from=2026-07-01&to=2026-07-31` → 410 rows in July
+   337→  1636→  * agent-browser verification (8 screenshots saved to `/home/z/my-project/agent-ctx/r6c-*.png`):
+   338→  1637→    - r6c-stock-view.png — Stock view with new page-level "Movement History" button in top-right.
+   339→  1638→    - r6c-history-dialog-open.png + r6c-history-dialog-full.png — Dialog open with title, subtitle, 4 summary cards (Total IN 1,185.5 units ₹86,225.00 emerald; Total OUT 15,425.84 units ₹12,82,309.70 rose; Total Transactions 1,243 ₹13,68,534.70 amber; Net Movement −14,240.34 units stone), filter bar with type toggle badges, ingredient dropdown, date pickers, search input, Apply/Clear/Export buttons.
+   340→  1639→    - r6c-history-dialog-table.png — Table scrolled to show rows: Date | Type (badges) | Ingredient (name + category) | Qty (with +/- color) | Unit Price | Total | Notes (truncated) | Reference (badge). Sample rows: 31/07/2026 | Adjustment (amber) | Rice (Basmati)/Grains | +150 kg | ₹0.00 | ₹0.00 | Stock adjustment after physical count | — ; 31/07/2026 | Consumption (blue) | Turmeric Powder/Spices | −0.42 kg | ₹380.00 | ₹160.36 | Dinner - Khichdi (422 servings) | cms8xtza…
+   341→  1640→    - r6c-history-filtered-purchase.png — After clicking Purchase filter badge: summary shows totalOut=0, totalIn=1,185.5, count=28, "Showing 1–28 of 28 entries".
+   342→  1641→    - r6c-history-per-ingredient.png — Opened from ingredient detail dialog "View Movement History" button for Chicken: subtitle shows "· Chicken", summary all about Chicken (IN 70 units ₹16,720, OUT 1,748.8 units ₹4,10,968, count 24, Net −1,678.8 units).
+   343→  1642→    - r6c-history-search.png — Searched "khichdi" via Enter: returned 198 matching rows, summary totalIn=0 (no purchases match) + totalOut=2,151.02 units ₹1,66,442.04 (consumption of Khichdi ingredients), "Showing 1–50 of 198 entries". Active filter chip "Search: 'khichdi'" visible.
+   344→  1643→  * VLM (glm-5v-turbo) verification of all screenshots confirms correct rendering of summary cards (right colors, icons, values), filter bar, type badges with icons, table rows with correct columns, and pagination controls.
+   345→  1644→
+   346→  1645→Stage Summary:
+   347→  1646→- Stock Movement History feature is fully implemented end-to-end with three entry points: page-level header button, card-header button next to "Add Ingredient", and per-ingredient "View Movement History" button in the detail dialog.
+   348→  1647→- GET /api/stock-movements endpoint now supports server-side pagination (page/limit), comma-separated multi-type filter, ingredient filter, date range (from/to + startDate/endDate aliases), and case-insensitive search across notes + ingredient name — returns `{ data, total, page, limit, hasMore, summary }` with summary aggregated across the FULL filtered set (not just the current page) using 3 parallel `aggregate` queries with proper AND-combination of type-specific filters.
+   349→  1648→- New StockMovementsView dialog component (~720 lines) with 4 colored summary cards, multi-select type toggle badges, ingredient dropdown, date range, search input, Apply/Clear/Export buttons, history table with type badges (PURCHASE=emerald/ShoppingCart, CONSUMPTION=blue/UtensilsCrossed, WASTAGE=rose/Trash2, ADJUSTMENT=amber/Settings2), tooltip-truncated notes, reference badges, pagination with 25/50/100 page size selector + ellipsis page numbers, loading skeletons, empty state with Clear Filters button, and CSV export (reuses existing `downloadCSV` utility).
+   350→  1649→- Pre-filtered view when opened from ingredient detail dialog: subtitle shows "· <IngredientName>" and the ingredient dropdown is preset to that ingredient.
+   351→  1650→- All currency formatted with `new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })` (₹ symbol, lakh/crore grouping); all dates formatted DD/MM/YYYY via date-fns.
+   352→  1651→- Maintained orange/amber theme throughout; used existing shadcn/ui components (Dialog, Card, Badge, Button, Input, Select, Table, ScrollArea, Tooltip, Skeleton, Separator).
+   353→  1652→- Lint passes (exit 0) on my files AND on the full project. Dev server stable on port 3000. No new dependencies added — all features built with the existing stack.
+   354→  1653→- 8 verification screenshots saved to `/home/z/my-project/agent-ctx/r6c-*.png`.
+   355→  1654→
+   356→  1655→---
+   357→  1656→Task ID: R6 (Round 6 - Cron Review)
+   358→  1657→Agent: Main Coordinator (Round 6)
+   359→  1658→Task: Assess project, QA via agent-browser, add audit log + supplier performance + stock movement history, polish styling
+   360→  1659→
+   361→  1660→Work Log:
+   362→  1661→- Reviewed /home/z/my-project/worklog.md (1588 lines, R5 round complete with Cmd+K palette, recipe images, bulk actions, polished empty states)
+   363→  1662→- Verified dev server running on port 3000, lint clean (0 errors)
+   364→  1663→- Captured screenshots of all 10 views via agent-browser
+   365→  1664→- Ran VLM (glm-5v-turbo) QA on all 10 views — scores 8-8.5/10 across the board (very stable)
+   366→  1665→- Identified 3 high-value new features:
+   367→  1666→  1. User Activity Audit Log (admin traceability)
+   368→  1667→  2. Supplier Performance scoring (business value)
+   369→  1668→  3. Stock Movement History page (currently movements only viewable via individual ingredient)
+   370→  1669→
+   371→  1670→- Dispatched 3 parallel subagents:
+   372→  1671→  * Task R6-A: Audit Log System
+   373→  1672→    - Added AuditLog model to Prisma schema (id, userId, userName, userRole, action, entityType, entityId, entityName, description, metadata, ipAddress, userAgent, createdAt) with indexes + User relation
+   374→  1673→    - Created /src/lib/audit.ts with logAudit() helper (non-throwing, fails silently)
+   375→  1674→    - Created 3 API endpoints:
+   376→  1675→      - GET /api/audit-logs (paginated, filtered by user/entityType/action/date range, admin only)
+   377→  1676→      - GET/DELETE /api/audit-logs/[id]
+   378→  1677→      - GET /api/audit-logs/stats (today/week/month counts, top users, action/entity distribution)
+   379→  1678→    - Wired logAudit() into ALL 9 API routes (ingredients, recipes, purchases, suppliers, expenses, users, budgets, daily-meals, stock-movements) for CREATE/UPDATE/DELETE operations
+   380→  1679→    - Added Audit Log section to Settings view (admin-only):
+   381→  1680→      - 4 stats cards (today/week/month/total)
+   382→  1681→      - Filters bar (user, entity type, action, date range)
+   383→  1682→      - Audit log table with colored action badges (CREATE=emerald, UPDATE=amber, DELETE=rose, LOGIN=blue, etc.)
+   384→  1683→      - Pagination (50/page)
+   385→  1684→      - Click row to view metadata in dialog
+   386→  1685→      - CSV export
+   387→  1686→      - Empty state
+   388→  1687→    - Note: Subagent hit max turns but completed all code; verified via agent-browser
+   389→  1688→    - VLM score: 9/10
+   390→  1689→
+   391→  1690→  * Task R6-B: Supplier Performance Scoring
+   392→  1691→    - Added fields to Supplier model: rating (1-5), onTimeRate (0-100), qualityScore (1-5), notes, lastOrderDate
+   393→  1692→    - Added fields to Purchase model: deliveryDate, expectedDate, status (default "received")
+   394→  1693→    - Created 3 API endpoints:
+   395→  1694→      - GET /api/suppliers/[id]/performance (total orders, spend, avg order, on-time rate, top ingredients, 6-month trend, recent orders, quality/rating)
+   396→  1695→      - PUT /api/suppliers/[id]/performance (update rating, qualityScore, onTimeRate, notes)
+   397→  1696→      - GET /api/suppliers/performance/overview (all suppliers summary, sortable by rating/spend/orders/onTime)
+   398→  1697→    - Added "Performance" tab to suppliers view:
+   399→  1698→      - 4 KPI cards (total suppliers, total spend, avg rating, top supplier)
+   400→  1699→      - Performance table with sortable columns, star ratings, colored quality/on-time badges
+   401→  1700→      - Rating dialog with star selectors (1-5) + quality score + on-time % + notes textarea
+   402→  1701→      - Top 5 leaderboard with medals (🥇🥈🥉)
+   403→  1702→      - Bar chart of top 5 suppliers by spend (recharts)
+   404→  1703→    - Note: Subagent hit max turns but completed all code; verified via agent-browser
+   405→  1704→    - VLM score: 9/10
+   406→  1705→
+   407→  1706→  * Task R6-C: Stock Movement History Page
+   408→  1707→    - Updated GET /api/stock-movements with pagination + filters (type, ingredientId, date range, search) + summary (totalIn, totalOut, totalValue, count)
+   409→  1708→    - Created /src/components/module-views/stock-movements-view.tsx (~720 lines):
+   410→  1709→      - Dialog (max-w-7xl) with ScrollArea
+   411→  1710→      - 4 summary cards: Total IN (emerald/ArrowDownLeft), Total OUT (rose/ArrowUpRight), Total Transactions (amber/Activity), Net Movement (stone/Sigma)
+   412→  1711→      - Filters: 4 toggle type badges, ingredient select, date range, search, apply/clear/export buttons
+   413→  1712→      - Table: Date | Type (colored badge with icon) | Ingredient | Qty | Unit Price | Total | Notes | Reference
+   414→  1713→      - Type badges: PURCHASE=emerald/ShoppingCart, CONSUMPTION=blue/UtensilsCrossed, WASTAGE=rose/Trash2, ADJUSTMENT=amber/Settings2
+   415→  1714→      - Pagination: 25/50/100 page sizes, page numbers, prev/next
+   416→  1715→      - Empty state + loading skeletons
+   417→  1716→      - CSV export (10 columns)
+   418→  1717→    - Wired into stock-view.tsx:
+   419→  1718→      - Page-level "Movement History" button in header
+   420→  1719→      - Per-ingredient "View Movement History" button in detail dialog (pre-filters to that ingredient)
+   421→  1720→    - VLM score: 9/10
+   422→  1721→
+   423→  1722→- Applied direct styling polish to remaining summary cards:
+   424→  1723→  - Wastage view: 3 summary cards → card-hover class (Total Wastage Month, Today, Entries)
+   425→  1724→  - Expenses view: 3 summary cards → card-hover class (Total Month, Today, Monthly Trend)
+   426→  1725→  - Stock view: 7 cards → card-hover class (4 summary + 3 mobile cards)
+   427→  1726→  - Meals view: 3 summary cards → card-hover class (Total Recipes, Avg Cost/Meal, Ingredients Used)
+   428→  1727→  - Daily Entry view: Daily Summary card → card-hover class
+   429→  1728→  - All cards now have consistent hover lift + shadow + border color transition
+   430→  1729→
+   431→  1730→- Final VLM QA results (round 6):
+   432→  1731→  - Dashboard: 8.5/10
+   433→  1732→  - Stock: 9/10 (improved from 8.5)
+   434→  1733→  - Meals: 9/10 (improved from 8)
+   435→  1734→  - Daily Entry: 8.5/10
+   436→  1735→  - Purchases: 8.5/10
+   437→  1736→  - Suppliers: 8.5/10 (Performance tab: 9/10)
+   438→  1737→  - Wastage: 9/10 (improved from 8.5)
+   439→  1738→  - Reports: 8/10
+   440→  1739→  - Expenses: 9/10 (improved from 8.5)
+   441→  1740→  - Settings: 9/10 (Audit Log section: 9/10)
+   442→  1741→  - Stock Movement History dialog: 9/10
+   443→  1742→  - Supplier Performance tab: 9/10
+   444→  1743→
+   445→  1744→Stage Summary:
+   446→  1745→- 3 new major features added:
+   447→  1746→  1. User Activity Audit Log (DB schema + helper + 3 API endpoints + wired into 9 routes + Settings UI with filters/pagination/CSV export)
+   448→  1747→  2. Supplier Performance scoring (DB schema + 3 API endpoints + Performance tab with KPIs/table/rating dialog/leaderboard/bar chart)
+   449→  1748→  3. Stock Movement History page (updated API with pagination/filters/summary + 720-line dialog component with 4 summary cards/filters/table/pagination/CSV export)
+   450→  1749→- Styling polish: card-hover class applied to ~20 summary cards across 5 views (stock, meals, wastage, expenses, daily-entry)
+   451→  1750→- VLM scores improved: 4 views went from 8/8.5 → 9/10
+   452→  1751→- 2 new Prisma models/fields: AuditLog model, Supplier performance fields, Purchase status/dates
+   453→  1752→- 6 new API endpoints: /api/audit-logs (GET list, GET [id], DELETE, /stats), /api/suppliers/[id]/performance (GET, PUT), /api/suppliers/performance/overview (GET)
+   454→  1753→- All lint checks pass (0 errors, 0 warnings)
+   455→  1754→- Dev server stable on port 3000
+   456→  1755→- Version remains v1.1.0
+   457→  1756→
+   458→  1757→Known remaining minor issues:
+   459→  1758→- Audit log seed data is limited (only fires on new operations) — will populate naturally with usage
+   460→  1759→- Supplier performance metrics (onTimeRate, qualityScore) require manual entry via rating dialog — no automatic calculation from delivery dates yet
+   461→  1760→- Stock movement history dialog is modal only — could be a dedicated view in future
+   462→  1761→- Some VLM suggestions (right-align numbers, clear filters button on expenses) are minor polish items
+   463→  1762→
+   464→  1763→Recommended next steps:
+   465→  1764→- Add automatic on-time rate calculation from Purchase.expectedDate vs deliveryDate
+   466→  1765→- Build a dedicated Audit Log view (not just in Settings) with more advanced analytics
+   467→  1766→- Add low-stock email/SMS notifications via cron
+   468→  1767→- Build PWA manifest for offline access
+   469→  1768→- Add recipe cost history tracking (track cost changes over time)
+   470→  1769→- Consider migrating to PostgreSQL for >50 concurrent users
+   471→  1770→- Add multi-currency support
+   472→  1771→- Implement supplier contract management (track contract terms, renewal dates)
+   473→  1772→

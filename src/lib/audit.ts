@@ -18,6 +18,7 @@ export type AuditAction =
 export type EntityType =
   | "Ingredient"
   | "Recipe"
+  | "RecipeCostHistory"
   | "Purchase"
   | "Supplier"
   | "Expense"

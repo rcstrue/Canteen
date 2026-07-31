@@ -29,6 +29,7 @@ import { PurchasesView } from "@/components/module-views/purchases-view";
 import { SuppliersView } from "@/components/module-views/suppliers-view";
 import { WastageView } from "@/components/module-views/wastage-view";
 import { ReportsView } from "@/components/module-views/reports-view";
+import { BudgetView } from "@/components/module-views/budget-view";
 import { ExpensesView } from "@/components/module-views/expenses-view";
 import { SettingsView } from "@/components/module-views/settings-view";
 
@@ -41,6 +42,7 @@ const viewLabels: Record<ViewId, string> = {
   suppliers: "Suppliers",
   wastage: "Wastage",
   reports: "Reports",
+  budget: "Budget",
   expenses: "Expenses",
   settings: "Settings",
 };
@@ -185,6 +187,8 @@ function ViewRenderer({
       return <WastageView />;
     case "reports":
       return <ReportsView />;
+    case "budget":
+      return <BudgetView onNavigate={onNavigate} />;
     case "expenses":
       return <ExpensesView />;
     case "settings":
@@ -246,7 +250,7 @@ function AuthenticatedApp() {
           </main>
 
           {/* Footer */}
-          <footer className="border-t bg-muted/20 px-4 py-3 text-center text-xs text-muted-foreground md:px-6">
+          <footer className="app-footer border-t bg-muted/20 px-4 py-3 text-center text-xs text-muted-foreground md:px-6">
             <span className="font-medium text-foreground/80">RCS Canteen</span>{" "}
             © 2026 · Stock &amp; Cost Management · Dahej Industrial Contract
           </footer>
