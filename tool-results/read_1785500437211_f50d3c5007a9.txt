@@ -1,0 +1,1083 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback } from "react";
+     4→import {
+     5→  Card,
+     6→  CardContent,
+     7→  CardDescription,
+     8→  CardHeader,
+     9→  CardTitle,
+    10→} from "@/components/ui/card";
+    11→import {
+    12→  Table,
+    13→  TableBody,
+    14→  TableCell,
+    15→  TableHead,
+    16→  TableHeader,
+    17→  TableRow,
+    18→} from "@/components/ui/table";
+    19→import {
+    20→  Dialog,
+    21→  DialogContent,
+    22→  DialogDescription,
+    23→  DialogFooter,
+    24→  DialogHeader,
+    25→  DialogTitle,
+    26→} from "@/components/ui/dialog";
+    27→import {
+    28→  AlertDialog,
+    29→  AlertDialogAction,
+    30→  AlertDialogCancel,
+    31→  AlertDialogContent,
+    32→  AlertDialogDescription,
+    33→  AlertDialogFooter,
+    34→  AlertDialogHeader,
+    35→  AlertDialogTitle,
+    36→} from "@/components/ui/alert-dialog";
+    37→import {
+    38→  Select,
+    39→  SelectContent,
+    40→  SelectItem,
+    41→  SelectTrigger,
+    42→  SelectValue,
+    43→} from "@/components/ui/select";
+    44→import { Input } from "@/components/ui/input";
+    45→import { Button } from "@/components/ui/button";
+    46→import { Badge } from "@/components/ui/badge";
+    47→import { Label } from "@/components/ui/label";
+    48→import { Textarea } from "@/components/ui/textarea";
+    49→import { Separator } from "@/components/ui/separator";
+    50→import {
+    51→  ShoppingCart,
+    52→  Plus,
+    53→  Search,
+    54→  Trash2,
+    55→  Eye,
+    56→  X,
+    57→  Loader2,
+    58→  CalendarDays,
+    59→  FileText,
+    60→  IndianRupee,
+    61→  Package,
+    62→  ChevronLeft,
+    63→  ChevronRight,
+    64→  Minus,
+    65→  AlertTriangle,
+    66→} from "lucide-react";
+    67→
+    68→// ─── Types ───────────────────────────────────────────────────────────────────
+    69→
+    70→interface Ingredient {
+    71→  id: string;
+    72→  name: string;
+    73→  unit: string;
+    74→  category: string;
+    75→  currentStock: number;
+    76→  minStock: number;
+    77→  lastPurchasePrice: number;
+    78→  avgCost: number;
+    79→  supplier: string | null;
+    80→}
+    81→
+    82→interface PurchaseItem {
+    83→  id: string;
+    84→  purchaseId: string;
+    85→  ingredientId: string;
+    86→  quantity: number;
+    87→  unitPrice: number;
+    88→  totalAmount: number;
+    89→  ingredient: {
+    90→    id: string;
+    91→    name: string;
+    92→    unit: string;
+    93→    category: string;
+    94→  };
+    95→}
+    96→
+    97→interface Purchase {
+    98→  id: string;
+    99→  date: string;
+   100→  supplier: string | null;
+   101→  invoiceNo: string | null;
+   102→  totalAmount: number;
+   103→  notes: string | null;
+   104→  createdAt: string;
+   105→  items: PurchaseItem[];
+   106→}
+   107→
+   108→interface NewPurchaseItem {
+   109→  ingredientId: string;
+   110→  quantity: number;
+   111→  unitPrice: number;
+   112→  totalAmount: number;
+   113→}
+   114→
+   115→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   116→
+   117→function formatCurrency(amount: number): string {
+   118→  return new Intl.NumberFormat("en-IN", {
+   119→    style: "currency",
+   120→    currency: "INR",
+   121→    minimumFractionDigits: 2,
+   122→    maximumFractionDigits: 2,
+   123→  }).format(amount);
+   124→}
+   125→
+   126→function formatDate(dateStr: string): string {
+   127→  const d = new Date(dateStr);
+   128→  const day = String(d.getDate()).padStart(2, "0");
+   129→  const month = String(d.getMonth() + 1).padStart(2, "0");
+   130→  const year = d.getFullYear();
+   131→  return `${day}/${month}/${year}`;
+   132→}
+   133→
+   134→function getTodayStr(): string {
+   135→  const d = new Date();
+   136→  return d.toISOString().split("T")[0];
+   137→}
+   138→
+   139→// ─── Component ───────────────────────────────────────────────────────────────
+   140→
+   141→export function PurchasesView() {
+   142→  // ── State ────────────────────────────────────────────────────────────────
+   143→  const [purchases, setPurchases] = useState<Purchase[]>([]);
+   144→  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+   145→  const [loading, setLoading] = useState(true);
+   146→  const [total, setTotal] = useState(0);
+   147→
+   148→  // Filters
+   149→  const [search, setSearch] = useState("");
+   150→  const [startDate, setStartDate] = useState("");
+   151→  const [endDate, setEndDate] = useState("");
+   152→
+   153→  // Pagination
+   154→  const [page, setPage] = useState(1);
+   155→  const pageSize = 10;
+   156→
+   157→  // Dialogs
+   158→  const [detailOpen, setDetailOpen] = useState(false);
+   159→  const [newPurchaseOpen, setNewPurchaseOpen] = useState(false);
+   160→  const [deleteOpen, setDeleteOpen] = useState(false);
+   161→  const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
+   162→  const [deleteId, setDeleteId] = useState<string | null>(null);
+   163→
+   164→  // New purchase form
+   165→  const [formDate, setFormDate] = useState(getTodayStr());
+   166→  const [formSupplier, setFormSupplier] = useState("");
+   167→  const [formInvoiceNo, setFormInvoiceNo] = useState("");
+   168→  const [formNotes, setFormNotes] = useState("");
+   169→  const [formItems, setFormItems] = useState<NewPurchaseItem[]>([]);
+   170→  const [submitting, setSubmitting] = useState(false);
+   171→  const [deleting, setDeleting] = useState(false);
+   172→
+   173→  // ── Fetch ────────────────────────────────────────────────────────────────
+   174→
+   175→  const fetchPurchases = useCallback(async () => {
+   176→    setLoading(true);
+   177→    try {
+   178→      const params = new URLSearchParams();
+   179→      params.set("limit", String(pageSize));
+   180→      params.set("offset", String((page - 1) * pageSize));
+   181→      if (startDate) params.set("startDate", startDate);
+   182→      if (endDate) params.set("endDate", endDate);
+   183→      if (search) params.set("supplier", search);
+   184→
+   185→      const res = await fetch(`/api/purchases?${params.toString()}`);
+   186→      if (res.ok) {
+   187→        const data = await res.json();
+   188→        setPurchases(data.data || []);
+   189→        setTotal(data.total || 0);
+   190→      }
+   191→    } catch (err) {
+   192→      console.error("Error fetching purchases:", err);
+   193→    } finally {
+   194→      setLoading(false);
+   195→    }
+   196→  }, [page, startDate, endDate, search]);
+   197→
+   198→  const fetchIngredients = useCallback(async () => {
+   199→    try {
+   200→      const res = await fetch("/api/ingredients");
+   201→      if (res.ok) {
+   202→        const data = await res.json();
+   203→        setIngredients(Array.isArray(data) ? data : []);
+   204→      }
+   205→    } catch (err) {
+   206→      console.error("Error fetching ingredients:", err);
+   207→    }
+   208→  }, []);
+   209→
+   210→  useEffect(() => {
+   211→    fetchPurchases();
+   212→  }, [fetchPurchases]);
+   213→
+   214→  useEffect(() => {
+   215→    if (newPurchaseOpen) {
+   216→      fetchIngredients();
+   217→    }
+   218→  }, [newPurchaseOpen, fetchIngredients]);
+   219→
+   220→  // ── Actions ──────────────────────────────────────────────────────────────
+   221→
+   222→  const handleViewDetail = async (purchase: Purchase) => {
+   223→    try {
+   224→      const res = await fetch(`/api/purchases/${purchase.id}`);
+   225→      if (res.ok) {
+   226→        const data = await res.json();
+   227→        setSelectedPurchase(data);
+   228→        setDetailOpen(true);
+   229→      }
+   230→    } catch (err) {
+   231→      console.error("Error fetching purchase detail:", err);
+   232→    }
+   233→  };
+   234→
+   235→  const handleDelete = async () => {
+   236→    if (!deleteId) return;
+   237→    setDeleting(true);
+   238→    try {
+   239→      const res = await fetch(`/api/purchases/${deleteId}`, { method: "DELETE" });
+   240→      if (res.ok) {
+   241→        await fetchPurchases();
+   242→        setDeleteOpen(false);
+   243→        setDeleteId(null);
+   244→      }
+   245→    } catch (err) {
+   246→      console.error("Error deleting purchase:", err);
+   247→    } finally {
+   248→      setDeleting(false);
+   249→    }
+   250→  };
+   251→
+   252→  const confirmDelete = (id: string) => {
+   253→    setDeleteId(id);
+   254→    setDeleteOpen(true);
+   255→  };
+   256→
+   257→  // ── New Purchase Form ────────────────────────────────────────────────────
+   258→
+   259→  const openNewPurchase = () => {
+   260→    setFormDate(getTodayStr());
+   261→    setFormSupplier("");
+   262→    setFormInvoiceNo("");
+   263→    setFormNotes("");
+   264→    setFormItems([{ ingredientId: "", quantity: 0, unitPrice: 0, totalAmount: 0 }]);
+   265→    setNewPurchaseOpen(true);
+   266→  };
+   267→
+   268→  const addItemRow = () => {
+   269→    setFormItems([...formItems, { ingredientId: "", quantity: 0, unitPrice: 0, totalAmount: 0 }]);
+   270→  };
+   271→
+   272→  const removeItemRow = (index: number) => {
+   273→    if (formItems.length <= 1) return;
+   274→    setFormItems(formItems.filter((_, i) => i !== index));
+   275→  };
+   276→
+   277→  const updateItem = (index: number, field: keyof NewPurchaseItem, value: string | number) => {
+   278→    const updated = [...formItems];
+   279→    if (field === "ingredientId") {
+   280→      updated[index] = { ...updated[index], ingredientId: value as string };
+   281→      // Auto-fill unit price from ingredient's lastPurchasePrice
+   282→      const ingredient = ingredients.find((i) => i.id === value);
+   283→      if (ingredient) {
+   284→        updated[index].unitPrice = ingredient.lastPurchasePrice;
+   285→        updated[index].totalAmount = updated[index].quantity * updated[index].unitPrice;
+   286→      }
+   287→    } else if (field === "quantity") {
+   288→      const qty = parseFloat(value as string) || 0;
+   289→      updated[index] = { ...updated[index], quantity: qty, totalAmount: qty * updated[index].unitPrice };
+   290→    } else if (field === "unitPrice") {
+   291→      const price = parseFloat(value as string) || 0;
+   292→      updated[index] = { ...updated[index], unitPrice: price, totalAmount: updated[index].quantity * price };
+   293→    }
+   294→    setFormItems(updated);
+   295→  };
+   296→
+   297→  const formGrandTotal = formItems.reduce((sum, item) => sum + item.totalAmount, 0);
+   298→
+   299→  const handleSubmitPurchase = async () => {
+   300→    // Validate
+   301→    if (!formSupplier.trim()) {
+   302→      alert("Please enter a supplier name.");
+   303→      return;
+   304→    }
+   305→    const validItems = formItems.filter((item) => item.ingredientId && item.quantity > 0);
+   306→    if (validItems.length === 0) {
+   307→      alert("Please add at least one item with an ingredient and quantity.");
+   308→      return;
+   309→    }
+   310→
+   311→    setSubmitting(true);
+   312→    try {
+   313→      const res = await fetch("/api/purchases", {
+   314→        method: "POST",
+   315→        headers: { "Content-Type": "application/json" },
+   316→        body: JSON.stringify({
+   317→          date: formDate,
+   318→          supplier: formSupplier.trim(),
+   319→          invoiceNo: formInvoiceNo.trim() || null,
+   320→          notes: formNotes.trim() || null,
+   321→          items: validItems.map((item) => ({
+   322→            ingredientId: item.ingredientId,
+   323→            quantity: item.quantity,
+   324→            unitPrice: item.unitPrice,
+   325→            totalAmount: item.totalAmount,
+   326→          })),
+   327→        }),
+   328→      });
+   329→
+   330→      if (res.ok) {
+   331→        setNewPurchaseOpen(false);
+   332→        await fetchPurchases();
+   333→      } else {
+   334→        const data = await res.json();
+   335→        alert(data.error || "Failed to create purchase");
+   336→      }
+   337→    } catch (err) {
+   338→      console.error("Error creating purchase:", err);
+   339→      alert("Failed to create purchase");
+   340→    } finally {
+   341→      setSubmitting(false);
+   342→    }
+   343→  };
+   344→
+   345→  // ── Pagination ───────────────────────────────────────────────────────────
+   346→
+   347→  const totalPages = Math.ceil(total / pageSize);
+   348→
+   349→  const getPageNumbers = () => {
+   350→    const pages: number[] = [];
+   351→    const maxVisible = 5;
+   352→    let start = Math.max(1, page - Math.floor(maxVisible / 2));
+   353→    const end = Math.min(totalPages, start + maxVisible - 1);
+   354→    if (end - start + 1 < maxVisible) {
+   355→      start = Math.max(1, end - maxVisible + 1);
+   356→    }
+   357→    for (let i = start; i <= end; i++) {
+   358→      pages.push(i);
+   359→    }
+   360→    return pages;
+   361→  };
+   362→
+   363→  // ── Summary stats ────────────────────────────────────────────────────────
+   364→
+   365→  const totalPurchaseAmount = purchases.reduce((sum, p) => sum + p.totalAmount, 0);
+   366→
+   367→  // ── Render ───────────────────────────────────────────────────────────────
+   368→
+   369→  return (
+   370→    <div className="space-y-6">
+   371→      {/* Header */}
+   372→      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   373→        <div className="flex items-center gap-3">
+   374→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   375→            <ShoppingCart className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   376→          </div>
+   377→          <div>
+   378→            <h1 className="text-2xl font-bold tracking-tight">Purchases</h1>
+   379→            <p className="text-muted-foreground text-sm">
+   380→              Record vendor purchases, track incoming stock, and manage supplier invoices
+   381→            </p>
+   382→          </div>
+   383→        </div>
+   384→        <Button onClick={openNewPurchase} className="bg-amber-600 hover:bg-amber-700 text-white">
+   385→          <Plus className="mr-2 h-4 w-4" />
+   386→          New Purchase
+   387→        </Button>
+   388→      </div>
+   389→
+   390→      {/* Summary Cards */}
+   391→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+   392→        <Card>
+   393→          <CardContent className="p-4">
+   394→            <div className="flex items-center justify-between">
+   395→              <div>
+   396→                <p className="text-sm text-muted-foreground">Total Purchases</p>
+   397→                <p className="text-2xl font-bold">{total}</p>
+   398→              </div>
+   399→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   400→                <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   401→              </div>
+   402→            </div>
+   403→          </CardContent>
+   404→        </Card>
+   405→        <Card>
+   406→          <CardContent className="p-4">
+   407→            <div className="flex items-center justify-between">
+   408→              <div>
+   409→                <p className="text-sm text-muted-foreground">Page Total</p>
+   410→                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+   411→                  {formatCurrency(totalPurchaseAmount)}
+   412→                </p>
+   413→              </div>
+   414→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+   415→                <IndianRupee className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   416→              </div>
+   417→            </div>
+   418→          </CardContent>
+   419→        </Card>
+   420→        <Card>
+   421→          <CardContent className="p-4">
+   422→            <div className="flex items-center justify-between">
+   423→              <div>
+   424→                <p className="text-sm text-muted-foreground">Items on Page</p>
+   425→                <p className="text-2xl font-bold">{purchases.length}</p>
+   426→              </div>
+   427→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   428→                <Package className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   429→              </div>
+   430→            </div>
+   431→          </CardContent>
+   432→        </Card>
+   433→      </div>
+   434→
+   435→      {/* Filters */}
+   436→      <Card>
+   437→        <CardContent className="p-4">
+   438→          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+   439→            <div className="flex-1">
+   440→              <Label className="mb-1.5 block text-sm font-medium">Search Supplier / Invoice</Label>
+   441→              <div className="relative">
+   442→                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   443→                <Input
+   444→                  placeholder="Search by supplier or invoice..."
+   445→                  value={search}
+   446→                  onChange={(e) => {
+   447→                    setSearch(e.target.value);
+   448→                    setPage(1);
+   449→                  }}
+   450→                  className="pl-9"
+   451→                />
+   452→                {search && (
+   453→                  <button
+   454→                    onClick={() => {
+   455→                      setSearch("");
+   456→                      setPage(1);
+   457→                    }}
+   458→                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+   459→                  >
+   460→                    <X className="h-4 w-4" />
+   461→                  </button>
+   462→                )}
+   463→              </div>
+   464→            </div>
+   465→            <div className="flex gap-3">
+   466→              <div>
+   467→                <Label className="mb-1.5 block text-sm font-medium">From</Label>
+   468→                <Input
+   469→                  type="date"
+   470→                  value={startDate}
+   471→                  onChange={(e) => {
+   472→                    setStartDate(e.target.value);
+   473→                    setPage(1);
+   474→                  }}
+   475→                  className="w-40"
+   476→                />
+   477→              </div>
+   478→              <div>
+   479→                <Label className="mb-1.5 block text-sm font-medium">To</Label>
+   480→                <Input
+   481→                  type="date"
+   482→                  value={endDate}
+   483→                  onChange={(e) => {
+   484→                    setEndDate(e.target.value);
+   485→                    setPage(1);
+   486→                  }}
+   487→                  className="w-40"
+   488→                />
+   489→              </div>
+   490→              {(startDate || endDate || search) && (
+   491→                <Button
+   492→                  variant="outline"
+   493→                  size="sm"
+   494→                  className="mt-auto"
+   495→                  onClick={() => {
+   496→                    setSearch("");
+   497→                    setStartDate("");
+   498→                    setEndDate("");
+   499→                    setPage(1);
+   500→                  }}
+   501→                >
+   502→                  <X className="mr-1 h-3 w-3" />
+   503→                  Clear
+   504→                </Button>
+   505→              )}
+   506→            </div>
+   507→          </div>
+   508→        </CardContent>
+   509→      </Card>
+   510→
+   511→      {/* Purchases Table */}
+   512→      <Card>
+   513→        <CardHeader className="pb-3">
+   514→          <CardTitle className="flex items-center gap-2 text-lg">
+   515→            <ShoppingCart className="h-5 w-5 text-amber-600" />
+   516→            Purchase Records
+   517→          </CardTitle>
+   518→          <CardDescription>
+   519→            Showing {purchases.length} of {total} purchases
+   520→          </CardDescription>
+   521→        </CardHeader>
+   522→        <CardContent className="p-0">
+   523→          {loading ? (
+   524→            <div className="flex items-center justify-center py-16">
+   525→              <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+   526→              <span className="ml-3 text-muted-foreground">Loading purchases...</span>
+   527→            </div>
+   528→          ) : purchases.length === 0 ? (
+   529→            <div className="flex flex-col items-center justify-center py-16 text-center">
+   530→              <ShoppingCart className="h-12 w-12 text-muted-foreground/50" />
+   531→              <p className="mt-3 text-lg font-medium text-muted-foreground">No purchases found</p>
+   532→              <p className="mt-1 text-sm text-muted-foreground">
+   533→                {startDate || endDate || search
+   534→                  ? "Try adjusting your filters"
+   535→                  : "Click \"New Purchase\" to record your first purchase"}
+   536→              </p>
+   537→            </div>
+   538→          ) : (
+   539→            <>
+   540→              {/* Desktop Table */}
+   541→              <div className="hidden md:block overflow-x-auto">
+   542→                <Table>
+   543→                  <TableHeader>
+   544→                    <TableRow>
+   545→                      <TableHead className="w-[120px]">Date</TableHead>
+   546→                      <TableHead>Supplier</TableHead>
+   547→                      <TableHead>Invoice No</TableHead>
+   548→                      <TableHead className="text-center">Items</TableHead>
+   549→                      <TableHead className="text-right">Total Amount</TableHead>
+   550→                      <TableHead className="text-right">Actions</TableHead>
+   551→                    </TableRow>
+   552→                  </TableHeader>
+   553→                  <TableBody>
+   554→                    {purchases.map((purchase) => (
+   555→                      <TableRow
+   556→                        key={purchase.id}
+   557→                        className="cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-950/20"
+   558→                        onClick={() => handleViewDetail(purchase)}
+   559→                      >
+   560→                        <TableCell className="font-medium">
+   561→                          <div className="flex items-center gap-2">
+   562→                            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+   563→                            {formatDate(purchase.date)}
+   564→                          </div>
+   565→                        </TableCell>
+   566→                        <TableCell>
+   567→                          {purchase.supplier || (
+   568→                            <span className="text-muted-foreground">—</span>
+   569→                          )}
+   570→                        </TableCell>
+   571→                        <TableCell>
+   572→                          {purchase.invoiceNo ? (
+   573→                            <Badge variant="secondary" className="font-mono text-xs">
+   574→                              {purchase.invoiceNo}
+   575→                            </Badge>
+   576→                          ) : (
+   577→                            <span className="text-muted-foreground">—</span>
+   578→                          )}
+   579→                        </TableCell>
+   580→                        <TableCell className="text-center">
+   581→                          <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+   582→                            {purchase.items?.length || 0}
+   583→                          </Badge>
+   584→                        </TableCell>
+   585→                        <TableCell className="text-right font-semibold text-amber-700 dark:text-amber-400">
+   586→                          {formatCurrency(purchase.totalAmount)}
+   587→                        </TableCell>
+   588→                        <TableCell className="text-right">
+   589→                          <div className="flex items-center justify-end gap-1">
+   590→                            <Button
+   591→                              variant="ghost"
+   592→                              size="sm"
+   593→                              onClick={(e) => {
+   594→                                e.stopPropagation();
+   595→                                handleViewDetail(purchase);
+   596→                              }}
+   597→                              title="View Details"
+   598→                            >
+   599→                              <Eye className="h-4 w-4" />
+   600→                            </Button>
+   601→                            <Button
+   602→                              variant="ghost"
+   603→                              size="sm"
+   604→                              onClick={(e) => {
+   605→                                e.stopPropagation();
+   606→                                confirmDelete(purchase.id);
+   607→                              }}
+   608→                              className="text-destructive hover:text-destructive"
+   609→                              title="Delete"
+   610→                            >
+   611→                              <Trash2 className="h-4 w-4" />
+   612→                            </Button>
+   613→                          </div>
+   614→                        </TableCell>
+   615→                      </TableRow>
+   616→                    ))}
+   617→                  </TableBody>
+   618→                </Table>
+   619→              </div>
+   620→
+   621→              {/* Mobile Cards */}
+   622→              <div className="md:hidden space-y-3 p-4">
+   623→                {purchases.map((purchase) => (
+   624→                  <Card
+   625→                    key={purchase.id}
+   626→                    className="cursor-pointer hover:border-amber-300 dark:hover:border-amber-700 transition-colors"
+   627→                    onClick={() => handleViewDetail(purchase)}
+   628→                  >
+   629→                    <CardContent className="p-4">
+   630→                      <div className="flex items-start justify-between">
+   631→                        <div>
+   632→                          <p className="font-semibold text-sm">{purchase.supplier || "No Supplier"}</p>
+   633→                          <p className="text-xs text-muted-foreground mt-0.5">
+   634→                            {formatDate(purchase.date)}
+   635→                            {purchase.invoiceNo && ` · ${purchase.invoiceNo}`}
+   636→                          </p>
+   637→                        </div>
+   638→                        <p className="font-bold text-amber-700 dark:text-amber-400">
+   639→                          {formatCurrency(purchase.totalAmount)}
+   640→                        </p>
+   641→                      </div>
+   642→                      <div className="flex items-center justify-between mt-3">
+   643→                        <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 text-xs">
+   644→                          {purchase.items?.length || 0} items
+   645→                        </Badge>
+   646→                        <div className="flex gap-1">
+   647→                          <Button
+   648→                            variant="ghost"
+   649→                            size="sm"
+   650→                            onClick={(e) => {
+   651→                              e.stopPropagation();
+   652→                              handleViewDetail(purchase);
+   653→                            }}
+   654→                          >
+   655→                            <Eye className="h-4 w-4" />
+   656→                          </Button>
+   657→                          <Button
+   658→                            variant="ghost"
+   659→                            size="sm"
+   660→                            onClick={(e) => {
+   661→                              e.stopPropagation();
+   662→                              confirmDelete(purchase.id);
+   663→                            }}
+   664→                            className="text-destructive hover:text-destructive"
+   665→                          >
+   666→                            <Trash2 className="h-4 w-4" />
+   667→                          </Button>
+   668→                        </div>
+   669→                      </div>
+   670→                    </CardContent>
+   671→                  </Card>
+   672→                ))}
+   673→              </div>
+   674→            </>
+   675→          )}
+   676→        </CardContent>
+   677→      </Card>
+   678→
+   679→      {/* Pagination */}
+   680→      {totalPages > 1 && (
+   681→        <div className="flex items-center justify-between">
+   682→          <p className="text-sm text-muted-foreground">
+   683→            Page {page} of {totalPages} · {total} total records
+   684→          </p>
+   685→          <div className="flex items-center gap-1">
+   686→            <Button
+   687→              variant="outline"
+   688→              size="sm"
+   689→              disabled={page <= 1}
+   690→              onClick={() => setPage(page - 1)}
+   691→            >
+   692→              <ChevronLeft className="h-4 w-4" />
+   693→            </Button>
+   694→            {getPageNumbers().map((p) => (
+   695→              <Button
+   696→                key={p}
+   697→                variant={p === page ? "default" : "outline"}
+   698→                size="sm"
+   699→                className={p === page ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}
+   700→                onClick={() => setPage(p)}
+   701→              >
+   702→                {p}
+   703→              </Button>
+   704→            ))}
+   705→            <Button
+   706→              variant="outline"
+   707→              size="sm"
+   708→              disabled={page >= totalPages}
+   709→              onClick={() => setPage(page + 1)}
+   710→            >
+   711→              <ChevronRight className="h-4 w-4" />
+   712→            </Button>
+   713→          </div>
+   714→        </div>
+   715→      )}
+   716→
+   717→      {/* ── Purchase Detail Dialog ─────────────────────────────────────────── */}
+   718→      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+   719→        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   720→          <DialogHeader>
+   721→            <DialogTitle className="flex items-center gap-2">
+   722→              <FileText className="h-5 w-5 text-amber-600" />
+   723→              Purchase Details
+   724→            </DialogTitle>
+   725→            <DialogDescription>
+   726→              Full purchase record with item breakdown
+   727→            </DialogDescription>
+   728→          </DialogHeader>
+   729→
+   730→          {selectedPurchase && (
+   731→            <div className="space-y-5">
+   732→              {/* Purchase Info Grid */}
+   733→              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+   734→                <div>
+   735→                  <p className="text-xs text-muted-foreground">Date</p>
+   736→                  <p className="font-semibold text-sm">{formatDate(selectedPurchase.date)}</p>
+   737→                </div>
+   738→                <div>
+   739→                  <p className="text-xs text-muted-foreground">Supplier</p>
+   740→                  <p className="font-semibold text-sm">{selectedPurchase.supplier || "—"}</p>
+   741→                </div>
+   742→                <div>
+   743→                  <p className="text-xs text-muted-foreground">Invoice No</p>
+   744→                  <p className="font-semibold text-sm">
+   745→                    {selectedPurchase.invoiceNo || "—"}
+   746→                  </p>
+   747→                </div>
+   748→                <div>
+   749→                  <p className="text-xs text-muted-foreground">Notes</p>
+   750→                  <p className="font-semibold text-sm">
+   751→                    {selectedPurchase.notes || "—"}
+   752→                  </p>
+   753→                </div>
+   754→              </div>
+   755→
+   756→              <Separator />
+   757→
+   758→              {/* Items Table */}
+   759→              <div>
+   760→                <h4 className="mb-3 font-semibold text-sm flex items-center gap-2">
+   761→                  <Package className="h-4 w-4 text-amber-600" />
+   762→                  Items ({selectedPurchase.items?.length || 0})
+   763→                </h4>
+   764→                <div className="rounded-lg border overflow-hidden">
+   765→                  <Table>
+   766→                    <TableHeader>
+   767→                      <TableRow className="bg-muted/50">
+   768→                        <TableHead className="text-xs">Ingredient</TableHead>
+   769→                        <TableHead className="text-xs text-center">Quantity</TableHead>
+   770→                        <TableHead className="text-xs text-right">Unit Price</TableHead>
+   771→                        <TableHead className="text-xs text-right">Total</TableHead>
+   772→                      </TableRow>
+   773→                    </TableHeader>
+   774→                    <TableBody>
+   775→                      {selectedPurchase.items?.map((item, idx) => (
+   776→                        <TableRow
+   777→                          key={item.id}
+   778→                          className={idx % 2 === 1 ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}
+   779→                        >
+   780→                          <TableCell className="text-sm font-medium">
+   781→                            {item.ingredient?.name || "Unknown"}
+   782→                            <span className="ml-1 text-xs text-muted-foreground">
+   783→                              ({item.ingredient?.unit || ""})
+   784→                            </span>
+   785→                          </TableCell>
+   786→                          <TableCell className="text-sm text-center">
+   787→                            {item.quantity} {item.ingredient?.unit || ""}
+   788→                          </TableCell>
+   789→                          <TableCell className="text-sm text-right">
+   790→                            {formatCurrency(item.unitPrice)}
+   791→                          </TableCell>
+   792→                          <TableCell className="text-sm text-right font-semibold">
+   793→                            {formatCurrency(item.totalAmount)}
+   794→                          </TableCell>
+   795→                        </TableRow>
+   796→                      ))}
+   797→                    </TableBody>
+   798→                  </Table>
+   799→                </div>
+   800→              </div>
+   801→
+   802→              {/* Grand Total */}
+   803→              <div className="flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-900/20 p-4 border border-amber-200 dark:border-amber-800">
+   804→                <span className="font-semibold text-amber-800 dark:text-amber-300">Grand Total</span>
+   805→                <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
+   806→                  {formatCurrency(selectedPurchase.totalAmount)}
+   807→                </span>
+   808→              </div>
+   809→            </div>
+   810→          )}
+   811→        </DialogContent>
+   812→      </Dialog>
+   813→
+   814→      {/* ── New Purchase Dialog ────────────────────────────────────────────── */}
+   815→      <Dialog open={newPurchaseOpen} onOpenChange={setNewPurchaseOpen}>
+   816→        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+   817→          <DialogHeader>
+   818→            <DialogTitle className="flex items-center gap-2">
+   819→              <Plus className="h-5 w-5 text-amber-600" />
+   820→              New Purchase
+   821→            </DialogTitle>
+   822→            <DialogDescription>
+   823→              Record a new purchase with vendor details and line items
+   824→            </DialogDescription>
+   825→          </DialogHeader>
+   826→
+   827→          <div className="space-y-5">
+   828→            {/* Purchase Info */}
+   829→            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   830→              <div>
+   831→                <Label className="mb-1.5 block text-sm font-medium">
+   832→                  Date <span className="text-destructive">*</span>
+   833→                </Label>
+   834→                <Input
+   835→                  type="date"
+   836→                  value={formDate}
+   837→                  onChange={(e) => setFormDate(e.target.value)}
+   838→                />
+   839→              </div>
+   840→              <div>
+   841→                <Label className="mb-1.5 block text-sm font-medium">
+   842→                  Supplier <span className="text-destructive">*</span>
+   843→                </Label>
+   844→                <Input
+   845→                  placeholder="Enter supplier name"
+   846→                  value={formSupplier}
+   847→                  onChange={(e) => setFormSupplier(e.target.value)}
+   848→                />
+   849→              </div>
+   850→              <div>
+   851→                <Label className="mb-1.5 block text-sm font-medium">Invoice No</Label>
+   852→                <Input
+   853→                  placeholder="Optional invoice number"
+   854→                  value={formInvoiceNo}
+   855→                  onChange={(e) => setFormInvoiceNo(e.target.value)}
+   856→                />
+   857→              </div>
+   858→              <div>
+   859→                <Label className="mb-1.5 block text-sm font-medium">Notes</Label>
+   860→                <Input
+   861→                  placeholder="Optional notes"
+   862→                  value={formNotes}
+   863→                  onChange={(e) => setFormNotes(e.target.value)}
+   864→                />
+   865→              </div>
+   866→            </div>
+   867→
+   868→            <Separator />
+   869→
+   870→            {/* Dynamic Items Section */}
+   871→            <div>
+   872→              <div className="flex items-center justify-between mb-3">
+   873→                <h4 className="font-semibold text-sm flex items-center gap-2">
+   874→                  <Package className="h-4 w-4 text-amber-600" />
+   875→                  Purchase Items
+   876→                </h4>
+   877→                <Button
+   878→                  type="button"
+   879→                  variant="outline"
+   880→                  size="sm"
+   881→                  onClick={addItemRow}
+   882→                  className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
+   883→                >
+   884→                  <Plus className="mr-1 h-3 w-3" />
+   885→                  Add Item
+   886→                </Button>
+   887→              </div>
+   888→
+   889→              <div className="space-y-3">
+   890→                {formItems.map((item, index) => {
+   891→                  const selectedIngredient = ingredients.find(
+   892→                    (i) => i.id === item.ingredientId
+   893→                  );
+   894→                  return (
+   895→                    <div
+   896→                      key={index}
+   897→                      className="rounded-lg border p-3 bg-card space-y-3"
+   898→                    >
+   899→                      <div className="flex items-center justify-between">
+   900→                        <span className="text-xs font-medium text-muted-foreground">
+   901→                          Item #{index + 1}
+   902→                        </span>
+   903→                        {formItems.length > 1 && (
+   904→                          <Button
+   905→                            type="button"
+   906→                            variant="ghost"
+   907→                            size="sm"
+   908→                            onClick={() => removeItemRow(index)}
+   909→                            className="h-7 text-destructive hover:text-destructive"
+   910→                          >
+   911→                            <Minus className="h-3 w-3 mr-1" />
+   912→                            Remove
+   913→                          </Button>
+   914→                        )}
+   915→                      </div>
+   916→                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+   917→                        {/* Ingredient Select */}
+   918→                        <div className="sm:col-span-2">
+   919→                          <Label className="mb-1 block text-xs font-medium">
+   920→                            Ingredient <span className="text-destructive">*</span>
+   921→                          </Label>
+   922→                          <Select
+   923→                            value={item.ingredientId}
+   924→                            onValueChange={(val) => updateItem(index, "ingredientId", val)}
+   925→                          >
+   926→                            <SelectTrigger className="w-full">
+   927→                              <SelectValue placeholder="Select ingredient" />
+   928→                            </SelectTrigger>
+   929→                            <SelectContent>
+   930→                              {ingredients.map((ing) => (
+   931→                                <SelectItem key={ing.id} value={ing.id}>
+   932→                                  {ing.name} ({ing.unit})
+   933→                                  {ing.lastPurchasePrice > 0 &&
+   934→                                    ` · ₹${ing.lastPurchasePrice.toFixed(2)}`}
+   935→                                </SelectItem>
+   936→                              ))}
+   937→                            </SelectContent>
+   938→                          </Select>
+   939→                        </div>
+   940→                        {/* Quantity */}
+   941→                        <div>
+   942→                          <Label className="mb-1 block text-xs font-medium">
+   943→                            Quantity <span className="text-destructive">*</span>
+   944→                          </Label>
+   945→                          <Input
+   946→                            type="number"
+   947→                            min="0"
+   948→                            step="0.01"
+   949→                            placeholder="0"
+   950→                            value={item.quantity || ""}
+   951→                            onChange={(e) =>
+   952→                              updateItem(index, "quantity", e.target.value)
+   953→                            }
+   954→                          />
+   955→                          {selectedIngredient && (
+   956→                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+   957→                              in {selectedIngredient.unit}
+   958→                            </p>
+   959→                          )}
+   960→                        </div>
+   961→                        {/* Unit Price */}
+   962→                        <div>
+   963→                          <Label className="mb-1 block text-xs font-medium">
+   964→                            Unit Price (₹)
+   965→                          </Label>
+   966→                          <Input
+   967→                            type="number"
+   968→                            min="0"
+   969→                            step="0.01"
+   970→                            placeholder="0.00"
+   971→                            value={item.unitPrice || ""}
+   972→                            onChange={(e) =>
+   973→                              updateItem(index, "unitPrice", e.target.value)
+   974→                            }
+   975→                          />
+   976→                        </div>
+   977→                      </div>
+   978→                      {/* Row Total */}
+   979→                      {item.totalAmount > 0 && (
+   980→                        <div className="flex justify-end">
+   981→                          <span className="text-xs text-muted-foreground">
+   982→                            Row Total:{" "}
+   983→                            <span className="font-semibold text-amber-700 dark:text-amber-400">
+   984→                              {formatCurrency(item.totalAmount)}
+   985→                            </span>
+   986→                          </span>
+   987→                        </div>
+   988→                      )}
+   989→                    </div>
+   990→                  );
+   991→                })}
+   992→              </div>
+   993→
+   994→              {/* Grand Total Preview */}
+   995→              <div className="mt-4 flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-900/20 p-4 border border-amber-200 dark:border-amber-800">
+   996→                <span className="font-semibold text-amber-800 dark:text-amber-300">
+   997→                  Grand Total
+   998→                </span>
+   999→                <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
+  1000→                  {formatCurrency(formGrandTotal)}
+  1001→                </span>
+  1002→              </div>
+  1003→            </div>
+  1004→
+  1005→            {/* Info Note */}
+  1006→            <div className="flex items-start gap-2 rounded-md bg-blue-50 dark:bg-blue-950/20 p-3 text-xs text-blue-700 dark:text-blue-300">
+  1007→              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+  1008→              <p>
+  1009→                Submitting this purchase will automatically create stock movements and update
+  1010→                ingredient stock levels, last purchase price, and average cost.
+  1011→              </p>
+  1012→            </div>
+  1013→          </div>
+  1014→
+  1015→          <DialogFooter>
+  1016→            <Button
+  1017→              variant="outline"
+  1018→              onClick={() => setNewPurchaseOpen(false)}
+  1019→              disabled={submitting}
+  1020→            >
+  1021→              Cancel
+  1022→            </Button>
+  1023→            <Button
+  1024→              onClick={handleSubmitPurchase}
+  1025→              disabled={submitting}
+  1026→              className="bg-amber-600 hover:bg-amber-700 text-white"
+  1027→            >
+  1028→              {submitting ? (
+  1029→                <>
+  1030→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1031→                  Saving...
+  1032→                </>
+  1033→              ) : (
+  1034→                <>
+  1035→                  <ShoppingCart className="mr-2 h-4 w-4" />
+  1036→                  Record Purchase
+  1037→                </>
+  1038→              )}
+  1039→            </Button>
+  1040→          </DialogFooter>
+  1041→        </DialogContent>
+  1042→      </Dialog>
+  1043→
+  1044→      {/* ── Delete Confirmation Dialog ─────────────────────────────────────── */}
+  1045→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+  1046→        <AlertDialogContent>
+  1047→          <AlertDialogHeader>
+  1048→            <AlertDialogTitle className="flex items-center gap-2">
+  1049→              <Trash2 className="h-5 w-5 text-destructive" />
+  1050→              Delete Purchase
+  1051→            </AlertDialogTitle>
+  1052→            <AlertDialogDescription>
+  1053→              Are you sure you want to delete this purchase? This action cannot be undone.
+  1054→              The purchase record and all its items will be permanently removed.
+  1055→            </AlertDialogDescription>
+  1056→          </AlertDialogHeader>
+  1057→          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+  1058→            <strong>Note:</strong> Deleting a purchase does NOT reverse the stock movements that
+  1059→            were created. Stock levels will remain as updated.
+  1060→          </div>
+  1061→          <AlertDialogFooter>
+  1062→            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+  1063→            <AlertDialogAction
+  1064→              onClick={handleDelete}
+  1065→              disabled={deleting}
+  1066→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  1067→            >
+  1068→              {deleting ? (
+  1069→                <>
+  1070→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1071→                  Deleting...
+  1072→                </>
+  1073→              ) : (
+  1074→                "Delete Purchase"
+  1075→              )}
+  1076→            </AlertDialogAction>
+  1077→          </AlertDialogFooter>
+  1078→        </AlertDialogContent>
+  1079→      </AlertDialog>
+  1080→    </div>
+  1081→  );
+  1082→}
+  1083→

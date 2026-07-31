@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { NotificationsDropdown } from "@/components/notifications-dropdown";
 
 import { DashboardView } from "@/components/module-views/dashboard-view";
 import { StockView } from "@/components/module-views/stock-view";
@@ -72,7 +73,7 @@ function ViewRenderer({
     case "expenses":
       return <ExpensesView />;
     case "settings":
-      return <SettingsView />;
+      return <SettingsView onNavigate={onNavigate} />;
     default:
       return <DashboardView onNavigate={onNavigate} />;
   }
@@ -104,6 +105,7 @@ export default function Home() {
                 Live · 600 Employees
               </span>
             </div>
+            <NotificationsDropdown />
             <ThemeToggle />
           </header>
 

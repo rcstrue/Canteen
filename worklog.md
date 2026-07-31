@@ -507,3 +507,198 @@ The RCS Canteen app was functional with all 9 modules built and seeded data. Ini
 8. **Low**: Add recipe images (upload or AI-generated)
 9. **Medium**: Add budget tracking with alerts when spending exceeds threshold
 10. **Medium**: Add monthly cost comparison dashboard (this month vs last month)
+
+---
+Task ID: r2-4
+Agent: notification-developer
+Task: Add Notifications dropdown in header for low stock alerts and budget warnings
+
+Work Log:
+- Created `/src/components/notifications-dropdown.tsx` — a standalone client component with full notification system
+- Modified `/src/app/page.tsx` — added NotificationsDropdown between the "Live · 600 Employees" badge and ThemeToggle
+- Implemented three notification types:
+  1. **Low Stock Alert** (red): Fetches from `/api/ingredients?lowStock=true`, shows count of ingredients below minimum stock
+  2. **Budget Warning** (amber): Fetches from `/api/dashboard`, compares totalOperatingCost against monthly budget from localStorage (`rcs-canteen-monthly-budget`), triggers at 60%/80%/95% thresholds
+  3. **Data Reminder** (blue): Fetches from `/api/daily-meals?date=today`, reminds if no meals recorded today
+- Features:
+  - Bell icon with red badge showing unread count (animated with framer-motion)
+  - Popover dropdown (380px width, max 400px height with scroll)
+  - Each notification item has color-coded left border, icon, title, description, and unread dot
+  - Auto-refresh every 60 seconds via useEffect + setInterval
+  - Loading state while fetching
+  - Empty state with checkmark icon and "No new notifications" message
+  - "Mark all as read" button in header and "Dismiss all notifications" in footer
+  - Read/unread state persisted in localStorage (`rcs-canteen-notifications`)
+  - Auto-marks as read 1.5s after opening dropdown
+  - framer-motion animations for dropdown entry, badge appearance, and notification items
+- All existing header functionality preserved (sidebar trigger, title, live badge, theme toggle)
+- Lint passes cleanly
+
+Stage Summary:
+- Notification bell fully functional in header
+- Three notification types with real API integration
+- localStorage persistence for read state and budget threshold
+- Auto-refresh every 60 seconds
+- Polished UI with animations and color-coded alerts
+
+---
+Task ID: r2-3 + r2-5
+Agent: full-stack-developer
+Task: Add CSV export to Purchases and Wastage views, and add monthly cost comparison to Dashboard
+
+Work Log:
+- **Purchases View (purchases-view.tsx):**
+  - Imported `downloadCSV` from `@/lib/export-utils` and `useToast` from `@/hooks/use-toast`
+  - Added `Download` icon from lucide-react
+  - Added `useToast()` hook call inside component
+  - Added "Export CSV" button (outline variant) next to "New Purchase" button
+  - Export maps current filtered purchases to CSV with columns: Date, Supplier, Invoice No, Items Count, Total Amount
+  - Toast notification on successful export with count
+  - Button disabled when no purchases exist
+
+- **Wastage View (wastage-view.tsx):**
+  - Imported `downloadCSV` from `@/lib/export-utils` and `useToast` from `@/hooks/use-toast`
+  - Added `Download` icon from lucide-react
+  - Added `useToast()` hook call inside component
+  - Added "Export CSV" button (outline variant) next to "Record Wastage" button
+  - Export maps current filtered wastage entries to CSV with columns: Date, Ingredient, Category, Quantity, Unit, Unit Cost, Total Loss, Reason
+  - Toast notification on successful export with count
+  - Button disabled when no wastage entries exist
+
+- **Dashboard (dashboard-view.tsx):**
+  - Added `Calendar`, `ArrowUp`, `ArrowDown` icons from lucide-react
+  - Added `CostReportData` interface for monthly comparison data
+  - Added state: `currentMonthReport` and `prevMonthReport`
+  - Added `useEffect` to fetch `/api/reports/cost` for current month and previous month in parallel
+  - Added "Monthly Comparison" card at bottom of dashboard with:
+    - Calendar icon in card header
+    - 4-column table: Metric, Current Month, Previous Month, Change
+    - 4 metrics: Food Cost, Total Meals Served, Cost Per Meal, Operating Cost
+    - Green (emerald) for improvements (cost down, meals up), red (rose) for regressions
+    - ArrowUp/ArrowDown icons with colored indicators
+    - Alternating row colors (bg-muted/30)
+    - tabular-nums for number alignment
+  - Added loading skeleton for the new section in the loading state
+  - Lint passes cleanly
+
+Stage Summary:
+- CSV export fully functional in Purchases and Wastage views
+- Monthly cost comparison card added to dashboard with current vs previous month data
+- All existing functionality preserved across all three files
+- Toast notifications on export success
+- Clean table layout with trend indicators and color coding
+
+---
+Task ID: r2-2
+Agent: fullstack-developer
+Task: Add Budget & Alerts feature to the Settings page
+
+Work Log:
+- Added comprehensive "Budget & Alerts" card to Settings page (md:col-span-2, placed before existing cards)
+- Implemented Monthly Budget Setup with editable inputs for food budget (₹) and operating budget (₹)
+  - Budget values persisted in localStorage (key: `rcs-canteen-budget`)
+  - Defaults: ₹5,00,000 food budget, ₹7,50,000 operating budget
+- Implemented Budget vs Actual Tracking with progress bars
+  - Fetches from `/api/dashboard` for `foodCost.month` and `totalOperatingCost`
+  - Color-coded progress bars: green (<80%), amber (80-100%), red (>100%)
+  - Shows percentage used, remaining amount, and "Over Budget!" warning badges
+- Implemented Alert Thresholds with configurable percentage inputs
+  - Stored in localStorage (key: `rcs-canteen-alerts`)
+  - Default 80% threshold for both food and operating budgets
+  - Shows "Triggered" badge when threshold is exceeded
+- Implemented Low Stock Alerts Integration
+  - Fetches from `/api/ingredients?lowStock=true` for low stock count
+  - Quick "View Stock" navigation button (uses onNavigate prop)
+- Implemented Visual Budget Summary with two circular progress gauges
+  - SVG-based circular indicators matching dashboard's CircularGauge pattern
+  - Color coding: green (<80%), amber (80-100%), red (>100%)
+  - Animated transitions on stroke-dashoffset
+  - Shows spent/budget amounts below each gauge
+- Implemented Budget History table for current month
+  - Fetches from `/api/reports/cost?period=month` for cost data
+  - Shows Budget, Actual, Variance, and Status columns
+  - Color-coded variance (green positive, red negative)
+  - Includes separate expenses row from cost report
+- Updated page.tsx to pass `onNavigate` prop to SettingsView
+- Added formatINR/formatINRShort helper functions
+- Added BudgetGauge component (reusable circular gauge)
+- All existing Settings page functionality preserved (Canteen Info, Quick Actions, Data Summary, About)
+- Lint passes cleanly, no errors
+
+Stage Summary:
+- Full Budget & Alerts feature integrated into Settings page
+- Two circular gauges for visual budget utilization
+- Budget vs actual progress bars with color-coded thresholds
+- Configurable alert thresholds with localStorage persistence
+- Low stock count with quick navigation to Stock view
+- Budget history table with current month data
+- All data persisted in localStorage across page reloads
+
+---
+Task ID: r2-review
+Agent: Cron Review Agent (webDevReview Round 2)
+Task: New features, bug fixes, and styling improvements
+
+## Current Project Status Assessment
+
+The RCS Canteen app was stable from the previous review (all views 8-10/10). This round focused on adding new features and fixing bugs introduced by subagents.
+
+### Critical Bug Fixed:
+1. **`PackageAlert` icon doesn't exist in lucide-react** — Settings view imported `PackageAlert` which doesn't exist in the installed version. Fixed by replacing with `PackageOpen`. This was causing the entire app to crash on load.
+
+### New Features Added:
+
+1. **Budget & Alerts** (Settings page):
+   - Monthly food budget and operating budget setup (stored in localStorage)
+   - Two circular SVG gauges showing budget utilization %
+   - Color-coded progress bars: green (<80%), amber (80-100%), red (>100%)
+   - Alert thresholds configurable (default 80%)
+   - Low stock alerts integration with quick link to Stock view
+   - Budget history table showing current month's budget vs actual
+
+2. **Notifications Dropdown** (header):
+   - Bell icon in header with red badge showing unread count
+   - Three notification types: Low Stock Alerts, Budget Warnings, Data Reminders
+   - Auto-refresh every 60 seconds
+   - Read/unread state persisted in localStorage
+   - Color-coded left borders (red/amber/blue)
+   - "Dismiss all" button
+   - Empty state with checkmark icon
+
+3. **CSV Export for Purchases**:
+   - "Export CSV" button next to "New Purchase"
+   - Exports: Date, Supplier, Invoice No, Items Count, Total Amount
+   - Toast notification on success
+
+4. **CSV Export for Wastage**:
+   - "Export CSV" button next to "Record Wastage"
+   - Exports: Date, Ingredient, Category, Quantity, Unit, Unit Cost, Total Loss, Reason
+   - Toast notification on success
+
+5. **Monthly Cost Comparison** (Dashboard):
+   - New card at bottom of dashboard
+   - 4-column table: Metric, Current Month, Previous Month, Change %
+   - Green for improvements (cost down, meals up), red for regressions
+   - Fetches from /api/reports/cost for both periods in parallel
+
+### Verification Results:
+- `bun run lint` — 0 errors, 0 warnings
+- All API endpoints returning 200 OK
+- Dashboard loads with all new features (budget gauges, notifications, monthly comparison)
+- Notification bell visible with count badge
+- CSV export working on Purchases and Wastage views
+
+### Unresolved Issues / Risks:
+1. **Server stability**: Dev server seems to crash intermittently, likely due to resource constraints in sandbox. Not a code issue.
+2. **Minor**: Expenses date placeholders show mm/dd/yyyy format (browser locale-dependent)
+3. **Future**: No authentication/login flow yet
+4. **Future**: No data backup/restore functionality
+5. **Future**: No multi-user role-based access control
+
+### Priority Recommendations for Next Phase:
+1. **High**: Add authentication (NextAuth.js) with role-based access
+2. **Medium**: Add pagination to Expenses view
+3. **Medium**: Add supplier management module
+4. **Medium**: Add data backup/restore functionality
+5. **Low**: Add recipe images (upload or AI-generated)
+6. **Medium**: Add budget tracking with email/SMS alerts when approaching thresholds

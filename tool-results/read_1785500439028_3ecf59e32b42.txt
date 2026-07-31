@@ -1,0 +1,774 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback } from "react";
+     4→
+     5→import {
+     6→  Card,
+     7→  CardContent,
+     8→  CardDescription,
+     9→  CardHeader,
+    10→  CardTitle,
+    11→} from "@/components/ui/card";
+    12→import {
+    13→  Table,
+    14→  TableBody,
+    15→  TableCell,
+    16→  TableHead,
+    17→  TableHeader,
+    18→  TableRow,
+    19→} from "@/components/ui/table";
+    20→import {
+    21→  Dialog,
+    22→  DialogContent,
+    23→  DialogDescription,
+    24→  DialogFooter,
+    25→  DialogHeader,
+    26→  DialogTitle,
+    27→} from "@/components/ui/dialog";
+    28→import {
+    29→  Select,
+    30→  SelectContent,
+    31→  SelectItem,
+    32→  SelectTrigger,
+    33→  SelectValue,
+    34→} from "@/components/ui/select";
+    35→import { Input } from "@/components/ui/input";
+    36→import { Button } from "@/components/ui/button";
+    37→import { Badge } from "@/components/ui/badge";
+    38→import { Label } from "@/components/ui/label";
+    39→import { Textarea } from "@/components/ui/textarea";
+    40→import { Separator } from "@/components/ui/separator";
+    41→import { Skeleton } from "@/components/ui/skeleton";
+    42→
+    43→import {
+    44→  Trash2,
+    45→  Plus,
+    46→  ArrowUpDown,
+    47→  IndianRupee,
+    48→  CalendarDays,
+    49→  AlertTriangle,
+    50→  TrendingDown,
+    51→  Loader2,
+    52→  X,
+    53→  AlertCircle,
+    54→  Flame,
+    55→} from "lucide-react";
+    56→
+    57→// ─── Types ───────────────────────────────────────────────────────────────────
+    58→
+    59→interface Ingredient {
+    60→  id: string;
+    61→  name: string;
+    62→  unit: string;
+    63→  category: string;
+    64→  currentStock: number;
+    65→  minStock: number;
+    66→  lastPurchasePrice: number;
+    67→  avgCost: number;
+    68→  supplier: string | null;
+    69→}
+    70→
+    71→interface WastageEntry {
+    72→  id: string;
+    73→  ingredientId: string;
+    74→  type: string;
+    75→  quantity: number;
+    76→  unitPrice: number;
+    77→  totalAmount: number;
+    78→  date: string;
+    79→  notes: string | null;
+    80→  createdAt: string;
+    81→  ingredient: {
+    82→    id: string;
+    83→    name: string;
+    84→    unit: string;
+    85→    category: string;
+    86→  };
+    87→}
+    88→
+    89→// ─── Constants ───────────────────────────────────────────────────────────────
+    90→
+    91→const CATEGORIES = [
+    92→  "All",
+    93→  "Vegetables",
+    94→  "Grains",
+    95→  "Oil",
+    96→  "Spices",
+    97→  "Dairy",
+    98→  "Meat",
+    99→  "Pulses",
+   100→  "Other",
+   101→];
+   102→
+   103→const COMMON_REASONS = [
+   104→  "Spoiled",
+   105→  "Expired",
+   106→  "Dropped",
+   107→  "Overcooked",
+   108→  "Burnt",
+   109→  "Spillage",
+   110→  "Contamination",
+   111→  "Pest damage",
+   112→];
+   113→
+   114→const CATEGORY_COLORS: Record<string, string> = {
+   115→  Vegetables: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+   116→  Grains: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+   117→  Oil: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+   118→  Spices: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+   119→  Dairy: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+   120→  Meat: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400",
+   121→  Pulses: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+   122→  Other: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+   123→};
+   124→
+   125→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   126→
+   127→function formatCurrency(amount: number): string {
+   128→  return new Intl.NumberFormat("en-IN", {
+   129→    style: "currency",
+   130→    currency: "INR",
+   131→    minimumFractionDigits: 2,
+   132→    maximumFractionDigits: 2,
+   133→  }).format(amount);
+   134→}
+   135→
+   136→function formatDate(dateStr: string): string {
+   137→  const d = new Date(dateStr);
+   138→  const day = String(d.getDate()).padStart(2, "0");
+   139→  const month = String(d.getMonth() + 1).padStart(2, "0");
+   140→  const year = d.getFullYear();
+   141→  return `${day}/${month}/${year}`;
+   142→}
+   143→
+   144→function getTodayStr(): string {
+   145→  const d = new Date();
+   146→  return d.toISOString().split("T")[0];
+   147→}
+   148→
+   149→function getMonthStartStr(): string {
+   150→  const d = new Date();
+   151→  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
+   152→}
+   153→
+   154→// ─── Component ───────────────────────────────────────────────────────────────
+   155→
+   156→export function WastageView() {
+   157→  // Data state
+   158→  const [wastageEntries, setWastageEntries] = useState<WastageEntry[]>([]);
+   159→  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+   160→  const [loading, setLoading] = useState(true);
+   161→  const [submitting, setSubmitting] = useState(false);
+   162→
+   163→  // Filter state
+   164→  const [dateFilter, setDateFilter] = useState<string>("");
+   165→  const [categoryFilter, setCategoryFilter] = useState<string>("All");
+   166→  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+   167→
+   168→  // Dialog state
+   169→  const [dialogOpen, setDialogOpen] = useState(false);
+   170→
+   171→  // Form state
+   172→  const [formIngredientId, setFormIngredientId] = useState<string>("");
+   173→  const [formQuantity, setFormQuantity] = useState<string>("");
+   174→  const [formUnitPrice, setFormUnitPrice] = useState<string>("");
+   175→  const [formDate, setFormDate] = useState<string>(getTodayStr());
+   176→  const [formNotes, setFormNotes] = useState<string>("");
+   177→  const [formError, setFormError] = useState<string>("");
+   178→
+   179→  // ─── Data Fetching ─────────────────────────────────────────────────────────
+   180→
+   181→  const fetchWastage = useCallback(async () => {
+   182→    setLoading(true);
+   183→    try {
+   184→      const params = new URLSearchParams({ type: "WASTAGE", limit: "200" });
+   185→      if (dateFilter) {
+   186→        params.set("startDate", dateFilter);
+   187→        params.set("endDate", dateFilter);
+   188→      }
+   189→      const res = await fetch(`/api/stock-movements?${params.toString()}`);
+   190→      if (res.ok) {
+   191→        const json = await res.json();
+   192→        let data: WastageEntry[] = json.data || [];
+   193→        if (categoryFilter !== "All") {
+   194→          data = data.filter((e) => e.ingredient?.category === categoryFilter);
+   195→        }
+   196→        setWastageEntries(data);
+   197→      }
+   198→    } catch (err) {
+   199→      console.error("Error fetching wastage:", err);
+   200→    } finally {
+   201→      setLoading(false);
+   202→    }
+   203→  }, [dateFilter, categoryFilter]);
+   204→
+   205→  const fetchIngredients = useCallback(async () => {
+   206→    try {
+   207→      const res = await fetch("/api/ingredients");
+   208→      if (res.ok) {
+   209→        const data = await res.json();
+   210→        setIngredients(Array.isArray(data) ? data : []);
+   211→      }
+   212→    } catch (err) {
+   213→      console.error("Error fetching ingredients:", err);
+   214→    }
+   215→  }, []);
+   216→
+   217→  useEffect(() => {
+   218→    fetchWastage();
+   219→  }, [fetchWastage]);
+   220→
+   221→  useEffect(() => {
+   222→    fetchIngredients();
+   223→  }, [fetchIngredients]);
+   224→
+   225→  // ─── Derived Data ──────────────────────────────────────────────────────────
+   226→
+   227→  const today = getTodayStr();
+   228→  const monthStart = getMonthStartStr();
+   229→
+   230→  const todayEntries = wastageEntries.filter((e) => {
+   231→    const entryDate = new Date(e.date).toISOString().split("T")[0];
+   232→    return entryDate === today;
+   233→  });
+   234→
+   235→  const monthEntries = wastageEntries.filter((e) => {
+   236→    const entryDate = new Date(e.date).toISOString().split("T")[0];
+   237→    return entryDate >= monthStart;
+   238→  });
+   239→
+   240→  const totalWastageMonth = monthEntries.reduce((sum, e) => sum + e.totalAmount, 0);
+   241→  const totalWastageToday = todayEntries.reduce((sum, e) => sum + e.totalAmount, 0);
+   242→  const wastageCountMonth = monthEntries.length;
+   243→
+   244→  // Sorted entries
+   245→  const sortedEntries = [...wastageEntries].sort((a, b) => {
+   246→    const dateA = new Date(a.date).getTime();
+   247→    const dateB = new Date(b.date).getTime();
+   248→    return sortDir === "desc" ? dateB - dateA : dateA - dateB;
+   249→  });
+   250→
+   251→  // ─── Form Logic ────────────────────────────────────────────────────────────
+   252→
+   253→  const selectedIngredient = ingredients.find((i) => i.id === formIngredientId);
+   254→
+   255→  const totalLossPreview =
+   256→    (parseFloat(formQuantity) || 0) * (parseFloat(formUnitPrice) || 0);
+   257→
+   258→  function handleIngredientChange(id: string) {
+   259→    setFormIngredientId(id);
+   260→    const ing = ingredients.find((i) => i.id === id);
+   261→    if (ing) {
+   262→      setFormUnitPrice(ing.avgCost > 0 ? String(ing.avgCost) : String(ing.lastPurchasePrice));
+   263→    } else {
+   264→      setFormUnitPrice("");
+   265→    }
+   266→  }
+   267→
+   268→  function handleReasonSelect(reason: string) {
+   269→    setFormNotes((prev) => {
+   270→      const parts = prev.split("; ").filter(Boolean);
+   271→      if (parts.includes(reason)) return prev;
+   272→      return prev ? `${prev}; ${reason}` : reason;
+   273→    });
+   274→  }
+   275→
+   276→  function resetForm() {
+   277→    setFormIngredientId("");
+   278→    setFormQuantity("");
+   279→    setFormUnitPrice("");
+   280→    setFormDate(getTodayStr());
+   281→    setFormNotes("");
+   282→    setFormError("");
+   283→  }
+   284→
+   285→  async function handleSubmit() {
+   286→    setFormError("");
+   287→
+   288→    if (!formIngredientId) {
+   289→      setFormError("Please select an ingredient.");
+   290→      return;
+   291→    }
+   292→    const qty = parseFloat(formQuantity);
+   293→    if (!qty || qty <= 0) {
+   294→      setFormError("Please enter a valid quantity greater than 0.");
+   295→      return;
+   296→    }
+   297→    const price = parseFloat(formUnitPrice);
+   298→    if (isNaN(price) || price < 0) {
+   299→      setFormError("Please enter a valid unit price.");
+   300→      return;
+   301→    }
+   302→    if (!formDate) {
+   303→      setFormError("Please select a date.");
+   304→      return;
+   305→    }
+   306→
+   307→    setSubmitting(true);
+   308→    try {
+   309→      const res = await fetch("/api/stock-movements", {
+   310→        method: "POST",
+   311→        headers: { "Content-Type": "application/json" },
+   312→        body: JSON.stringify({
+   313→          ingredientId: formIngredientId,
+   314→          type: "WASTAGE",
+   315→          quantity: qty,
+   316→          unitPrice: price,
+   317→          totalAmount: qty * price,
+   318→          date: formDate,
+   319→          notes: formNotes || null,
+   320→        }),
+   321→      });
+   322→
+   323→      if (res.ok) {
+   324→        setDialogOpen(false);
+   325→        resetForm();
+   326→        fetchWastage();
+   327→      } else {
+   328→        const json = await res.json();
+   329→        setFormError(json.error || "Failed to record wastage.");
+   330→      }
+   331→    } catch {
+   332→      setFormError("Network error. Please try again.");
+   333→    } finally {
+   334→      setSubmitting(false);
+   335→    }
+   336→  }
+   337→
+   338→  // ─── Render ────────────────────────────────────────────────────────────────
+   339→
+   340→  return (
+   341→    <div className="space-y-6">
+   342→      {/* Header */}
+   343→      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   344→        <div className="flex items-center gap-3">
+   345→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
+   346→            <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" />
+   347→          </div>
+   348→          <div>
+   349→            <h1 className="text-2xl font-bold tracking-tight">Wastage Tracking</h1>
+   350→            <p className="text-muted-foreground">
+   351→              Record spoilage and waste, analyze cost impact
+   352→            </p>
+   353→          </div>
+   354→        </div>
+   355→
+   356→        <div className="flex flex-wrap items-center gap-3">
+   357→          {/* Date Filter */}
+   358→          <div className="flex items-center gap-2">
+   359→            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+   360→            <Input
+   361→              type="date"
+   362→              value={dateFilter}
+   363→              onChange={(e) => setDateFilter(e.target.value)}
+   364→              className="h-9 w-[150px]"
+   365→              placeholder="Filter by date"
+   366→            />
+   367→            {dateFilter && (
+   368→              <Button
+   369→                variant="ghost"
+   370→                size="icon"
+   371→                className="h-8 w-8"
+   372→                onClick={() => setDateFilter("")}
+   373→              >
+   374→                <X className="h-4 w-4" />
+   375→              </Button>
+   376→            )}
+   377→          </div>
+   378→
+   379→          {/* Category Filter */}
+   380→          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   381→            <SelectTrigger className="h-9 w-[150px]">
+   382→              <SelectValue placeholder="Category" />
+   383→            </SelectTrigger>
+   384→            <SelectContent>
+   385→              {CATEGORIES.map((cat) => (
+   386→                <SelectItem key={cat} value={cat}>
+   387→                  {cat}
+   388→                </SelectItem>
+   389→              ))}
+   390→            </SelectContent>
+   391→          </Select>
+   392→
+   393→          {/* Record Wastage Button */}
+   394→          <Button
+   395→            onClick={() => {
+   396→              resetForm();
+   397→              setDialogOpen(true);
+   398→            }}
+   399→            className="bg-red-600 hover:bg-red-700 text-white"
+   400→          >
+   401→            <Plus className="mr-2 h-4 w-4" />
+   402→            Record Wastage
+   403→          </Button>
+   404→        </div>
+   405→      </div>
+   406→
+   407→      {/* Summary Cards */}
+   408→      <div className="grid gap-4 sm:grid-cols-3">
+   409→        {/* Total Wastage This Month */}
+   410→        <Card className="border-red-200 dark:border-red-900/40">
+   411→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   412→            <CardTitle className="text-sm font-medium text-muted-foreground">
+   413→              Total Wastage This Month
+   414→            </CardTitle>
+   415→            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-red-100 dark:bg-red-900/30">
+   416→              <IndianRupee className="h-4 w-4 text-red-600 dark:text-red-400" />
+   417→            </div>
+   418→          </CardHeader>
+   419→          <CardContent>
+   420→            {loading ? (
+   421→              <Skeleton className="h-8 w-32" />
+   422→            ) : (
+   423→              <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+   424→                {formatCurrency(totalWastageMonth)}
+   425→              </p>
+   426→            )}
+   427→            <p className="mt-1 text-xs text-muted-foreground">
+   428→              Financial loss from wastage
+   429→            </p>
+   430→          </CardContent>
+   431→        </Card>
+   432→
+   433→        {/* Total Wastage Today */}
+   434→        <Card className="border-orange-200 dark:border-orange-900/40">
+   435→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   436→            <CardTitle className="text-sm font-medium text-muted-foreground">
+   437→              Total Wastage Today
+   438→            </CardTitle>
+   439→            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-orange-100 dark:bg-orange-900/30">
+   440→              <Flame className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   441→            </div>
+   442→          </CardHeader>
+   443→          <CardContent>
+   444→            {loading ? (
+   445→              <Skeleton className="h-8 w-32" />
+   446→            ) : (
+   447→              <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+   448→                {formatCurrency(totalWastageToday)}
+   449→              </p>
+   450→            )}
+   451→            <p className="mt-1 text-xs text-muted-foreground">
+   452→              Today&apos;s waste cost
+   453→            </p>
+   454→          </CardContent>
+   455→        </Card>
+   456→
+   457→        {/* Wastage Entries This Month */}
+   458→        <Card className="border-red-200 dark:border-red-900/40">
+   459→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   460→            <CardTitle className="text-sm font-medium text-muted-foreground">
+   461→              Entries This Month
+   462→            </CardTitle>
+   463→            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-red-100 dark:bg-red-900/30">
+   464→              <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+   465→            </div>
+   466→          </CardHeader>
+   467→          <CardContent>
+   468→            {loading ? (
+   469→              <Skeleton className="h-8 w-16" />
+   470→            ) : (
+   471→              <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+   472→                {wastageCountMonth}
+   473→              </p>
+   474→            )}
+   475→            <p className="mt-1 text-xs text-muted-foreground">
+   476→              Wastage incidents recorded
+   477→            </p>
+   478→          </CardContent>
+   479→        </Card>
+   480→      </div>
+   481→
+   482→      {/* Wastage Table */}
+   483→      <Card>
+   484→        <CardHeader>
+   485→          <CardTitle className="flex items-center gap-2">
+   486→            <TrendingDown className="h-5 w-5 text-red-500" />
+   487→            Wastage Log
+   488→          </CardTitle>
+   489→          <CardDescription>
+   490→            All recorded wastage entries sorted by date
+   491→          </CardDescription>
+   492→        </CardHeader>
+   493→        <CardContent>
+   494→          {loading ? (
+   495→            <div className="space-y-3">
+   496→              {Array.from({ length: 5 }).map((_, i) => (
+   497→                <Skeleton key={i} className="h-12 w-full" />
+   498→              ))}
+   499→            </div>
+   500→          ) : sortedEntries.length === 0 ? (
+   501→            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-muted-foreground/25 py-12">
+   502→              <Trash2 className="mb-3 h-10 w-10 text-muted-foreground/40" />
+   503→              <p className="text-sm font-medium text-muted-foreground">
+   504→                No wastage entries found
+   505→              </p>
+   506→              <p className="mt-1 text-xs text-muted-foreground">
+   507→                {dateFilter || categoryFilter !== "All"
+   508→                  ? "Try adjusting your filters"
+   509→                  : "Click \"Record Wastage\" to add your first entry"}
+   510→              </p>
+   511→            </div>
+   512→          ) : (
+   513→            <div className="overflow-x-auto">
+   514→              <Table>
+   515→                <TableHeader>
+   516→                  <TableRow>
+   517→                    <TableHead
+   518→                      className="cursor-pointer select-none"
+   519→                      onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+   520→                    >
+   521→                      <div className="flex items-center gap-1">
+   522→                        Date
+   523→                        <ArrowUpDown className="h-3.5 w-3.5" />
+   524→                      </div>
+   525→                    </TableHead>
+   526→                    <TableHead>Ingredient</TableHead>
+   527→                    <TableHead className="text-right">Quantity</TableHead>
+   528→                    <TableHead>Unit</TableHead>
+   529→                    <TableHead className="text-right">Unit Cost</TableHead>
+   530→                    <TableHead className="text-right">Total Loss</TableHead>
+   531→                    <TableHead>Reason / Notes</TableHead>
+   532→                  </TableRow>
+   533→                </TableHeader>
+   534→                <TableBody>
+   535→                  {sortedEntries.map((entry) => (
+   536→                    <TableRow
+   537→                      key={entry.id}
+   538→                      className="hover:bg-red-50/50 dark:hover:bg-red-950/20"
+   539→                    >
+   540→                      <TableCell className="font-medium whitespace-nowrap">
+   541→                        {formatDate(entry.date)}
+   542→                      </TableCell>
+   543→                      <TableCell>
+   544→                        <div className="flex items-center gap-2">
+   545→                          <span>{entry.ingredient?.name || "Unknown"}</span>
+   546→                          {entry.ingredient?.category && (
+   547→                            <Badge
+   548→                              variant="secondary"
+   549→                              className={`text-[10px] px-1.5 py-0 ${
+   550→                                CATEGORY_COLORS[entry.ingredient.category] || ""
+   551→                              }`}
+   552→                            >
+   553→                              {entry.ingredient.category}
+   554→                            </Badge>
+   555→                          )}
+   556→                        </div>
+   557→                      </TableCell>
+   558→                      <TableCell className="text-right font-mono">
+   559→                        {entry.quantity}
+   560→                      </TableCell>
+   561→                      <TableCell className="text-muted-foreground">
+   562→                        {entry.ingredient?.unit || "-"}
+   563→                      </TableCell>
+   564→                      <TableCell className="text-right">
+   565→                        {formatCurrency(entry.unitPrice)}
+   566→                      </TableCell>
+   567→                      <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">
+   568→                        {formatCurrency(entry.totalAmount)}
+   569→                      </TableCell>
+   570→                      <TableCell className="max-w-[200px] truncate text-muted-foreground">
+   571→                        {entry.notes || "-"}
+   572→                      </TableCell>
+   573→                    </TableRow>
+   574→                  ))}
+   575→                </TableBody>
+   576→              </Table>
+   577→            </div>
+   578→          )}
+   579→        </CardContent>
+   580→      </Card>
+   581→
+   582→      {/* Record Wastage Dialog */}
+   583→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   584→        <DialogContent className="sm:max-w-[520px]">
+   585→          <DialogHeader>
+   586→            <DialogTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+   587→              <Trash2 className="h-5 w-5" />
+   588→              Record Wastage
+   589→            </DialogTitle>
+   590→            <DialogDescription>
+   591→              Log spoilage, expired items, or other waste to track losses and
+   592→              update stock levels automatically.
+   593→            </DialogDescription>
+   594→          </DialogHeader>
+   595→
+   596→          <div className="grid gap-4 py-4">
+   597→            {/* Ingredient */}
+   598→            <div className="grid gap-2">
+   599→              <Label htmlFor="wastage-ingredient">Ingredient *</Label>
+   600→              <Select
+   601→                value={formIngredientId}
+   602→                onValueChange={handleIngredientChange}
+   603→              >
+   604→                <SelectTrigger id="wastage-ingredient">
+   605→                  <SelectValue placeholder="Select ingredient" />
+   606→                </SelectTrigger>
+   607→                <SelectContent className="max-h-60">
+   608→                  {ingredients.map((ing) => (
+   609→                    <SelectItem key={ing.id} value={ing.id}>
+   610→                      {ing.name} ({ing.unit}) — Stock: {ing.currentStock} {ing.unit}
+   611→                    </SelectItem>
+   612→                  ))}
+   613→                </SelectContent>
+   614→              </Select>
+   615→              {selectedIngredient && (
+   616→                <p className="text-xs text-muted-foreground">
+   617→                  Current stock:{" "}
+   618→                  <span className="font-medium">
+   619→                    {selectedIngredient.currentStock} {selectedIngredient.unit}
+   620→                  </span>{" "}
+   621→                  | Avg cost:{" "}
+   622→                  <span className="font-medium">
+   623→                    {formatCurrency(selectedIngredient.avgCost)}/{selectedIngredient.unit}
+   624→                  </span>
+   625→                </p>
+   626→              )}
+   627→            </div>
+   628→
+   629→            {/* Quantity & Unit Price */}
+   630→            <div className="grid grid-cols-2 gap-4">
+   631→              <div className="grid gap-2">
+   632→                <Label htmlFor="wastage-quantity">Quantity *</Label>
+   633→                <Input
+   634→                  id="wastage-quantity"
+   635→                  type="number"
+   636→                  step="0.01"
+   637→                  min="0"
+   638→                  placeholder="0"
+   639→                  value={formQuantity}
+   640→                  onChange={(e) => setFormQuantity(e.target.value)}
+   641→                />
+   642→                {selectedIngredient && (
+   643→                  <p className="text-xs text-muted-foreground">
+   644→                    Unit: {selectedIngredient.unit}
+   645→                  </p>
+   646→                )}
+   647→              </div>
+   648→              <div className="grid gap-2">
+   649→                <Label htmlFor="wastage-unitprice">
+   650→                  Unit Price (₹) *
+   651→                </Label>
+   652→                <Input
+   653→                  id="wastage-unitprice"
+   654→                  type="number"
+   655→                  step="0.01"
+   656→                  min="0"
+   657→                  placeholder="0.00"
+   658→                  value={formUnitPrice}
+   659→                  onChange={(e) => setFormUnitPrice(e.target.value)}
+   660→                />
+   661→                <p className="text-xs text-muted-foreground">
+   662→                  Auto-filled from avg cost
+   663→                </p>
+   664→              </div>
+   665→            </div>
+   666→
+   667→            {/* Date */}
+   668→            <div className="grid gap-2">
+   669→              <Label htmlFor="wastage-date">Date *</Label>
+   670→              <Input
+   671→                id="wastage-date"
+   672→                type="date"
+   673→                value={formDate}
+   674→                onChange={(e) => setFormDate(e.target.value)}
+   675→              />
+   676→            </div>
+   677→
+   678→            {/* Quick Reason Buttons */}
+   679→            <div className="grid gap-2">
+   680→              <Label>Quick Reason</Label>
+   681→              <div className="flex flex-wrap gap-2">
+   682→                {COMMON_REASONS.map((reason) => (
+   683→                  <Button
+   684→                    key={reason}
+   685→                    type="button"
+   686→                    variant="outline"
+   687→                    size="sm"
+   688→                    className={`h-7 text-xs ${
+   689→                      formNotes
+   690→                        .split("; ")
+   691→                        .includes(reason)
+   692→                        ? "border-red-400 bg-red-50 text-red-700 dark:border-red-700 dark:bg-red-950/40 dark:text-red-400"
+   693→                        : "hover:border-red-300 hover:bg-red-50/50 dark:hover:border-red-800 dark:hover:bg-red-950/20"
+   694→                    }`}
+   695→                    onClick={() => handleReasonSelect(reason)}
+   696→                  >
+   697→                    {reason}
+   698→                  </Button>
+   699→                ))}
+   700→              </div>
+   701→            </div>
+   702→
+   703→            {/* Notes / Reason */}
+   704→            <div className="grid gap-2">
+   705→              <Label htmlFor="wastage-notes">Reason / Notes</Label>
+   706→              <Textarea
+   707→                id="wastage-notes"
+   708→                placeholder="e.g., Spoiled; Expired — describe the reason for wastage"
+   709→                value={formNotes}
+   710→                onChange={(e) => setFormNotes(e.target.value)}
+   711→                rows={2}
+   712→              />
+   713→            </div>
+   714→
+   715→            {/* Total Loss Preview */}
+   716→            <div className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
+   717→              <div className="flex items-center justify-between">
+   718→                <div className="flex items-center gap-2">
+   719→                  <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+   720→                  <span className="text-sm font-medium text-red-700 dark:text-red-400">
+   721→                    Total Loss Preview
+   722→                  </span>
+   723→                </div>
+   724→                <span className="text-xl font-bold text-red-600 dark:text-red-400">
+   725→                  {formatCurrency(totalLossPreview)}
+   726→                </span>
+   727→              </div>
+   728→              <p className="mt-1 text-xs text-red-600/70 dark:text-red-400/70">
+   729→                {parseFloat(formQuantity) || 0} {selectedIngredient?.unit || "units"} ×{" "}
+   730→                {formatCurrency(parseFloat(formUnitPrice) || 0)} per unit
+   731→              </p>
+   732→            </div>
+   733→
+   734→            {/* Error Message */}
+   735→            {formError && (
+   736→              <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+   737→                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+   738→                {formError}
+   739→              </div>
+   740→            )}
+   741→          </div>
+   742→
+   743→          <DialogFooter>
+   744→            <Button
+   745→              variant="outline"
+   746→              onClick={() => setDialogOpen(false)}
+   747→              disabled={submitting}
+   748→            >
+   749→              Cancel
+   750→            </Button>
+   751→            <Button
+   752→              onClick={handleSubmit}
+   753→              disabled={submitting}
+   754→              className="bg-red-600 hover:bg-red-700 text-white"
+   755→            >
+   756→              {submitting ? (
+   757→                <>
+   758→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+   759→                  Recording...
+   760→                </>
+   761→              ) : (
+   762→                <>
+   763→                  <Trash2 className="mr-2 h-4 w-4" />
+   764→                  Record Wastage
+   765→                </>
+   766→              )}
+   767→            </Button>
+   768→          </DialogFooter>
+   769→        </DialogContent>
+   770→      </Dialog>
+   771→    </div>
+   772→  );
+   773→}
+   774→

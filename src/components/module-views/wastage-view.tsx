@@ -52,7 +52,10 @@ import {
   X,
   AlertCircle,
   Flame,
+  Download,
 } from "lucide-react";
+import { downloadCSV } from "@/lib/export-utils";
+import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -154,6 +157,7 @@ function getMonthStartStr(): string {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function WastageView() {
+  const { toast } = useToast();
   // Data state
   const [wastageEntries, setWastageEntries] = useState<WastageEntry[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -389,6 +393,32 @@ export function WastageView() {
               ))}
             </SelectContent>
           </Select>
+
+          {/* Export CSV Button */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              const rows = sortedEntries.map((e) => ({
+                Date: formatDate(e.date),
+                Ingredient: e.ingredient?.name ?? "—",
+                Category: e.ingredient?.category ?? "—",
+                Quantity: String(e.quantity),
+                Unit: e.ingredient?.unit ?? "—",
+                "Unit Cost": String(e.unitPrice),
+                "Total Loss": String(e.totalAmount),
+                Reason: e.notes || "—",
+              }));
+              downloadCSV("wastage.csv", rows);
+              toast({
+                title: "Export successful",
+                description: `${rows.length} wastage entr${rows.length === 1 ? "y" : "ies"} exported as CSV.`,
+              });
+            }}
+            disabled={wastageEntries.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
 
           {/* Record Wastage Button */}
           <Button

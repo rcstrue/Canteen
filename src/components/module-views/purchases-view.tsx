@@ -63,7 +63,10 @@ import {
   ChevronRight,
   Minus,
   AlertTriangle,
+  Download,
 } from "lucide-react";
+import { downloadCSV } from "@/lib/export-utils";
+import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -139,6 +142,7 @@ function getTodayStr(): string {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function PurchasesView() {
+  const { toast } = useToast();
   // ── State ────────────────────────────────────────────────────────────────
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -381,10 +385,33 @@ export function PurchasesView() {
             </p>
           </div>
         </div>
-        <Button onClick={openNewPurchase} className="bg-amber-600 hover:bg-amber-700 text-white">
-          <Plus className="mr-2 h-4 w-4" />
-          New Purchase
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const rows = purchases.map((p) => ({
+                Date: formatDate(p.date),
+                Supplier: p.supplier || "—",
+                "Invoice No": p.invoiceNo || "—",
+                "Items Count": String(p.items?.length ?? 0),
+                "Total Amount": String(p.totalAmount),
+              }));
+              downloadCSV("purchases.csv", rows);
+              toast({
+                title: "Export successful",
+                description: `${rows.length} purchase(s) exported as CSV.`,
+              });
+            }}
+            disabled={purchases.length === 0}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export CSV
+          </Button>
+          <Button onClick={openNewPurchase} className="bg-amber-600 hover:bg-amber-700 text-white">
+            <Plus className="mr-2 h-4 w-4" />
+            New Purchase
+          </Button>
+        </div>
       </div>
 
       {/* Summary Cards */}

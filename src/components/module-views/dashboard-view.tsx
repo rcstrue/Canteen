@@ -45,6 +45,9 @@ import {
   PlusCircle,
   Activity,
   ShieldCheck,
+  Calendar,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import {
   BarChart,
@@ -150,6 +153,12 @@ interface IngredientListItem {
   category: string;
   currentStock: number;
   minStock: number;
+}
+
+interface CostReportData {
+  foodCost: { total: number; costPerMeal: number };
+  meals: { total: number };
+  totalOperatingCost: number;
 }
 
 interface DashboardViewProps {
@@ -480,6 +489,10 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Monthly comparison state
+  const [currentMonthReport, setCurrentMonthReport] = useState<CostReportData | null>(null);
+  const [prevMonthReport, setPrevMonthReport] = useState<CostReportData | null>(null);
+
   useEffect(() => {
     async function fetchDashboard() {
       try {
@@ -513,6 +526,47 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
     fetchDashboard();
   }, []);
 
+  // Fetch monthly comparison data
+  useEffect(() => {
+    async function fetchMonthlyComparison() {
+      try {
+        const now = new Date();
+        // Current month: first day to now
+        const curStart = new Date(now.getFullYear(), now.getMonth(), 1)
+          .toISOString()
+          .split("T")[0];
+        const curEnd = now.toISOString().split("T")[0];
+
+        // Previous month: first day to last day
+        const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+          .toISOString()
+          .split("T")[0];
+        const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0)
+          .toISOString()
+          .split("T")[0];
+
+        const [curRes, prevRes] = await Promise.all([
+          fetch(
+            `/api/reports/cost?period=month&startDate=${curStart}&endDate=${curEnd}`
+          ),
+          fetch(
+            `/api/reports/cost?period=month&startDate=${prevStart}&endDate=${prevEnd}`
+          ),
+        ]);
+
+        if (curRes.ok) {
+          setCurrentMonthReport(await curRes.json());
+        }
+        if (prevRes.ok) {
+          setPrevMonthReport(await prevRes.json());
+        }
+      } catch (err) {
+        console.error("Monthly comparison fetch error:", err);
+      }
+    }
+    fetchMonthlyComparison();
+  }, []);
+
   // ─── Loading State ──────────────────────────────────────────────────────
 
   if (loading) {
@@ -536,6 +590,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
           <LargeCardSkeleton />
           <LargeCardSkeleton />
         </div>
+        <LargeCardSkeleton />
       </div>
     );
   }
@@ -1386,6 +1441,142 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
             </CardContent>
           </Card>
         </motion.div>
+      </motion.div>
+
+      {/* ─── 6. Monthly Comparison ─────────────────────────────────────────── */}
+      <motion.div variants={itemVariants}>
+        <Card className="shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              Monthly Comparison
+            </CardTitle>
+            <CardDescription>
+              Current month vs previous month key metrics
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!currentMonthReport && !prevMonthReport ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Calendar className="mb-2 h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm font-medium text-muted-foreground">
+                  Loading comparison data…
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[180px]">Metric</TableHead>
+                      <TableHead className="text-right">Current Month</TableHead>
+                      <TableHead className="text-right">Previous Month</TableHead>
+                      <TableHead className="text-right">Change</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
+                      const cur = currentMonthReport;
+                      const prev = prevMonthReport;
+
+                      const metrics: Array<{
+                        label: string;
+                        current: number;
+                        previous: number;
+                        format: (v: number) => string;
+                        lowerIsBetter: boolean;
+                      }> = [
+                        {
+                          label: "Food Cost",
+                          current: cur?.foodCost?.total ?? 0,
+                          previous: prev?.foodCost?.total ?? 0,
+                          format: formatCurrency,
+                          lowerIsBetter: true,
+                        },
+                        {
+                          label: "Total Meals Served",
+                          current: cur?.meals?.total ?? 0,
+                          previous: prev?.meals?.total ?? 0,
+                          format: formatNumber,
+                          lowerIsBetter: false,
+                        },
+                        {
+                          label: "Cost Per Meal",
+                          current: cur?.foodCost?.costPerMeal ?? 0,
+                          previous: prev?.foodCost?.costPerMeal ?? 0,
+                          format: formatCurrency,
+                          lowerIsBetter: true,
+                        },
+                        {
+                          label: "Operating Cost",
+                          current: cur?.totalOperatingCost ?? 0,
+                          previous: prev?.totalOperatingCost ?? 0,
+                          format: formatCurrency,
+                          lowerIsBetter: true,
+                        },
+                      ];
+
+                      return metrics.map((m, idx) => {
+                        const changePct =
+                          m.previous > 0
+                            ? ((m.current - m.previous) / m.previous) * 100
+                            : null;
+                        const isUp = changePct !== null && changePct > 0;
+                        const isFlat = changePct !== null && Math.abs(changePct) < 0.5;
+                        const goodDirection = m.lowerIsBetter ? !isUp : isUp;
+                        const colorClass =
+                          changePct === null || isFlat
+                            ? "text-muted-foreground"
+                            : goodDirection
+                              ? "text-emerald-600 dark:text-emerald-400"
+                              : "text-rose-600 dark:text-rose-400";
+
+                        return (
+                          <TableRow
+                            key={m.label}
+                            className={idx % 2 === 1 ? "bg-muted/30" : ""}
+                          >
+                            <TableCell className="font-medium">
+                              {m.label}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {m.format(m.current)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {m.format(m.previous)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {changePct === null ? (
+                                <span className="text-muted-foreground">—</span>
+                              ) : (
+                                <span
+                                  className={`inline-flex items-center gap-1 font-semibold tabular-nums ${colorClass}`}
+                                >
+                                  {isFlat ? (
+                                    <Minus className="h-3.5 w-3.5" />
+                                  ) : isUp ? (
+                                    <ArrowUp className="h-3.5 w-3.5" />
+                                  ) : (
+                                    <ArrowDown className="h-3.5 w-3.5" />
+                                  )}
+                                  {isFlat
+                                    ? "0.0%"
+                                    : `${isUp ? "+" : ""}${changePct.toFixed(1)}%`}
+                                </span>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                    })()}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </motion.div>
     </motion.div>
   );
