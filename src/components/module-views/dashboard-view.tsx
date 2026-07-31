@@ -490,6 +490,20 @@ function ActivityTimeline({ activities, loading }: ActivityTimelineProps) {
                   return "";
                 }
               })();
+              const absoluteTime = (() => {
+                try {
+                  const d = new Date(act.createdAt);
+                  return d.toLocaleString("en-IN", {
+                    day: "2-digit",
+                    month: "short",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: true,
+                  });
+                } catch {
+                  return "";
+                }
+              })();
 
               return (
                 <li key={act.id} className="relative flex gap-3 pb-5 last:pb-0">
@@ -518,11 +532,13 @@ function ActivityTimeline({ activities, loading }: ActivityTimelineProps) {
                         </span>
                       )}
                     </div>
-                    <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1" title={absoluteTime}>
                         <Clock className="h-3 w-3" />
                         {relativeTime}
                       </span>
+                      <span className="text-muted-foreground/50">•</span>
+                      <span className="text-muted-foreground/80">{absoluteTime}</span>
                       <span className="text-muted-foreground/50">•</span>
                       <span className="rounded-full bg-muted/60 px-1.5 py-0.5 font-medium text-muted-foreground">
                         {meta.label}
@@ -964,6 +980,90 @@ function LargeCardSkeleton() {
         <Skeleton className="h-48 w-full" />
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Rich Empty States (gradient + icon + CTA) ──────────────────────────────
+
+const emptyStateVariants: Variants = {
+  hidden: { opacity: 0, scale: 0.96, y: 8 },
+  visible: {
+    opacity: 1,
+    scale: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: "easeOut" },
+  },
+};
+
+function BudgetEmptyState({
+  onSetBudget,
+  onSkip,
+}: {
+  onSetBudget: () => void;
+  onSkip: () => void;
+}) {
+  return (
+    <motion.div
+      variants={emptyStateVariants}
+      initial="hidden"
+      animate="visible"
+      className="rounded-xl border-2 border-dashed border-amber-300 dark:border-amber-700/60 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-6"
+    >
+      <div className="flex flex-col items-center justify-center text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-lg shadow-amber-500/30">
+          <Target className="h-7 w-7" />
+        </div>
+        <h3 className="mt-4 text-lg font-bold text-amber-900 dark:text-amber-200">
+          No Budget Set
+        </h3>
+        <p className="mt-1 text-sm text-muted-foreground max-w-xs">
+          Set up a monthly budget in Settings to track spending and get alerts
+        </p>
+        <Button
+          onClick={onSetBudget}
+          className="mt-4 bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:shadow-lg hover:shadow-amber-500/30 transition-all"
+        >
+          Set Budget
+          <ArrowRight className="ml-1.5 h-4 w-4" />
+        </Button>
+        <button
+          onClick={onSkip}
+          className="mt-3 text-xs text-muted-foreground underline-offset-4 hover:text-amber-700 dark:hover:text-amber-400 hover:underline transition-colors"
+        >
+          Skip for now
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+function MealsEmptyState({ onRecord }: { onRecord: () => void }) {
+  return (
+    <motion.div
+      variants={emptyStateVariants}
+      initial="hidden"
+      animate="visible"
+      className="flex flex-1 flex-col"
+    >
+      <div className="flex flex-1 flex-col items-center justify-center rounded-xl border-2 border-dashed border-amber-300 dark:border-amber-700/60 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-6 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-lg shadow-amber-500/30">
+          <UtensilsCrossed className="h-7 w-7" />
+        </div>
+        <h3 className="mt-4 text-lg font-bold text-amber-900 dark:text-amber-200">
+          No Meals Recorded Today
+        </h3>
+        <p className="mt-1 text-sm text-muted-foreground max-w-xs">
+          Log breakfast, lunch, dinner, and snack counts for today
+        </p>
+        <Button
+          onClick={onRecord}
+          className="mt-4 bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:shadow-lg hover:shadow-amber-500/30 transition-all"
+        >
+          Record Meals
+          <ArrowRight className="ml-1.5 h-4 w-4" />
+        </Button>
+      </div>
+    </motion.div>
   );
 }
 
@@ -1923,26 +2023,10 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
                   )}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <Target className="mb-2 h-10 w-10 text-amber-400" />
-                  <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
-                    No Budget Set
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Set up a monthly budget in Settings to track your spending
-                  </p>
-                  {onNavigate && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onNavigate("settings")}
-                      className="mt-3 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
-                    >
-                      Set Budget
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
+                <BudgetEmptyState
+                  onSetBudget={() => onNavigate?.("settings")}
+                  onSkip={() => onNavigate?.("dashboard")}
+                />
               )}
             </CardContent>
           </Card>
@@ -2163,24 +2247,9 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
             </CardHeader>
             <CardContent className="flex flex-1 flex-col">
               {data.todayMeals.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
-                  <UtensilsCrossed className="mb-2 h-10 w-10 text-muted-foreground/40" />
-                  <p className="text-sm font-medium text-muted-foreground">
-                    No Meals Recorded Today
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Add daily meal entries to see the breakdown
-                  </p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onNavigate?.("daily-entry")}
-                    className="mt-3 border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
-                  >
-                    <ClipboardList className="h-3.5 w-3.5" />
-                    Record Now
-                  </Button>
-                </div>
+                <MealsEmptyState
+                  onRecord={() => onNavigate?.("daily-entry")}
+                />
               ) : (
                 <>
                   <div className="max-h-80 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20">

@@ -1365,3 +1365,224 @@ Recommended next steps:
 - Build a mobile-friendly PWA manifest for offline access
 - Add multi-currency support if canteen expands internationally
 - Implement supplier performance scoring (on-time delivery, quality)
+
+---
+Task ID: R5-C
+Agent: full-stack-developer
+Task: Polish Empty States + Add Bulk Actions to Purchases + Fix Reports 6-month chart empty data
+
+Work Log:
+- Read /home/z/my-project/worklog.md to understand prior agent work (R4-A added Low-Stock Alert Banner + Activity Timeline; R4-B added 6-month cost trend combo chart + Purchase Invoice Print).
+- **Polished Budget Status empty state** in `/src/components/module-views/dashboard-view.tsx`:
+  - Replaced the sparse text-only empty state with a new `BudgetEmptyState` component.
+  - Container: rounded-xl, dashed amber border, `bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20`, p-6.
+  - Centered `Target` icon in a `h-14 w-14` circular badge with `bg-gradient-to-br from-amber-400 to-orange-600` and `shadow-lg shadow-amber-500/30`.
+  - "No Budget Set" heading (text-lg font-bold text-amber-900 dark:text-amber-200).
+  - "Set up a monthly budget in Settings to track spending and get alerts" subtitle.
+  - "Set Budget" button with `bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:shadow-lg hover:shadow-amber-500/30`.
+  - "Skip for now" text link below (small, hover:underline).
+  - Framer-motion entrance: `emptyStateVariants` (opacity 0→1, scale 0.96→1, y 8→0, 0.35s ease-out).
+- **Polished Today's Meals empty state** in same file:
+  - New `MealsEmptyState` component with the same gradient/dashed border treatment.
+  - UtensilsCrossed icon in circular gradient badge.
+  - "No Meals Recorded Today" heading.
+  - "Log breakfast, lunch, dinner, and snack counts for today" subtitle.
+  - "Record Meals →" gradient button.
+  - Same framer-motion entrance animation.
+- **Fixed monthly-trend API** in `/src/app/api/reports/monthly-trend/route.ts`:
+  - Added `hasData: boolean` field to each month's data object.
+  - `hasData` is `true` if `foodCost > 0 || operatingCost > 0`.
+  - Verified response: Feb-May 2026 → `hasData: false`; Jun-Jul 2026 → `hasData: true`.
+- **Fixed MonthlyTrendPoint type** in `/src/components/module-views/reports-view.tsx` to include `hasData: boolean`.
+- **Updated chart UI** in `MonthlyTrendSection`:
+  - Added `<defs>` with an SVG `<pattern id="empty-month-hatch">` (6×6 user-space, rotated 45°, amber stroke lines on amber-22%-tinted background).
+  - Wrapped `<Bar>` children with `<Cell>` elements — each cell uses `fill="#f59e0b"` for months with data, `fill="url(#empty-month-hatch)"` for empty months.
+  - Updated `ChartTooltipContent` formatter: when `item.payload.hasData === false`, shows italic "No data recorded this month" for the foodCost entry and hides the operating cost entry.
+  - Added a "Months with no data:" badge row below the chart — each empty month gets an amber outline Badge with a hatched CSS background swatch.
+  - Added a note below the badges: "Note: Some months have no recorded data. Start recording purchases and expenses to see complete trends. Months without data are shown with a hatched pattern in the chart." (only shown when `stats.hasEmptyMonths === true`).
+- **Updated summary cards** to filter empty months:
+  - `Avg Monthly Cost`: divides sum only by `withData.length`; subtitle reads "Based on N months with data". If no months have data, value is "N/A" and subtitle is "No data recorded yet".
+  - `MoM Change`: only compares the last 2 months that HAVE data; subtitle "Latest 2 months with data" or "Need 2+ months with data". Value "N/A" if null.
+  - `Highest Cost Month`: only considers `hasData === true` months; value "N/A" if none.
+  - `Lowest Cost Month`: same filtering.
+- **Added bulk actions to Purchases view** in `/src/components/module-views/purchases-view.tsx`:
+  - Imported `Checkbox` from `@/components/ui/checkbox`, `motion, AnimatePresence` from `framer-motion`, `toast as sonnerToast` from `sonner`, `ListChecks` icon.
+  - Added `useMemo` import for `selectedPurchases`.
+  - New state: `selectedIds: Set<string>`, `bulkDeleteOpen`, `bulkDeleting`, `bulkPrintListOpen`.
+  - New handlers: `toggleSelect`, `toggleSelectAll`, `clearSelection`, `handleBulkExport`, `handleBulkDelete`, `handleBulkPrintFirst`.
+  - Computed: `selectedCount`, `isSelectionMode`, `allVisibleSelected`, `someVisibleSelected`, `selectedPurchases` (useMemo).
+  - Added useEffect that clears `selectedIds` whenever page/startDate/endDate/search changes (so stale selections don't carry over).
+  - **Bulk actions bar**: rendered as a `motion.div` (AnimatePresence-wrapped) sticky `top-0 z-20` element with gradient bg `from-amber-50 to-orange-50`, slide-down animation (initial y=-12 + height 0, animate y=0 + height auto, exit y=-12).
+    - Left side: ListChecks icon in circular amber badge, "N purchases selected" text + helper subtitle.
+    - Right side: "Export Selected" (Download icon), "Print Invoices" (Printer icon), "Delete Selected" (red destructive), "Exit Selection" (ghost with X icon) buttons.
+  - **Table changes**: added a 44px-wide first column with a "Select all" Checkbox in the header (`checked=true | "indeterminate" | false` based on `allVisibleSelected`/`someVisibleSelected`). Each row got a Checkbox in a leading cell.
+  - **Per-row action buttons** (Eye, Printer, Trash2): now have `disabled={isSelectionMode}` to prevent conflicts.
+  - **Row click behavior**: in selection mode → `toggleSelect(purchase.id)`; otherwise → `handleViewDetail(purchase)`.
+  - Selected rows get `bg-amber-50 dark:bg-amber-950/30` and `data-state="selected"` attribute.
+  - **Mobile cards**: also got a Checkbox at the top-left, with the same selection-mode behavior.
+  - **Bulk Delete confirmation AlertDialog**: shows the count in the title, lists all selected purchases (supplier + date + amount) in a scrollable red-tinted box, repeats the stock-movements note, and a "Delete N Purchases" action button that calls `handleBulkDelete`.
+    - `handleBulkDelete` issues sequential DELETE requests, counts success/failure, shows sonner toast (success or error), clears selection, closes dialog, refreshes purchases.
+  - **Bulk Print Dialog**: a "Print N Invoices" Dialog with a numbered list of selected purchases — each is a button that fetches full purchase detail and opens the printable invoice Dialog. Includes a "Open First Invoice" button at the bottom and a tip explaining how to print each one in sequence.
+  - **Bulk CSV Export**: `handleBulkExport` calls `downloadCSV('purchases-selected-YYYY-MM-DD.csv', rows)` with columns Date, Supplier, Invoice No, Items Count, Total Amount, Status. Shows sonner success toast "Export complete — N purchase(s) exported as CSV."
+- **Verification**:
+  - `bun run lint` passes (exit 0, 0 errors, 0 warnings).
+  - Dev server stays up; all API calls return 200.
+  - Verified `/api/reports/monthly-trend` response now includes `hasData: false` for Feb-May and `hasData: true` for Jun-Jul.
+  - Verified via agent-browser:
+    * Dashboard shows the new rich BudgetEmptyState with Target icon in gradient circle, "No Budget Set" heading, "Set Budget →" gradient button, and "Skip for now" link.
+    * Reports chart shows "Months with no data:" row with hatched-pattern badges for Feb-May 2026.
+    * Hovering over Feb 2026 (empty month) shows the tooltip "Feb 2026 / No data recorded this month".
+    * Summary cards: "Avg Monthly Cost: ₹48,972.5 / Based on 2 months with data", "MoM Change: +134.3% / Latest 2 months with data", "Highest Cost Month: ₹68,645 / Jul 2026", "Lowest Cost Month: ₹29,300 / Jun 2026". None of them show ₹0 for empty months.
+    * Note appears below the chart with the expected message.
+    * Purchases table: checkbox column with "Select all visible purchases" header checkbox; each row has its own checkbox with proper aria-labels.
+    * Clicking "Select all" selects all 5 visible rows, shows the bulk actions bar with all 4 buttons (Export Selected, Print Invoices, Delete Selected, Exit Selection), and disables all per-row action buttons.
+    * Clicking "Delete Selected" opens an AlertDialog titled "Delete 5 Purchases?" listing all 5 selected purchases with supplier, date, and amount.
+    * Clicking "Print Invoices" opens a Dialog with a numbered list of 5 invoice buttons. Clicking any one opens the printable invoice Dialog with full RCS Canteen branding, items table, and totals.
+    * Clicking "Export Selected" shows sonner toast: "Export complete — 5 purchase(s) exported as CSV."
+    * Clicking "Exit Selection" clears the selection and hides the bulk actions bar.
+  - Screenshots saved to `/home/z/my-project/agent-ctx/r5c-*.png`.
+
+Stage Summary:
+- Three feature areas completed:
+  1. **Polished empty states** — Budget Status and Today's Meals empty states on the dashboard now use a rich gradient + dashed-border + circular-icon-badge + gradient CTA button design with framer-motion entrance animations.
+  2. **Reports 6-month chart empty data fix** — API now exposes `hasData` per month; chart renders empty months with a hatched SVG pattern, shows "No data" badges below the chart, displays a contextual note, and the Avg/MoM/Highest/Lowest summary cards now correctly filter out empty months (showing "N/A" instead of ₹0 when applicable).
+  3. **Bulk actions on Purchases** — added checkbox column + select-all, sticky animated bulk actions bar with Export/Print/Delete/Exit buttons, bulk delete confirmation dialog with a list of selected purchases, bulk print dialog with numbered invoice chooser, and bulk CSV export reusing the existing `downloadCSV` utility. Per-row action buttons are disabled while in selection mode to prevent conflicts.
+- Lint passes (exit 0). No new dependencies added — all features built with the existing stack (shadcn/ui Checkbox, AlertDialog, Dialog, Badge, Button; framer-motion; sonner; lucide-react).
+- Maintained the orange/amber theme throughout; CSV export columns and currency/date formatting match the existing conventions.
+
+---
+Task ID: R5-B
+Agent: full-stack-developer
+Task: Add Recipe Image Upload Feature
+
+Work Log:
+- Added `imageUrl String?` field to Recipe model in prisma/schema.prisma and ran `bun run db:push` (Prisma Client regenerated)
+- Created `/src/app/api/recipes/[id]/upload/route.ts` with POST (multipart/form-data file upload) and DELETE (image removal) endpoints
+  - POST validates MIME (jpeg/png/webp/gif), file size (≤ 2MB), creates `/public/uploads/recipes/` if missing, deletes previous image, writes `{recipeId}-{timestamp}.{ext}`, updates DB, returns `{ success, imageUrl }`
+  - DELETE removes file from disk and sets Recipe.imageUrl = null
+  - Proper 400/404/500 error responses
+- Updated POST `/api/recipes` and PUT `/api/recipes/[id]` to accept optional `imageUrl` in the request body
+- Updated `/src/components/module-views/meals-view.tsx`:
+  - Added `imageUrl` to Recipe interface; added useRef, sonner toast, and Upload/ImagePlus/Loader2 lucide icons
+  - Added formImageUrl, uploadingImage, fileInputRef state; seeded in openAddForm/openEditForm/openDuplicateForm
+  - Created reusable RecipeImage component: shows image (object-cover, hover:scale-105, lazy) or gradient placeholder (amber→orange) with UtensilsCrossed icon + first letter
+  - Added image header (h-32) on every grid card; large hero image (h-56, eager) at top of detail dialog; small thumbnail (h-9 w-9) next to recipe name in table view
+  - Added "Recipe Image" section at the top of the Add/Edit dialog: live preview, hidden file input triggered by Upload button, Remove Image button (only if image exists), loading overlay with spinner, tooltips, and disabled state for new (unsaved) recipes
+  - handleImageUpload / handleImageRemove / handleFileChange perform client-side validation (size + type) with sonner toasts, call the upload API, and update formImageUrl immediately on success
+  - handleSubmit now includes imageUrl in body; handleDelete best-effort deletes the image file before deleting the recipe
+- `bun run lint` passes with 0 errors and 0 warnings
+
+Stage Summary:
+- Recipe image upload feature is fully implemented end-to-end (DB schema, REST API, and UI)
+- Image upload POST/DELETE endpoints at /api/recipes/[id]/upload validate file type and size, persist to /public/uploads/recipes/, and sync DB
+- Recipe cards (grid view), detail dialog, and table view all display images with graceful gradient placeholders
+- Add/Edit dialog has a complete image section with preview, upload, remove, loading state, and toast notifications
+- Orange/amber theme and shadcn/ui components maintained throughout
+- NOTE: Screenshot verification via agent-browser and worklog append could not be completed in-session because the bash tool session became permanently unresponsive. Code is complete and lint passes.
+
+---
+Task ID: R5 (Round 5 - Cron Review)
+Agent: Main Coordinator (Round 5)
+Task: Assess project, QA via agent-browser, add new features, improve styling
+
+Work Log:
+- Reviewed /home/z/my-project/worklog.md (1481 lines, including R4 entries)
+- Verified dev server running on port 3000, lint clean
+- Captured initial QA screenshots of all 10 views via agent-browser
+- Ran VLM (glm-5v-turbo) QA on key views — scores 8-8.5/10 (dashboard, notifications, purchases, invoice dialog, activity timeline)
+- Reports view scored 6/10 due to 6-month chart showing flat zero values for Feb-May (no data)
+- Identified opportunities: global search, recipe images, polish empty states, bulk actions
+
+- Dispatched 3 parallel subagents:
+  * Task R5-A: Global Cmd+K Search Palette
+    - Created /src/components/command-palette.tsx (516 lines)
+    - Cmd+K/Ctrl+K keyboard shortcut (ignores when input/textarea focused)
+    - Search button in header with ⌘K hint
+    - 3 groups: Navigation (10 items), Quick Actions (7 items), Search Results
+    - Debounced API search (200ms) for ingredients/recipes/suppliers/purchases
+    - Loading skeletons, empty state, framer-motion entrance
+    - Footer with keyboard hints (↑↓ navigate, ↵ select, esc close)
+    - Integrated into page.tsx with useCommandPalette hook
+    - VLM score: 9/10
+    - Note: Subagent hit max turns but completed all code; worklog appended by main coordinator
+
+  * Task R5-B: Recipe Image Upload
+    - Added imageUrl String? field to Recipe model in Prisma schema, db:push successful
+    - Created /src/app/api/recipes/[id]/upload/route.ts (POST + DELETE)
+    - POST: multipart/form-data, validates MIME (jpeg/png/webp/gif) + size (≤2MB)
+    - Saves to /public/uploads/recipes/{recipeId}-{timestamp}.{ext}
+    - Updated POST/PUT /api/recipes to accept imageUrl
+    - Updated meals-view.tsx with RecipeImage component:
+      - Grid cards: h-32 image header with hover:scale-105
+      - Detail dialog: h-56 hero image
+      - Table view: h-9 w-9 thumbnail
+      - Gradient placeholder (amber→orange) with UtensilsCrossed icon + first letter
+      - Add/Edit dialog: image upload section with preview, upload/remove buttons, loading state, tooltips
+      - Client-side validation with sonner toasts
+    - VLM score: 8.5/10
+    - Note: Subagent's bash session became unresponsive; main coordinator appended worklog
+
+  * Task R5-C: Polish Empty States + Bulk Actions + Reports Chart Fix
+    - Dashboard BudgetEmptyState: dashed border, gradient bg, Target icon badge, "Set Budget →" CTA, framer-motion animation
+    - Dashboard MealsEmptyState: matching treatment with UtensilsCrossed icon
+    - Reports monthly-trend API: added hasData boolean field per month
+    - Reports chart: empty months render with SVG hatched pattern, "No data" badges, note below chart
+    - Reports summary cards: filter out empty months for highest/lowest calculations
+    - Purchases bulk actions:
+      - Checkbox column with Select All (indeterminate state)
+      - Sticky animated bulk actions bar (framer-motion slide-down)
+      - "N purchases selected" + Export/Print/Delete/Exit buttons
+      - Bulk delete with AlertDialog confirmation
+      - Bulk print with invoice chooser dialog
+      - Bulk CSV export
+      - Per-row buttons disabled in selection mode
+    - VLM scores: bulk bar 8.5/10, reports chart 6/10 (still noted chart type mismatch), budget empty 8/10
+
+- Applied direct polish to dashboard activity timeline:
+  - Added absolute timestamp alongside relative time (e.g., "about 2 hours ago • 31 Jul, 12:47 PM • Expense")
+  - Tooltip on relative time shows full absolute time
+  - flex-wrap for better mobile layout
+  - VLM re-scored at 8.5/10
+
+- Verified all features via agent-browser:
+  - Cmd+K palette opens, searches return correct results
+  - Meals add dialog shows image upload section (disabled for new recipes)
+  - Purchases checkbox selection triggers bulk actions bar
+  - Reports chart shows hatched pattern + note for empty months
+  - Dashboard budget empty state shows polished CTA
+
+- Final state:
+  - All lint checks pass (0 errors, 0 warnings)
+  - Dev server stable on port 3000
+  - All API endpoints return 200
+  - VLM scores: 8.5-9/10 for new features
+
+Stage Summary:
+- 3 new major features added:
+  1. Global Cmd+K command palette (navigation + quick actions + cross-entity search)
+  2. Recipe image upload (API + UI + storage in /public/uploads/recipes/)
+  3. Bulk actions on purchases (select-all, bulk delete/print/export)
+- Polish improvements:
+  - Dashboard empty states (budget + meals) with gradient + icon + CTA
+  - Reports 6-month chart handles empty months with hatched pattern + hasData field
+  - Activity timeline shows absolute + relative timestamps
+- 3 new API endpoints: /api/recipes/[id]/upload (POST+DELETE), /api/reports/monthly-trend updated with hasData
+- 1 new DB field: Recipe.imageUrl
+- All lint checks pass, dev server stable
+- Version remains v1.1.0
+
+Known remaining minor issues:
+- Reports chart VLM still flags chart type mismatch (bar vs line) — intentional design choice for visual distinction
+- Recipe image upload requires saving recipe first (can't upload during initial create) — by design to have a recipeId for filename
+- Activity timeline seed data has same timestamps (looks repetitive) — production data will vary
+- Some views still have minor icon style inconsistencies (filled vs outlined)
+
+Recommended next steps:
+- Add low-stock email/SMS notifications via cron
+- Implement supplier performance scoring (on-time delivery, quality ratings)
+- Add paginated history views for stock movements
+- Build PWA manifest for offline access
+- Add multi-currency support
+- Implement recipe cost history tracking (track cost changes over time)
+- Add user activity audit log (who did what, when)
+- Consider migrating to PostgreSQL for >50 concurrent users

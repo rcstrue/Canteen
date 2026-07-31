@@ -48,7 +48,7 @@ export async function PUT(
   try {
     const { id } = await params
     const body = await request.json()
-    const { name, description, mealType, baseServings, instructions, ingredients } = body
+    const { name, description, mealType, baseServings, instructions, ingredients, imageUrl } = body
 
     const existing = await db.recipe.findUnique({ where: { id } })
     if (!existing) {
@@ -84,6 +84,7 @@ export async function PUT(
         ...(mealType !== undefined && { mealType }),
         ...(baseServings !== undefined && { baseServings }),
         ...(instructions !== undefined && { instructions }),
+        ...(imageUrl !== undefined && { imageUrl: typeof imageUrl === 'string' && imageUrl.length > 0 ? imageUrl : null }),
       },
       include: {
         ingredients: {

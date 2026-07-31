@@ -71,12 +71,20 @@ export async function GET() {
     }
 
     // 3. Compose the result array
-    const data = months.map((m) => ({
-      month: m.yearMonth,
-      monthLabel: getMonthLabel(m.yearMonth),
-      foodCost: Number((purchaseByMonth.get(m.yearMonth) || 0).toFixed(2)),
-      operatingCost: Number((expenseByMonth.get(m.yearMonth) || 0).toFixed(2)),
-    }))
+    const data = months.map((m) => {
+      const foodCost = Number((purchaseByMonth.get(m.yearMonth) || 0).toFixed(2))
+      const operatingCost = Number((expenseByMonth.get(m.yearMonth) || 0).toFixed(2))
+      return {
+        month: m.yearMonth,
+        monthLabel: getMonthLabel(m.yearMonth),
+        foodCost,
+        operatingCost,
+        // True if any purchases OR expenses were recorded for this month.
+        // Used by the chart UI to render empty months differently (hatched /
+        // "No data" badge) and to exclude them from highest/lowest summaries.
+        hasData: foodCost > 0 || operatingCost > 0,
+      }
+    })
 
     return NextResponse.json({
       generatedAt: now.toISOString(),

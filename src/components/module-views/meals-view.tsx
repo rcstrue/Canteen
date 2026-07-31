@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Card,
@@ -58,6 +58,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { toast as sonnerToast } from "sonner";
 import {
   UtensilsCrossed,
   Search,
@@ -85,6 +86,9 @@ import {
   Clock,
   Soup,
   Sparkles,
+  Upload,
+  ImagePlus,
+  Loader2,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -117,6 +121,7 @@ interface Recipe {
   mealType: string;
   baseServings: number;
   instructions: string | null;
+  imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
   ingredients: RecipeIngredient[];
@@ -269,6 +274,61 @@ function calcCostTrend(ingredients: RecipeIngredient[]): {
   return { direction: pctChange > 0 ? "up" : "down", percentChange: pctChange };
 }
 
+// ─── Recipe Image Component ─────────────────────────────────────
+
+interface RecipeImageProps {
+  imageUrl: string | null;
+  name: string;
+  className?: string;
+  imgClassName?: string;
+  eager?: boolean;
+  rounded?: string;
+}
+
+/**
+ * Renders a recipe image. If no image is provided, shows a beautiful
+ * gradient placeholder with a UtensilsCrossed icon and the recipe's
+ * first letter as fallback.
+ */
+function RecipeImage({
+  imageUrl,
+  name,
+  className,
+  imgClassName,
+  eager = false,
+  rounded = "rounded-t-xl",
+}: RecipeImageProps) {
+  const firstLetter = (name || "?").trim().charAt(0).toUpperCase() || "?";
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden bg-gradient-to-br from-amber-100 via-orange-100 to-amber-50 dark:from-amber-900/40 dark:via-orange-900/30 dark:to-amber-950/20",
+        rounded,
+        className
+      )}
+    >
+      {imageUrl ? (
+        <img
+          src={imageUrl}
+          alt={name}
+          loading={eager ? "eager" : "lazy"}
+          className={cn(
+            "h-full w-full object-cover transition-transform duration-300 group-hover:scale-105",
+            imgClassName
+          )}
+        />
+      ) : (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1">
+          <UtensilsCrossed className="h-8 w-8 text-orange-400/70 dark:text-orange-500/50" />
+          <span className="bg-gradient-to-br from-orange-500 to-amber-500 bg-clip-text text-3xl font-black text-transparent dark:from-orange-300 dark:to-amber-300">
+            {firstLetter}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Component ───────────────────────────────────────────────────
 
 export function MealsView() {
@@ -301,6 +361,9 @@ export function MealsView() {
   const [formMealType, setFormMealType] = useState("Lunch");
   const [formBaseServings, setFormBaseServings] = useState("100");
   const [formInstructions, setFormInstructions] = useState("");
+  const [formImageUrl, setFormImageUrl] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [formIngredients, setFormIngredients] = useState<IngredientRow[]>([
     { ingredientId: "", quantity: "", unit: "" },
   ]);
@@ -463,6 +526,7 @@ export function MealsView() {
     setFormMealType("Lunch");
     setFormBaseServings("100");
     setFormInstructions("");
+    setFormImageUrl(null);
     setFormIngredients([{ ingredientId: "", quantity: "", unit: "" }]);
     setFormOpen(true);
   };
@@ -474,6 +538,7 @@ export function MealsView() {
     setFormMealType(recipe.mealType);
     setFormBaseServings(String(recipe.baseServings));
     setFormInstructions(recipe.instructions || "");
+    setFormImageUrl(recipe.imageUrl);
     setFormIngredients(
       recipe.ingredients.map((ri) => ({
         ingredientId: ri.ingredientId,
@@ -491,6 +556,7 @@ export function MealsView() {
     setFormMealType(recipe.mealType);
     setFormBaseServings(String(recipe.baseServings));
     setFormInstructions(recipe.instructions || "");
+    setFormImageUrl(recipe.imageUrl);
     setFormIngredients(
       recipe.ingredients.map((ri) => ({
         ingredientId: ri.ingredientId,
@@ -543,6 +609,94 @@ export function MealsView() {
     }, 0);
   };
 
+  const handleImageUpload = async (file: File) => {
+    // Client-side validation
+    if (file.size > 2 * 1024 * 1024) {
+      sonnerToast.error("File too large", {
+        description: `Maximum allowed size is 2MB (selected file is ${(file.size / 1024 / 1024).toFixed(2)}MB).`,
+      });
+      return;
+    }
+
+    const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (!allowedTypes.includes(file.type)) {
+      sonnerToast.error("Invalid file type", {
+        description: `Allowed: JPEG, PNG, WebP, GIF (got ${file.type || "unknown"}).`,
+      });
+      return;
+    }
+
+    if (!editingRecipe) {
+      sonnerToast.info("Save the recipe first", {
+        description: "Please create the recipe before uploading an image.",
+      });
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/recipes/${editingRecipe.id}/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setFormImageUrl(data.imageUrl);
+        sonnerToast.success("Image uploaded", {
+          description: file.name,
+        });
+      } else {
+        sonnerToast.error("Upload failed", {
+          description: data.error || "Unknown error",
+        });
+      }
+    } catch (err) {
+      console.error("Error uploading image:", err);
+      sonnerToast.error("Upload failed", {
+        description: "Network error while uploading image.",
+      });
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleImageRemove = async () => {
+    if (!editingRecipe) {
+      setFormImageUrl(null);
+      return;
+    }
+    setUploadingImage(true);
+    try {
+      const res = await fetch(`/api/recipes/${editingRecipe.id}/upload`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setFormImageUrl(null);
+        sonnerToast.success("Image removed");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        sonnerToast.error("Remove failed", {
+          description: data.error || "Unknown error",
+        });
+      }
+    } catch (err) {
+      console.error("Error removing image:", err);
+      sonnerToast.error("Remove failed", {
+        description: "Network error while removing image.",
+      });
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageUpload(file);
+  };
+
   const handleSubmit = async () => {
     if (!formName || !formMealType) return;
     const validIngredients = formIngredients.filter(
@@ -558,6 +712,7 @@ export function MealsView() {
         mealType: formMealType,
         baseServings: parseInt(formBaseServings) || 100,
         instructions: formInstructions || null,
+        imageUrl: formImageUrl,
         ingredients: validIngredients.map((row) => ({
           ingredientId: row.ingredientId,
           quantity: parseFloat(row.quantity),
@@ -597,6 +752,14 @@ export function MealsView() {
 
   const handleDelete = async (recipe: Recipe) => {
     try {
+      // Best-effort: remove image file before deleting the recipe.
+      if (recipe.imageUrl) {
+        try {
+          await fetch(`/api/recipes/${recipe.id}/upload`, { method: "DELETE" });
+        } catch {
+          /* ignore – recipe deletion will still proceed */
+        }
+      }
       const res = await fetch(`/api/recipes/${recipe.id}`, { method: "DELETE" });
       if (res.ok) {
         setDeleteConfirm(null);
@@ -882,7 +1045,13 @@ export function MealsView() {
                     )}
                     onClick={() => openDetail(recipe)}
                   >
-
+                    {/* Recipe image header */}
+                    <RecipeImage
+                      imageUrl={recipe.imageUrl}
+                      name={recipe.name}
+                      className="h-32 w-full shrink-0 border-b border-orange-100/60 dark:border-orange-900/30"
+                      rounded="rounded-none"
+                    />
                     <CardHeader className="pb-2 pt-4">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex-1 min-w-0">
@@ -1236,6 +1405,22 @@ export function MealsView() {
                                 style.accent
                               )}
                             />
+                            <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md border bg-muted/40">
+                              {recipe.imageUrl ? (
+                                <img
+                                  src={recipe.imageUrl}
+                                  alt={recipe.name}
+                                  loading="lazy"
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/30">
+                                  <span className="bg-gradient-to-br from-orange-500 to-amber-500 bg-clip-text text-sm font-bold text-transparent dark:from-orange-300 dark:to-amber-300">
+                                    {(recipe.name || "?").charAt(0).toUpperCase()}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
                             <div className="min-w-0">
                               <p className="font-medium truncate">{recipe.name}</p>
                               {recipe.description && (
@@ -1378,6 +1563,14 @@ export function MealsView() {
               </DialogHeader>
 
               <div className="space-y-4">
+                {/* Recipe hero image */}
+                <RecipeImage
+                  imageUrl={detailRecipe.imageUrl}
+                  name={detailRecipe.name}
+                  className="h-56 w-full"
+                  eager
+                />
+
                 {/* Meta row */}
                 <div className="flex flex-wrap gap-4 text-sm">
                   <div className="flex items-center gap-1.5 text-muted-foreground">
@@ -1669,6 +1862,88 @@ export function MealsView() {
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Image section */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Recipe Image</Label>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+                {/* Preview / placeholder */}
+                <div className="relative shrink-0 overflow-hidden rounded-lg border bg-muted/30">
+                  <RecipeImage
+                    imageUrl={formImageUrl}
+                    name={formName || "?"}
+                    className="h-32 w-full sm:w-48"
+                    rounded="rounded-lg"
+                  />
+                  {uploadingImage && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm">
+                      <div className="flex flex-col items-center gap-2 text-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-orange-600 dark:text-orange-400" />
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Uploading...
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex flex-1 flex-col justify-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-2 w-full sm:w-auto"
+                          disabled={uploadingImage || !editingRecipe}
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          {uploadingImage ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Upload className="h-4 w-4" />
+                          )}
+                          {formImageUrl ? "Replace Image" : "Upload Image"}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent className="text-xs">
+                      {!editingRecipe
+                        ? "Save the recipe first to enable image upload"
+                        : "JPEG, PNG, WebP or GIF · max 2MB"}
+                    </TooltipContent>
+                  </Tooltip>
+                  {formImageUrl && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 w-full sm:w-auto text-destructive hover:text-destructive hover:bg-destructive/10"
+                      disabled={uploadingImage}
+                      onClick={handleImageRemove}
+                    >
+                      <X className="h-4 w-4" />
+                      Remove Image
+                    </Button>
+                  )}
+                  {!editingRecipe && !formImageUrl && (
+                    <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                      <ImagePlus className="h-3 w-3" />
+                      Save the recipe first, then edit to upload an image.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Name */}
             <div className="space-y-1.5">
               <Label htmlFor="recipe-name">Recipe Name *</Label>

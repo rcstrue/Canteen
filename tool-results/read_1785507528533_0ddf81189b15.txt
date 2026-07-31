@@ -1,0 +1,1570 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback } from "react";
+     4→import {
+     5→  Card,
+     6→  CardContent,
+     7→  CardDescription,
+     8→  CardHeader,
+     9→  CardTitle,
+    10→} from "@/components/ui/card";
+    11→import {
+    12→  Table,
+    13→  TableBody,
+    14→  TableCell,
+    15→  TableHead,
+    16→  TableHeader,
+    17→  TableRow,
+    18→} from "@/components/ui/table";
+    19→import {
+    20→  Dialog,
+    21→  DialogContent,
+    22→  DialogDescription,
+    23→  DialogFooter,
+    24→  DialogHeader,
+    25→  DialogTitle,
+    26→} from "@/components/ui/dialog";
+    27→import {
+    28→  AlertDialog,
+    29→  AlertDialogAction,
+    30→  AlertDialogCancel,
+    31→  AlertDialogContent,
+    32→  AlertDialogDescription,
+    33→  AlertDialogFooter,
+    34→  AlertDialogHeader,
+    35→  AlertDialogTitle,
+    36→} from "@/components/ui/alert-dialog";
+    37→import {
+    38→  Select,
+    39→  SelectContent,
+    40→  SelectItem,
+    41→  SelectTrigger,
+    42→  SelectValue,
+    43→} from "@/components/ui/select";
+    44→import { Input } from "@/components/ui/input";
+    45→import { Button } from "@/components/ui/button";
+    46→import { Badge } from "@/components/ui/badge";
+    47→import { Label } from "@/components/ui/label";
+    48→import { Textarea } from "@/components/ui/textarea";
+    49→import { Separator } from "@/components/ui/separator";
+    50→import {
+    51→  ShoppingCart,
+    52→  Plus,
+    53→  Search,
+    54→  Trash2,
+    55→  Eye,
+    56→  X,
+    57→  Loader2,
+    58→  CalendarDays,
+    59→  FileText,
+    60→  IndianRupee,
+    61→  Package,
+    62→  ChevronLeft,
+    63→  ChevronRight,
+    64→  Minus,
+    65→  AlertTriangle,
+    66→  Download,
+    67→  Clock,
+    68→  CheckCircle2,
+    69→  Banknote,
+    70→  CircleDot,
+    71→  Printer,
+    72→  Flame,
+    73→} from "lucide-react";
+    74→import { downloadCSV } from "@/lib/export-utils";
+    75→import { useToast } from "@/hooks/use-toast";
+    76→
+    77→// ─── Types ───────────────────────────────────────────────────────────────────
+    78→
+    79→interface Ingredient {
+    80→  id: string;
+    81→  name: string;
+    82→  unit: string;
+    83→  category: string;
+    84→  currentStock: number;
+    85→  minStock: number;
+    86→  lastPurchasePrice: number;
+    87→  avgCost: number;
+    88→  supplier: string | null;
+    89→}
+    90→
+    91→interface PurchaseItem {
+    92→  id: string;
+    93→  purchaseId: string;
+    94→  ingredientId: string;
+    95→  quantity: number;
+    96→  unitPrice: number;
+    97→  totalAmount: number;
+    98→  ingredient: {
+    99→    id: string;
+   100→    name: string;
+   101→    unit: string;
+   102→    category: string;
+   103→  };
+   104→}
+   105→
+   106→interface Purchase {
+   107→  id: string;
+   108→  date: string;
+   109→  supplier: string | null;
+   110→  invoiceNo: string | null;
+   111→  totalAmount: number;
+   112→  notes: string | null;
+   113→  createdAt: string;
+   114→  items: PurchaseItem[];
+   115→}
+   116→
+   117→interface NewPurchaseItem {
+   118→  ingredientId: string;
+   119→  quantity: number;
+   120→  unitPrice: number;
+   121→  totalAmount: number;
+   122→}
+   123→
+   124→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   125→
+   126→function formatCurrency(amount: number): string {
+   127→  return new Intl.NumberFormat("en-IN", {
+   128→    style: "currency",
+   129→    currency: "INR",
+   130→    minimumFractionDigits: 2,
+   131→    maximumFractionDigits: 2,
+   132→  }).format(amount);
+   133→}
+   134→
+   135→function formatDate(dateStr: string): string {
+   136→  const d = new Date(dateStr);
+   137→  const day = String(d.getDate()).padStart(2, "0");
+   138→  const month = String(d.getMonth() + 1).padStart(2, "0");
+   139→  const year = d.getFullYear();
+   140→  return `${day}/${month}/${year}`;
+   141→}
+   142→
+   143→function getTodayStr(): string {
+   144→  const d = new Date();
+   145→  return d.toISOString().split("T")[0];
+   146→}
+   147→
+   148→/** Build a friendly PUR-XXXX invoice number from a purchase id. */
+   149→function getInvoiceNumber(purchase: Purchase): string {
+   150→  if (purchase.invoiceNo && purchase.invoiceNo.trim()) {
+   151→    return purchase.invoiceNo.trim();
+   152→  }
+   153→  // Derive a deterministic short id from the purchase id
+   154→  const short = purchase.id.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase();
+   155→  return `PUR-${short || "0000"}`;
+   156→}
+   157→
+   158→// Purchase status based on date (simulated since no status field in DB)
+   159→type PurchaseStatus = "Pending" | "Received" | "Paid";
+   160→
+   161→function getPurchaseStatus(purchase: Purchase): PurchaseStatus {
+   162→  const purchaseDate = new Date(purchase.date);
+   163→  const today = new Date();
+   164→  today.setHours(0, 0, 0, 0);
+   165→  const diffDays = Math.floor((today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
+   166→  if (diffDays <= 0) return "Pending";
+   167→  if (diffDays <= 7) return "Received";
+   168→  return "Paid";
+   169→}
+   170→
+   171→function getStatusConfig(status: PurchaseStatus): {
+   172→  label: string;
+   173→  badgeClass: string;
+   174→  Icon: React.ComponentType<{ className?: string }>;
+   175→} {
+   176→  switch (status) {
+   177→    case "Pending":
+   178→      return {
+   179→        label: "Pending",
+   180→        badgeClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+   181→        Icon: Clock,
+   182→      };
+   183→    case "Received":
+   184→      return {
+   185→        label: "Received",
+   186→        badgeClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+   187→        Icon: CheckCircle2,
+   188→      };
+   189→    case "Paid":
+   190→      return {
+   191→        label: "Paid",
+   192→        badgeClass: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+   193→        Icon: Banknote,
+   194→      };
+   195→  }
+   196→}
+   197→
+   198→// ─── Component ───────────────────────────────────────────────────────────────
+   199→
+   200→export function PurchasesView() {
+   201→  const { toast } = useToast();
+   202→  // ── State ────────────────────────────────────────────────────────────────
+   203→  const [purchases, setPurchases] = useState<Purchase[]>([]);
+   204→  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+   205→  const [loading, setLoading] = useState(true);
+   206→  const [total, setTotal] = useState(0);
+   207→
+   208→  // Filters
+   209→  const [search, setSearch] = useState("");
+   210→  const [startDate, setStartDate] = useState("");
+   211→  const [endDate, setEndDate] = useState("");
+   212→
+   213→  // Pagination
+   214→  const [page, setPage] = useState(1);
+   215→  const pageSize = 10;
+   216→
+   217→  // Dialogs
+   218→  const [detailOpen, setDetailOpen] = useState(false);
+   219→  const [newPurchaseOpen, setNewPurchaseOpen] = useState(false);
+   220→  const [deleteOpen, setDeleteOpen] = useState(false);
+   221→  const [invoiceOpen, setInvoiceOpen] = useState(false);
+   222→  const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
+   223→  const [deleteId, setDeleteId] = useState<string | null>(null);
+   224→
+   225→  // New purchase form
+   226→  const [formDate, setFormDate] = useState(getTodayStr());
+   227→  const [formSupplier, setFormSupplier] = useState("");
+   228→  const [formInvoiceNo, setFormInvoiceNo] = useState("");
+   229→  const [formNotes, setFormNotes] = useState("");
+   230→  const [formItems, setFormItems] = useState<NewPurchaseItem[]>([]);
+   231→  const [submitting, setSubmitting] = useState(false);
+   232→  const [deleting, setDeleting] = useState(false);
+   233→
+   234→  // ── Fetch ────────────────────────────────────────────────────────────────
+   235→
+   236→  const fetchPurchases = useCallback(async () => {
+   237→    setLoading(true);
+   238→    try {
+   239→      const params = new URLSearchParams();
+   240→      params.set("limit", String(pageSize));
+   241→      params.set("offset", String((page - 1) * pageSize));
+   242→      if (startDate) params.set("startDate", startDate);
+   243→      if (endDate) params.set("endDate", endDate);
+   244→      if (search) params.set("supplier", search);
+   245→
+   246→      const res = await fetch(`/api/purchases?${params.toString()}`);
+   247→      if (res.ok) {
+   248→        const data = await res.json();
+   249→        setPurchases(data.data || []);
+   250→        setTotal(data.total || 0);
+   251→      }
+   252→    } catch (err) {
+   253→      console.error("Error fetching purchases:", err);
+   254→    } finally {
+   255→      setLoading(false);
+   256→    }
+   257→  }, [page, startDate, endDate, search]);
+   258→
+   259→  const fetchIngredients = useCallback(async () => {
+   260→    try {
+   261→      const res = await fetch("/api/ingredients");
+   262→      if (res.ok) {
+   263→        const data = await res.json();
+   264→        setIngredients(Array.isArray(data) ? data : []);
+   265→      }
+   266→    } catch (err) {
+   267→      console.error("Error fetching ingredients:", err);
+   268→    }
+   269→  }, []);
+   270→
+   271→  useEffect(() => {
+   272→    fetchPurchases();
+   273→  }, [fetchPurchases]);
+   274→
+   275→  useEffect(() => {
+   276→    if (newPurchaseOpen) {
+   277→      fetchIngredients();
+   278→    }
+   279→  }, [newPurchaseOpen, fetchIngredients]);
+   280→
+   281→  // ── Actions ──────────────────────────────────────────────────────────────
+   282→
+   283→  const handleViewDetail = async (purchase: Purchase) => {
+   284→    try {
+   285→      const res = await fetch(`/api/purchases/${purchase.id}`);
+   286→      if (res.ok) {
+   287→        const data = await res.json();
+   288→        setSelectedPurchase(data);
+   289→        setDetailOpen(true);
+   290→      }
+   291→    } catch (err) {
+   292→      console.error("Error fetching purchase detail:", err);
+   293→    }
+   294→  };
+   295→
+   296→  const handleViewInvoice = async (purchase: Purchase) => {
+   297→    try {
+   298→      const res = await fetch(`/api/purchases/${purchase.id}`);
+   299→      if (res.ok) {
+   300→        const data = await res.json();
+   301→        setSelectedPurchase(data);
+   302→        setInvoiceOpen(true);
+   303→      }
+   304→    } catch (err) {
+   305→      console.error("Error fetching purchase for invoice:", err);
+   306→    }
+   307→  };
+   308→
+   309→  const handlePrintInvoice = () => {
+   310→    window.print();
+   311→  };
+   312→
+   313→  const handleDelete = async () => {
+   314→    if (!deleteId) return;
+   315→    setDeleting(true);
+   316→    try {
+   317→      const res = await fetch(`/api/purchases/${deleteId}`, { method: "DELETE" });
+   318→      if (res.ok) {
+   319→        await fetchPurchases();
+   320→        setDeleteOpen(false);
+   321→        setDeleteId(null);
+   322→      }
+   323→    } catch (err) {
+   324→      console.error("Error deleting purchase:", err);
+   325→    } finally {
+   326→      setDeleting(false);
+   327→    }
+   328→  };
+   329→
+   330→  const confirmDelete = (id: string) => {
+   331→    setDeleteId(id);
+   332→    setDeleteOpen(true);
+   333→  };
+   334→
+   335→  // ── New Purchase Form ────────────────────────────────────────────────────
+   336→
+   337→  const openNewPurchase = () => {
+   338→    setFormDate(getTodayStr());
+   339→    setFormSupplier("");
+   340→    setFormInvoiceNo("");
+   341→    setFormNotes("");
+   342→    setFormItems([{ ingredientId: "", quantity: 0, unitPrice: 0, totalAmount: 0 }]);
+   343→    setNewPurchaseOpen(true);
+   344→  };
+   345→
+   346→  const addItemRow = () => {
+   347→    setFormItems([...formItems, { ingredientId: "", quantity: 0, unitPrice: 0, totalAmount: 0 }]);
+   348→  };
+   349→
+   350→  const removeItemRow = (index: number) => {
+   351→    if (formItems.length <= 1) return;
+   352→    setFormItems(formItems.filter((_, i) => i !== index));
+   353→  };
+   354→
+   355→  const updateItem = (index: number, field: keyof NewPurchaseItem, value: string | number) => {
+   356→    const updated = [...formItems];
+   357→    if (field === "ingredientId") {
+   358→      updated[index] = { ...updated[index], ingredientId: value as string };
+   359→      // Auto-fill unit price from ingredient's lastPurchasePrice
+   360→      const ingredient = ingredients.find((i) => i.id === value);
+   361→      if (ingredient) {
+   362→        updated[index].unitPrice = ingredient.lastPurchasePrice;
+   363→        updated[index].totalAmount = updated[index].quantity * updated[index].unitPrice;
+   364→      }
+   365→    } else if (field === "quantity") {
+   366→      const qty = parseFloat(value as string) || 0;
+   367→      updated[index] = { ...updated[index], quantity: qty, totalAmount: qty * updated[index].unitPrice };
+   368→    } else if (field === "unitPrice") {
+   369→      const price = parseFloat(value as string) || 0;
+   370→      updated[index] = { ...updated[index], unitPrice: price, totalAmount: updated[index].quantity * price };
+   371→    }
+   372→    setFormItems(updated);
+   373→  };
+   374→
+   375→  const formGrandTotal = formItems.reduce((sum, item) => sum + item.totalAmount, 0);
+   376→
+   377→  const handleSubmitPurchase = async () => {
+   378→    // Validate
+   379→    if (!formSupplier.trim()) {
+   380→      alert("Please enter a supplier name.");
+   381→      return;
+   382→    }
+   383→    const validItems = formItems.filter((item) => item.ingredientId && item.quantity > 0);
+   384→    if (validItems.length === 0) {
+   385→      alert("Please add at least one item with an ingredient and quantity.");
+   386→      return;
+   387→    }
+   388→
+   389→    setSubmitting(true);
+   390→    try {
+   391→      const res = await fetch("/api/purchases", {
+   392→        method: "POST",
+   393→        headers: { "Content-Type": "application/json" },
+   394→        body: JSON.stringify({
+   395→          date: formDate,
+   396→          supplier: formSupplier.trim(),
+   397→          invoiceNo: formInvoiceNo.trim() || null,
+   398→          notes: formNotes.trim() || null,
+   399→          items: validItems.map((item) => ({
+   400→            ingredientId: item.ingredientId,
+   401→            quantity: item.quantity,
+   402→            unitPrice: item.unitPrice,
+   403→            totalAmount: item.totalAmount,
+   404→          })),
+   405→        }),
+   406→      });
+   407→
+   408→      if (res.ok) {
+   409→        setNewPurchaseOpen(false);
+   410→        await fetchPurchases();
+   411→      } else {
+   412→        const data = await res.json();
+   413→        alert(data.error || "Failed to create purchase");
+   414→      }
+   415→    } catch (err) {
+   416→      console.error("Error creating purchase:", err);
+   417→      alert("Failed to create purchase");
+   418→    } finally {
+   419→      setSubmitting(false);
+   420→    }
+   421→  };
+   422→
+   423→  // ── Pagination ───────────────────────────────────────────────────────────
+   424→
+   425→  const totalPages = Math.ceil(total / pageSize);
+   426→
+   427→  const getPageNumbers = () => {
+   428→    const pages: number[] = [];
+   429→    const maxVisible = 5;
+   430→    let start = Math.max(1, page - Math.floor(maxVisible / 2));
+   431→    const end = Math.min(totalPages, start + maxVisible - 1);
+   432→    if (end - start + 1 < maxVisible) {
+   433→      start = Math.max(1, end - maxVisible + 1);
+   434→    }
+   435→    for (let i = start; i <= end; i++) {
+   436→      pages.push(i);
+   437→    }
+   438→    return pages;
+   439→  };
+   440→
+   441→  // ── Summary stats ────────────────────────────────────────────────────────
+   442→
+   443→  const totalPurchaseAmount = purchases.reduce((sum, p) => sum + p.totalAmount, 0);
+   444→
+   445→  // ── Render ───────────────────────────────────────────────────────────────
+   446→
+   447→  return (
+   448→    <div className="space-y-6">
+   449→      {/* Header */}
+   450→      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   451→        <div className="flex items-center gap-3">
+   452→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   453→            <ShoppingCart className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   454→          </div>
+   455→          <div>
+   456→            <h1 className="text-2xl font-bold tracking-tight">Purchases</h1>
+   457→            <p className="text-muted-foreground text-sm">
+   458→              Record vendor purchases, track incoming stock, and manage supplier invoices
+   459→            </p>
+   460→          </div>
+   461→        </div>
+   462→        <div className="flex items-center gap-2">
+   463→          <Button
+   464→            variant="outline"
+   465→            onClick={() => {
+   466→              const rows = purchases.map((p) => ({
+   467→                Date: formatDate(p.date),
+   468→                Supplier: p.supplier || "—",
+   469→                "Invoice No": p.invoiceNo || "—",
+   470→                "Items Count": String(p.items?.length ?? 0),
+   471→                "Total Amount": String(p.totalAmount),
+   472→              }));
+   473→              downloadCSV("purchases.csv", rows);
+   474→              toast({
+   475→                title: "Export successful",
+   476→                description: `${rows.length} purchase(s) exported as CSV.`,
+   477→              });
+   478→            }}
+   479→            disabled={purchases.length === 0}
+   480→          >
+   481→            <Download className="mr-2 h-4 w-4" />
+   482→            Export CSV
+   483→          </Button>
+   484→          <Button onClick={openNewPurchase} className="bg-amber-600 hover:bg-amber-700 text-white">
+   485→            <Plus className="mr-2 h-4 w-4" />
+   486→            New Purchase
+   487→          </Button>
+   488→        </div>
+   489→      </div>
+   490→
+   491→      {/* Summary Cards */}
+   492→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+   493→        <Card className="transition-all hover:shadow-md">
+   494→          <CardContent className="p-4">
+   495→            <div className="flex items-center justify-between">
+   496→              <div>
+   497→                <p className="text-sm text-muted-foreground">Total Purchases</p>
+   498→                <p className="text-2xl font-bold">{total}</p>
+   499→              </div>
+   500→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   501→                <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   502→              </div>
+   503→            </div>
+   504→          </CardContent>
+   505→        </Card>
+   506→        <Card className="transition-all hover:shadow-md">
+   507→          <CardContent className="p-4">
+   508→            <div className="flex items-center justify-between">
+   509→              <div>
+   510→                <p className="text-sm text-muted-foreground">Page Total</p>
+   511→                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+   512→                  {formatCurrency(totalPurchaseAmount)}
+   513→                </p>
+   514→              </div>
+   515→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+   516→                <IndianRupee className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   517→              </div>
+   518→            </div>
+   519→          </CardContent>
+   520→        </Card>
+   521→        <Card className="transition-all hover:shadow-md">
+   522→          <CardContent className="p-4">
+   523→            <div className="flex items-center justify-between">
+   524→              <div>
+   525→                <p className="text-sm text-muted-foreground">Items on Page</p>
+   526→                <p className="text-2xl font-bold">{purchases.length}</p>
+   527→              </div>
+   528→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   529→                <Package className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   530→              </div>
+   531→            </div>
+   532→          </CardContent>
+   533→        </Card>
+   534→      </div>
+   535→
+   536→      {/* Filters */}
+   537→      <Card>
+   538→        <CardContent className="p-4">
+   539→          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+   540→            <div className="flex-1">
+   541→              <Label className="mb-1.5 block text-sm font-medium">Search Supplier / Invoice</Label>
+   542→              <div className="relative">
+   543→                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   544→                <Input
+   545→                  placeholder="Search by supplier or invoice..."
+   546→                  value={search}
+   547→                  onChange={(e) => {
+   548→                    setSearch(e.target.value);
+   549→                    setPage(1);
+   550→                  }}
+   551→                  className="pl-9"
+   552→                />
+   553→                {search && (
+   554→                  <button
+   555→                    onClick={() => {
+   556→                      setSearch("");
+   557→                      setPage(1);
+   558→                    }}
+   559→                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+   560→                  >
+   561→                    <X className="h-4 w-4" />
+   562→                  </button>
+   563→                )}
+   564→              </div>
+   565→            </div>
+   566→            <div className="flex gap-3">
+   567→              <div>
+   568→                <Label className="mb-1.5 block text-sm font-medium">From</Label>
+   569→                <Input
+   570→                  type="date"
+   571→                  value={startDate}
+   572→                  onChange={(e) => {
+   573→                    setStartDate(e.target.value);
+   574→                    setPage(1);
+   575→                  }}
+   576→                  className="w-40"
+   577→                />
+   578→              </div>
+   579→              <div>
+   580→                <Label className="mb-1.5 block text-sm font-medium">To</Label>
+   581→                <Input
+   582→                  type="date"
+   583→                  value={endDate}
+   584→                  onChange={(e) => {
+   585→                    setEndDate(e.target.value);
+   586→                    setPage(1);
+   587→                  }}
+   588→                  className="w-40"
+   589→                />
+   590→              </div>
+   591→              {(startDate || endDate || search) && (
+   592→                <Button
+   593→                  variant="outline"
+   594→                  size="sm"
+   595→                  className="mt-auto"
+   596→                  onClick={() => {
+   597→                    setSearch("");
+   598→                    setStartDate("");
+   599→                    setEndDate("");
+   600→                    setPage(1);
+   601→                  }}
+   602→                >
+   603→                  <X className="mr-1 h-3 w-3" />
+   604→                  Clear
+   605→                </Button>
+   606→              )}
+   607→            </div>
+   608→          </div>
+   609→        </CardContent>
+   610→      </Card>
+   611→
+   612→      {/* Purchases Table */}
+   613→      <Card>
+   614→        <CardHeader className="pb-3">
+   615→          <CardTitle className="flex items-center gap-2 text-lg">
+   616→            <ShoppingCart className="h-5 w-5 text-amber-600" />
+   617→            Purchase Records
+   618→          </CardTitle>
+   619→          <CardDescription>
+   620→            Showing {purchases.length} of {total} purchases
+   621→          </CardDescription>
+   622→        </CardHeader>
+   623→        <CardContent className="p-0">
+   624→          {loading ? (
+   625→            <div className="flex items-center justify-center py-16">
+   626→              <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
+   627→              <span className="ml-3 text-muted-foreground">Loading purchases...</span>
+   628→            </div>
+   629→          ) : purchases.length === 0 ? (
+   630→            <div className="flex flex-col items-center justify-center py-16 text-center">
+   631→              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 mb-4">
+   632→                <ShoppingCart className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+   633→              </div>
+   634→              <p className="text-base font-medium text-foreground">No purchases found</p>
+   635→              <p className="mt-1 text-sm text-muted-foreground max-w-xs">
+   636→                {startDate || endDate || search
+   637→                  ? "Try adjusting your filters to find what you're looking for."
+   638→                  : "Record your first purchase to start tracking incoming stock."}
+   639→              </p>
+   640→              {!startDate && !endDate && !search && (
+   641→                <Button
+   642→                  onClick={openNewPurchase}
+   643→                  className="mt-4 bg-amber-600 hover:bg-amber-700 text-white"
+   644→                >
+   645→                  <Plus className="h-4 w-4 mr-2" />
+   646→                  New Purchase
+   647→                </Button>
+   648→              )}
+   649→            </div>
+   650→          ) : (
+   651→            <>
+   652→              {/* Desktop Table */}
+   653→              <div className="hidden md:block overflow-x-auto">
+   654→                <Table>
+   655→                  <TableHeader>
+   656→                    <TableRow>
+   657→                      <TableHead className="w-[120px]">Date</TableHead>
+   658→                      <TableHead>Supplier</TableHead>
+   659→                      <TableHead>Invoice No</TableHead>
+   660→                      <TableHead className="text-center">Items</TableHead>
+   661→                      <TableHead>Status</TableHead>
+   662→                      <TableHead className="text-right">Total Amount</TableHead>
+   663→                      <TableHead className="text-right">Actions</TableHead>
+   664→                    </TableRow>
+   665→                  </TableHeader>
+   666→                  <TableBody>
+   667→                    {purchases.map((purchase) => {
+   668→                      const status = getPurchaseStatus(purchase);
+   669→                      const statusConfig = getStatusConfig(status);
+   670→                      const StatusIcon = statusConfig.Icon;
+   671→                      return (
+   672→                      <TableRow
+   673→                        key={purchase.id}
+   674→                        className="cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors"
+   675→                        onClick={() => handleViewDetail(purchase)}
+   676→                      >
+   677→                        <TableCell className="font-medium">
+   678→                          <div className="flex items-center gap-2">
+   679→                            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+   680→                            {formatDate(purchase.date)}
+   681→                          </div>
+   682→                        </TableCell>
+   683→                        <TableCell>
+   684→                          {purchase.supplier || (
+   685→                            <span className="text-muted-foreground">—</span>
+   686→                          )}
+   687→                        </TableCell>
+   688→                        <TableCell>
+   689→                          {purchase.invoiceNo ? (
+   690→                            <Badge variant="secondary" className="font-mono text-xs">
+   691→                              {purchase.invoiceNo}
+   692→                            </Badge>
+   693→                          ) : (
+   694→                            <span className="text-muted-foreground">—</span>
+   695→                          )}
+   696→                        </TableCell>
+   697→                        <TableCell className="text-center">
+   698→                          <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+   699→                            {purchase.items?.length || 0}
+   700→                          </Badge>
+   701→                        </TableCell>
+   702→                        <TableCell>
+   703→                          <Badge
+   704→                            variant="outline"
+   705→                            className={`gap-1 text-[11px] font-bold px-2 py-0.5 ${statusConfig.badgeClass}`}
+   706→                          >
+   707→                            <StatusIcon className="h-3 w-3" />
+   708→                            {statusConfig.label}
+   709→                          </Badge>
+   710→                        </TableCell>
+   711→                        <TableCell className="text-right font-semibold text-amber-700 dark:text-amber-400">
+   712→                          {formatCurrency(purchase.totalAmount)}
+   713→                        </TableCell>
+   714→                        <TableCell className="text-right">
+   715→                          <div className="flex items-center justify-end gap-1">
+   716→                            <Button
+   717→                              variant="ghost"
+   718→                              size="sm"
+   719→                              onClick={(e) => {
+   720→                                e.stopPropagation();
+   721→                                handleViewDetail(purchase);
+   722→                              }}
+   723→                              title="View Details"
+   724→                            >
+   725→                              <Eye className="h-4 w-4" />
+   726→                            </Button>
+   727→                            <Button
+   728→                              variant="ghost"
+   729→                              size="sm"
+   730→                              onClick={(e) => {
+   731→                                e.stopPropagation();
+   732→                                handleViewInvoice(purchase);
+   733→                              }}
+   734→                              className="text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+   735→                              title="View / Print Invoice"
+   736→                            >
+   737→                              <Printer className="h-4 w-4" />
+   738→                            </Button>
+   739→                            <Button
+   740→                              variant="ghost"
+   741→                              size="sm"
+   742→                              onClick={(e) => {
+   743→                                e.stopPropagation();
+   744→                                confirmDelete(purchase.id);
+   745→                              }}
+   746→                              className="text-destructive hover:text-destructive"
+   747→                              title="Delete"
+   748→                            >
+   749→                              <Trash2 className="h-4 w-4" />
+   750→                            </Button>
+   751→                          </div>
+   752→                        </TableCell>
+   753→                      </TableRow>
+   754→                      );
+   755→                    })}
+   756→                  </TableBody>
+   757→                </Table>
+   758→              </div>
+   759→
+   760→              {/* Mobile Cards */}
+   761→              <div className="md:hidden space-y-3 p-4">
+   762→                {purchases.map((purchase) => (
+   763→                  <Card
+   764→                    key={purchase.id}
+   765→                    className="cursor-pointer hover:border-amber-300 dark:hover:border-amber-700 transition-colors"
+   766→                    onClick={() => handleViewDetail(purchase)}
+   767→                  >
+   768→                    <CardContent className="p-4">
+   769→                      <div className="flex items-start justify-between">
+   770→                        <div>
+   771→                          <p className="font-semibold text-sm">{purchase.supplier || "No Supplier"}</p>
+   772→                          <p className="text-xs text-muted-foreground mt-0.5">
+   773→                            {formatDate(purchase.date)}
+   774→                            {purchase.invoiceNo && ` · ${purchase.invoiceNo}`}
+   775→                          </p>
+   776→                        </div>
+   777→                        <p className="font-bold text-amber-700 dark:text-amber-400">
+   778→                          {formatCurrency(purchase.totalAmount)}
+   779→                        </p>
+   780→                      </div>
+   781→                      <div className="flex items-center justify-between mt-3">
+   782→                        <div className="flex items-center gap-2">
+   783→                          <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 text-xs">
+   784→                            {purchase.items?.length || 0} items
+   785→                          </Badge>
+   786→                          {(() => {
+   787→                            const s = getPurchaseStatus(purchase);
+   788→                            const sc = getStatusConfig(s);
+   789→                            const SI = sc.Icon;
+   790→                            return (
+   791→                              <Badge
+   792→                                variant="outline"
+   793→                                className={`gap-1 text-[10px] font-semibold ${sc.badgeClass}`}
+   794→                              >
+   795→                                <SI className="h-3 w-3" />
+   796→                                {sc.label}
+   797→                              </Badge>
+   798→                            );
+   799→                          })()}
+   800→                        </div>
+   801→                        <div className="flex gap-1">
+   802→                          <Button
+   803→                            variant="ghost"
+   804→                            size="sm"
+   805→                            onClick={(e) => {
+   806→                              e.stopPropagation();
+   807→                              handleViewDetail(purchase);
+   808→                            }}
+   809→                          >
+   810→                            <Eye className="h-4 w-4" />
+   811→                          </Button>
+   812→                          <Button
+   813→                            variant="ghost"
+   814→                            size="sm"
+   815→                            onClick={(e) => {
+   816→                              e.stopPropagation();
+   817→                              handleViewInvoice(purchase);
+   818→                            }}
+   819→                            className="text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+   820→                            title="View / Print Invoice"
+   821→                          >
+   822→                            <Printer className="h-4 w-4" />
+   823→                          </Button>
+   824→                          <Button
+   825→                            variant="ghost"
+   826→                            size="sm"
+   827→                            onClick={(e) => {
+   828→                              e.stopPropagation();
+   829→                              confirmDelete(purchase.id);
+   830→                            }}
+   831→                            className="text-destructive hover:text-destructive"
+   832→                          >
+   833→                            <Trash2 className="h-4 w-4" />
+   834→                          </Button>
+   835→                        </div>
+   836→                      </div>
+   837→                    </CardContent>
+   838→                  </Card>
+   839→                ))}
+   840→              </div>
+   841→            </>
+   842→          )}
+   843→        </CardContent>
+   844→      </Card>
+   845→
+   846→      {/* Recent Purchase Activity Timeline */}
+   847→      {purchases.length > 0 && (
+   848→        <Card>
+   849→          <CardHeader className="pb-3">
+   850→            <CardTitle className="flex items-center gap-2 text-lg">
+   851→              <CircleDot className="h-5 w-5 text-amber-600" />
+   852→              Recent Purchase Activity
+   853→            </CardTitle>
+   854→            <CardDescription>
+   855→              Latest purchase timeline
+   856→            </CardDescription>
+   857→          </CardHeader>
+   858→          <CardContent>
+   859→            <div className="relative">
+   860→              {/* Timeline line */}
+   861→              <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-amber-200 dark:bg-amber-800" />
+   862→              <div className="space-y-4">
+   863→                {purchases.slice(0, 5).map((purchase, idx) => {
+   864→                  const status = getPurchaseStatus(purchase);
+   865→                  const statusConfig = getStatusConfig(status);
+   866→                  const TIcon = statusConfig.Icon;
+   867→                  return (
+   868→                    <div key={purchase.id} className="relative flex items-start gap-4 pl-2">
+   869→                      {/* Timeline dot */}
+   870→                      <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
+   871→                        idx === 0
+   872→                          ? "bg-amber-500 border-amber-500 text-white"
+   873→                          : "bg-background border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400"
+   874→                      }`}>
+   875→                        <TIcon className="h-3.5 w-3.5" />
+   876→                      </div>
+   877→                      {/* Content */}
+   878→                      <div className="flex-1 min-w-0 pb-1">
+   879→                        <div className="flex items-center justify-between gap-2">
+   880→                          <div className="min-w-0">
+   881→                            <p className="text-sm font-medium truncate">
+   882→                              {purchase.supplier || "No Supplier"}
+   883→                            </p>
+   884→                            <p className="text-xs text-muted-foreground">
+   885→                              {formatDate(purchase.date)}
+   886→                              {purchase.invoiceNo && ` · ${purchase.invoiceNo}`}
+   887→                            </p>
+   888→                          </div>
+   889→                          <div className="flex items-center gap-2 shrink-0">
+   890→                            <Badge
+   891→                              variant="outline"
+   892→                              className={`text-[10px] font-semibold ${statusConfig.badgeClass}`}
+   893→                            >
+   894→                              {statusConfig.label}
+   895→                            </Badge>
+   896→                            <span className="text-sm font-semibold text-amber-700 dark:text-amber-400 tabular-nums">
+   897→                              {formatCurrency(purchase.totalAmount)}
+   898→                            </span>
+   899→                          </div>
+   900→                        </div>
+   901→                        {purchase.items && purchase.items.length > 0 && (
+   902→                          <div className="mt-1 flex flex-wrap gap-1">
+   903→                            {purchase.items.slice(0, 3).map((item) => (
+   904→                              <Badge
+   905→                                key={item.id}
+   906→                                variant="secondary"
+   907→                                className="text-[10px] bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"
+   908→                              >
+   909→                                {item.ingredient?.name || "Unknown"}
+   910→                              </Badge>
+   911→                            ))}
+   912→                            {purchase.items.length > 3 && (
+   913→                              <Badge variant="secondary" className="text-[10px]">
+   914→                                +{purchase.items.length - 3} more
+   915→                              </Badge>
+   916→                            )}
+   917→                          </div>
+   918→                        )}
+   919→                      </div>
+   920→                    </div>
+   921→                  );
+   922→                })}
+   923→              </div>
+   924→            </div>
+   925→          </CardContent>
+   926→        </Card>
+   927→      )}
+   928→
+   929→      {/* Pagination */}
+   930→      {totalPages > 1 && (
+   931→        <div className="flex items-center justify-between">
+   932→          <p className="text-sm text-muted-foreground">
+   933→            Page {page} of {totalPages} · {total} total records
+   934→          </p>
+   935→          <div className="flex items-center gap-1">
+   936→            <Button
+   937→              variant="outline"
+   938→              size="sm"
+   939→              disabled={page <= 1}
+   940→              onClick={() => setPage(page - 1)}
+   941→            >
+   942→              <ChevronLeft className="h-4 w-4" />
+   943→            </Button>
+   944→            {getPageNumbers().map((p) => (
+   945→              <Button
+   946→                key={p}
+   947→                variant={p === page ? "default" : "outline"}
+   948→                size="sm"
+   949→                className={p === page ? "bg-amber-600 hover:bg-amber-700 text-white" : ""}
+   950→                onClick={() => setPage(p)}
+   951→              >
+   952→                {p}
+   953→              </Button>
+   954→            ))}
+   955→            <Button
+   956→              variant="outline"
+   957→              size="sm"
+   958→              disabled={page >= totalPages}
+   959→              onClick={() => setPage(page + 1)}
+   960→            >
+   961→              <ChevronRight className="h-4 w-4" />
+   962→            </Button>
+   963→          </div>
+   964→        </div>
+   965→      )}
+   966→
+   967→      {/* ── Purchase Detail Dialog ─────────────────────────────────────────── */}
+   968→      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+   969→        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   970→          <DialogHeader>
+   971→            <DialogTitle className="flex items-center gap-2">
+   972→              <FileText className="h-5 w-5 text-amber-600" />
+   973→              Purchase Details
+   974→            </DialogTitle>
+   975→            <DialogDescription>
+   976→              Full purchase record with item breakdown
+   977→            </DialogDescription>
+   978→          </DialogHeader>
+   979→
+   980→          {selectedPurchase && (
+   981→            <div className="space-y-5">
+   982→              {/* Purchase Info Grid */}
+   983→              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+   984→                <div>
+   985→                  <p className="text-xs text-muted-foreground">Date</p>
+   986→                  <p className="font-semibold text-sm">{formatDate(selectedPurchase.date)}</p>
+   987→                </div>
+   988→                <div>
+   989→                  <p className="text-xs text-muted-foreground">Supplier</p>
+   990→                  <p className="font-semibold text-sm">{selectedPurchase.supplier || "—"}</p>
+   991→                </div>
+   992→                <div>
+   993→                  <p className="text-xs text-muted-foreground">Invoice No</p>
+   994→                  <p className="font-semibold text-sm">
+   995→                    {selectedPurchase.invoiceNo || "—"}
+   996→                  </p>
+   997→                </div>
+   998→                <div>
+   999→                  <p className="text-xs text-muted-foreground">Notes</p>
+  1000→                  <p className="font-semibold text-sm">
+  1001→                    {selectedPurchase.notes || "—"}
+  1002→                  </p>
+  1003→                </div>
+  1004→              </div>
+  1005→
+  1006→              <Separator />
+  1007→
+  1008→              {/* Items Table */}
+  1009→              <div>
+  1010→                <h4 className="mb-3 font-semibold text-sm flex items-center gap-2">
+  1011→                  <Package className="h-4 w-4 text-amber-600" />
+  1012→                  Items ({selectedPurchase.items?.length || 0})
+  1013→                </h4>
+  1014→                <div className="rounded-lg border overflow-hidden">
+  1015→                  <Table>
+  1016→                    <TableHeader>
+  1017→                      <TableRow className="bg-muted/50">
+  1018→                        <TableHead className="text-xs">Ingredient</TableHead>
+  1019→                        <TableHead className="text-xs text-center">Quantity</TableHead>
+  1020→                        <TableHead className="text-xs text-right">Unit Price</TableHead>
+  1021→                        <TableHead className="text-xs text-right">Total</TableHead>
+  1022→                      </TableRow>
+  1023→                    </TableHeader>
+  1024→                    <TableBody>
+  1025→                      {selectedPurchase.items?.map((item, idx) => (
+  1026→                        <TableRow
+  1027→                          key={item.id}
+  1028→                          className={`hover:bg-muted/50 transition-colors ${idx % 2 === 1 ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}`}
+  1029→                        >
+  1030→                          <TableCell className="text-sm font-medium">
+  1031→                            {item.ingredient?.name || "Unknown"}
+  1032→                            <span className="ml-1 text-xs text-muted-foreground">
+  1033→                              ({item.ingredient?.unit || ""})
+  1034→                            </span>
+  1035→                          </TableCell>
+  1036→                          <TableCell className="text-sm text-center">
+  1037→                            {item.quantity} {item.ingredient?.unit || ""}
+  1038→                          </TableCell>
+  1039→                          <TableCell className="text-sm text-right">
+  1040→                            {formatCurrency(item.unitPrice)}
+  1041→                          </TableCell>
+  1042→                          <TableCell className="text-sm text-right font-semibold">
+  1043→                            {formatCurrency(item.totalAmount)}
+  1044→                          </TableCell>
+  1045→                        </TableRow>
+  1046→                      ))}
+  1047→                    </TableBody>
+  1048→                  </Table>
+  1049→                </div>
+  1050→              </div>
+  1051→
+  1052→              {/* Grand Total */}
+  1053→              <div className="flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-900/20 p-4 border border-amber-200 dark:border-amber-800">
+  1054→                <span className="font-semibold text-amber-800 dark:text-amber-300">Grand Total</span>
+  1055→                <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
+  1056→                  {formatCurrency(selectedPurchase.totalAmount)}
+  1057→                </span>
+  1058→              </div>
+  1059→            </div>
+  1060→          )}
+  1061→          <DialogFooter className="gap-2">
+  1062→            <Button
+  1063→              variant="outline"
+  1064→              onClick={() => setDetailOpen(false)}
+  1065→            >
+  1066→              Close
+  1067→            </Button>
+  1068→            <Button
+  1069→              onClick={() => {
+  1070→                setDetailOpen(false);
+  1071→                setInvoiceOpen(true);
+  1072→              }}
+  1073→              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+  1074→            >
+  1075→              <Printer className="h-4 w-4" />
+  1076→              Print Invoice
+  1077→            </Button>
+  1078→          </DialogFooter>
+  1079→        </DialogContent>
+  1080→      </Dialog>
+  1081→
+  1082→      {/* ── New Purchase Dialog ────────────────────────────────────────────── */}
+  1083→      <Dialog open={newPurchaseOpen} onOpenChange={setNewPurchaseOpen}>
+  1084→        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+  1085→          <DialogHeader>
+  1086→            <DialogTitle className="flex items-center gap-2">
+  1087→              <Plus className="h-5 w-5 text-amber-600" />
+  1088→              New Purchase
+  1089→            </DialogTitle>
+  1090→            <DialogDescription>
+  1091→              Record a new purchase with vendor details and line items
+  1092→            </DialogDescription>
+  1093→          </DialogHeader>
+  1094→
+  1095→          <div className="space-y-5">
+  1096→            {/* Purchase Info */}
+  1097→            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+  1098→              <div>
+  1099→                <Label className="mb-1.5 block text-sm font-medium">
+  1100→                  Date <span className="text-destructive">*</span>
+  1101→                </Label>
+  1102→                <Input
+  1103→                  type="date"
+  1104→                  value={formDate}
+  1105→                  onChange={(e) => setFormDate(e.target.value)}
+  1106→                />
+  1107→              </div>
+  1108→              <div>
+  1109→                <Label className="mb-1.5 block text-sm font-medium">
+  1110→                  Supplier <span className="text-destructive">*</span>
+  1111→                </Label>
+  1112→                <Input
+  1113→                  placeholder="Enter supplier name"
+  1114→                  value={formSupplier}
+  1115→                  onChange={(e) => setFormSupplier(e.target.value)}
+  1116→                />
+  1117→              </div>
+  1118→              <div>
+  1119→                <Label className="mb-1.5 block text-sm font-medium">Invoice No</Label>
+  1120→                <Input
+  1121→                  placeholder="Optional invoice number"
+  1122→                  value={formInvoiceNo}
+  1123→                  onChange={(e) => setFormInvoiceNo(e.target.value)}
+  1124→                />
+  1125→              </div>
+  1126→              <div>
+  1127→                <Label className="mb-1.5 block text-sm font-medium">Notes</Label>
+  1128→                <Input
+  1129→                  placeholder="Optional notes"
+  1130→                  value={formNotes}
+  1131→                  onChange={(e) => setFormNotes(e.target.value)}
+  1132→                />
+  1133→              </div>
+  1134→            </div>
+  1135→
+  1136→            <Separator />
+  1137→
+  1138→            {/* Dynamic Items Section */}
+  1139→            <div>
+  1140→              <div className="flex items-center justify-between mb-3">
+  1141→                <h4 className="font-semibold text-sm flex items-center gap-2">
+  1142→                  <Package className="h-4 w-4 text-amber-600" />
+  1143→                  Purchase Items
+  1144→                </h4>
+  1145→                <Button
+  1146→                  type="button"
+  1147→                  variant="outline"
+  1148→                  size="sm"
+  1149→                  onClick={addItemRow}
+  1150→                  className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-950/30"
+  1151→                >
+  1152→                  <Plus className="mr-1 h-3 w-3" />
+  1153→                  Add Item
+  1154→                </Button>
+  1155→              </div>
+  1156→
+  1157→              <div className="space-y-3">
+  1158→                {formItems.map((item, index) => {
+  1159→                  const selectedIngredient = ingredients.find(
+  1160→                    (i) => i.id === item.ingredientId
+  1161→                  );
+  1162→                  return (
+  1163→                    <div
+  1164→                      key={index}
+  1165→                      className="rounded-lg border p-3 bg-card space-y-3"
+  1166→                    >
+  1167→                      <div className="flex items-center justify-between">
+  1168→                        <span className="text-xs font-medium text-muted-foreground">
+  1169→                          Item #{index + 1}
+  1170→                        </span>
+  1171→                        {formItems.length > 1 && (
+  1172→                          <Button
+  1173→                            type="button"
+  1174→                            variant="ghost"
+  1175→                            size="sm"
+  1176→                            onClick={() => removeItemRow(index)}
+  1177→                            className="h-7 text-destructive hover:text-destructive"
+  1178→                          >
+  1179→                            <Minus className="h-3 w-3 mr-1" />
+  1180→                            Remove
+  1181→                          </Button>
+  1182→                        )}
+  1183→                      </div>
+  1184→                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+  1185→                        {/* Ingredient Select */}
+  1186→                        <div className="sm:col-span-2">
+  1187→                          <Label className="mb-1 block text-xs font-medium">
+  1188→                            Ingredient <span className="text-destructive">*</span>
+  1189→                          </Label>
+  1190→                          <Select
+  1191→                            value={item.ingredientId}
+  1192→                            onValueChange={(val) => updateItem(index, "ingredientId", val)}
+  1193→                          >
+  1194→                            <SelectTrigger className="w-full">
+  1195→                              <SelectValue placeholder="Select ingredient" />
+  1196→                            </SelectTrigger>
+  1197→                            <SelectContent>
+  1198→                              {ingredients.map((ing) => (
+  1199→                                <SelectItem key={ing.id} value={ing.id}>
+  1200→                                  {ing.name} ({ing.unit})
+  1201→                                  {ing.lastPurchasePrice > 0 &&
+  1202→                                    ` · ₹${ing.lastPurchasePrice.toFixed(2)}`}
+  1203→                                </SelectItem>
+  1204→                              ))}
+  1205→                            </SelectContent>
+  1206→                          </Select>
+  1207→                        </div>
+  1208→                        {/* Quantity */}
+  1209→                        <div>
+  1210→                          <Label className="mb-1 block text-xs font-medium">
+  1211→                            Quantity <span className="text-destructive">*</span>
+  1212→                          </Label>
+  1213→                          <Input
+  1214→                            type="number"
+  1215→                            min="0"
+  1216→                            step="0.01"
+  1217→                            placeholder="0"
+  1218→                            value={item.quantity || ""}
+  1219→                            onChange={(e) =>
+  1220→                              updateItem(index, "quantity", e.target.value)
+  1221→                            }
+  1222→                          />
+  1223→                          {selectedIngredient && (
+  1224→                            <p className="mt-0.5 text-[10px] text-muted-foreground">
+  1225→                              in {selectedIngredient.unit}
+  1226→                            </p>
+  1227→                          )}
+  1228→                        </div>
+  1229→                        {/* Unit Price */}
+  1230→                        <div>
+  1231→                          <Label className="mb-1 block text-xs font-medium">
+  1232→                            Unit Price (₹)
+  1233→                          </Label>
+  1234→                          <Input
+  1235→                            type="number"
+  1236→                            min="0"
+  1237→                            step="0.01"
+  1238→                            placeholder="0.00"
+  1239→                            value={item.unitPrice || ""}
+  1240→                            onChange={(e) =>
+  1241→                              updateItem(index, "unitPrice", e.target.value)
+  1242→                            }
+  1243→                          />
+  1244→                        </div>
+  1245→                      </div>
+  1246→                      {/* Row Total */}
+  1247→                      {item.totalAmount > 0 && (
+  1248→                        <div className="flex justify-end">
+  1249→                          <span className="text-xs text-muted-foreground">
+  1250→                            Row Total:{" "}
+  1251→                            <span className="font-semibold text-amber-700 dark:text-amber-400">
+  1252→                              {formatCurrency(item.totalAmount)}
+  1253→                            </span>
+  1254→                          </span>
+  1255→                        </div>
+  1256→                      )}
+  1257→                    </div>
+  1258→                  );
+  1259→                })}
+  1260→              </div>
+  1261→
+  1262→              {/* Grand Total Preview */}
+  1263→              <div className="mt-4 flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-900/20 p-4 border border-amber-200 dark:border-amber-800">
+  1264→                <span className="font-semibold text-amber-800 dark:text-amber-300">
+  1265→                  Grand Total
+  1266→                </span>
+  1267→                <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
+  1268→                  {formatCurrency(formGrandTotal)}
+  1269→                </span>
+  1270→              </div>
+  1271→            </div>
+  1272→
+  1273→            {/* Info Note */}
+  1274→            <div className="flex items-start gap-2 rounded-md bg-blue-50 dark:bg-blue-950/20 p-3 text-xs text-blue-700 dark:text-blue-300">
+  1275→              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+  1276→              <p>
+  1277→                Submitting this purchase will automatically create stock movements and update
+  1278→                ingredient stock levels, last purchase price, and average cost.
+  1279→              </p>
+  1280→            </div>
+  1281→          </div>
+  1282→
+  1283→          <DialogFooter>
+  1284→            <Button
+  1285→              variant="outline"
+  1286→              onClick={() => setNewPurchaseOpen(false)}
+  1287→              disabled={submitting}
+  1288→            >
+  1289→              Cancel
+  1290→            </Button>
+  1291→            <Button
+  1292→              onClick={handleSubmitPurchase}
+  1293→              disabled={submitting}
+  1294→              className="bg-amber-600 hover:bg-amber-700 text-white"
+  1295→            >
+  1296→              {submitting ? (
+  1297→                <>
+  1298→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1299→                  Saving...
+  1300→                </>
+  1301→              ) : (
+  1302→                <>
+  1303→                  <ShoppingCart className="mr-2 h-4 w-4" />
+  1304→                  Record Purchase
+  1305→                </>
+  1306→              )}
+  1307→            </Button>
+  1308→          </DialogFooter>
+  1309→        </DialogContent>
+  1310→      </Dialog>
+  1311→
+  1312→      {/* ── Delete Confirmation Dialog ─────────────────────────────────────── */}
+  1313→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+  1314→        <AlertDialogContent>
+  1315→          <AlertDialogHeader>
+  1316→            <AlertDialogTitle className="flex items-center gap-2">
+  1317→              <Trash2 className="h-5 w-5 text-destructive" />
+  1318→              Delete Purchase
+  1319→            </AlertDialogTitle>
+  1320→            <AlertDialogDescription>
+  1321→              Are you sure you want to delete this purchase? This action cannot be undone.
+  1322→              The purchase record and all its items will be permanently removed.
+  1323→            </AlertDialogDescription>
+  1324→          </AlertDialogHeader>
+  1325→          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+  1326→            <strong>Note:</strong> Deleting a purchase does NOT reverse the stock movements that
+  1327→            were created. Stock levels will remain as updated.
+  1328→          </div>
+  1329→          <AlertDialogFooter>
+  1330→            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+  1331→            <AlertDialogAction
+  1332→              onClick={handleDelete}
+  1333→              disabled={deleting}
+  1334→              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  1335→            >
+  1336→              {deleting ? (
+  1337→                <>
+  1338→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1339→                  Deleting...
+  1340→                </>
+  1341→              ) : (
+  1342→                "Delete Purchase"
+  1343→              )}
+  1344→            </AlertDialogAction>
+  1345→          </AlertDialogFooter>
+  1346→        </AlertDialogContent>
+  1347→      </AlertDialog>
+  1348→
+  1349→      {/* ── Purchase Invoice Dialog (Printable) ─────────────────────────────── */}
+  1350→      <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
+  1351→        <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto">
+  1352→          <DialogHeader className="no-print">
+  1353→            <DialogTitle className="flex items-center gap-2">
+  1354→              <Printer className="h-5 w-5 text-amber-600" />
+  1355→              Purchase Invoice
+  1356→            </DialogTitle>
+  1357→            <DialogDescription>
+  1358→              Review the invoice below, then click Print to send it to your printer.
+  1359→            </DialogDescription>
+  1360→          </DialogHeader>
+  1361→
+  1362→          {selectedPurchase && (
+  1363→            <div className="printable-invoice rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-background p-6 sm:p-8 space-y-6">
+  1364→              {/* Header */}
+  1365→              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-amber-200 dark:border-amber-800 pb-5">
+  1366→                <div className="flex items-start gap-3">
+  1367→                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm">
+  1368→                    <Flame className="h-7 w-7" />
+  1369→                  </div>
+  1370→                  <div>
+  1371→                    <h1 className="text-2xl font-bold tracking-tight text-amber-700 dark:text-amber-400">
+  1372→                      RCS Canteen
+  1373→                    </h1>
+  1374→                    <p className="text-xs text-muted-foreground">
+  1375→                      Dahej, Gujarat, India
+  1376→                    </p>
+  1377→                    <p className="text-xs text-muted-foreground">
+  1378→                      Canteen Stock &amp; Cost Management
+  1379→                    </p>
+  1380→                  </div>
+  1381→                </div>
+  1382→                <div className="sm:text-right">
+  1383→                  <p className="text-lg font-bold text-amber-700 dark:text-amber-400">
+  1384→                    Purchase Invoice
+  1385→                  </p>
+  1386→                  <p className="text-sm font-mono font-semibold">
+  1387→                    {getInvoiceNumber(selectedPurchase)}
+  1388→                  </p>
+  1389→                  <p className="text-xs text-muted-foreground mt-1">
+  1390→                    Date: <span className="font-medium text-foreground tabular-nums">{formatDate(selectedPurchase.date)}</span>
+  1391→                  </p>
+  1392→                </div>
+  1393→              </div>
+  1394→
+  1395→              {/* Supplier + meta */}
+  1396→              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  1397→                <div className="rounded-lg border border-amber-100 dark:border-amber-900/40 p-4 bg-amber-50/40 dark:bg-amber-950/10">
+  1398→                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">
+  1399→                    Supplier
+  1400→                  </p>
+  1401→                  <p className="font-semibold text-sm">
+  1402→                    {selectedPurchase.supplier || "—"}
+  1403→                  </p>
+  1404→                  {selectedPurchase.invoiceNo && (
+  1405→                    <p className="text-xs text-muted-foreground mt-1">
+  1406→                      Ref Invoice: <span className="font-mono">{selectedPurchase.invoiceNo}</span>
+  1407→                    </p>
+  1408→                  )}
+  1409→                  {selectedPurchase.notes && (
+  1410→                    <p className="text-xs text-muted-foreground mt-1">
+  1411→                      Notes: {selectedPurchase.notes}
+  1412→                    </p>
+  1413→                  )}
+  1414→                </div>
+  1415→                <div className="rounded-lg border border-amber-100 dark:border-amber-900/40 p-4 bg-amber-50/40 dark:bg-amber-950/10">
+  1416→                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">
+  1417→                    Payment Summary
+  1418→                  </p>
+  1419→                  <div className="flex items-center justify-between text-sm">
+  1420→                    <span className="text-muted-foreground">Items</span>
+  1421→                    <span className="font-semibold tabular-nums">
+  1422→                      {selectedPurchase.items?.length || 0}
+  1423→                    </span>
+  1424→                  </div>
+  1425→                  <div className="flex items-center justify-between text-sm mt-1">
+  1426→                    <span className="text-muted-foreground">Status</span>
+  1427→                    {(() => {
+  1428→                      const s = getPurchaseStatus(selectedPurchase);
+  1429→                      const sc = getStatusConfig(s);
+  1430→                      const SI = sc.Icon;
+  1431→                      return (
+  1432→                        <Badge
+  1433→                          variant="outline"
+  1434→                          className={`gap-1 text-[10px] font-semibold ${sc.badgeClass}`}
+  1435→                        >
+  1436→                          <SI className="h-3 w-3" />
+  1437→                          {sc.label}
+  1438→                        </Badge>
+  1439→                      );
+  1440→                    })()}
+  1441→                  </div>
+  1442→                </div>
+  1443→              </div>
+  1444→
+  1445→              {/* Items Table */}
+  1446→              <div>
+  1447→                <h4 className="mb-2 text-sm font-semibold flex items-center gap-2">
+  1448→                  <Package className="h-4 w-4 text-amber-600" />
+  1449→                  Items
+  1450→                </h4>
+  1451→                <div className="rounded-lg border overflow-hidden">
+  1452→                  <Table>
+  1453→                    <TableHeader>
+  1454→                      <TableRow className="bg-amber-100/70 dark:bg-amber-900/30">
+  1455→                        <TableHead className="text-xs">#</TableHead>
+  1456→                        <TableHead className="text-xs">Ingredient</TableHead>
+  1457→                        <TableHead className="text-xs text-center">Qty</TableHead>
+  1458→                        <TableHead className="text-xs">Unit</TableHead>
+  1459→                        <TableHead className="text-xs text-right">Unit Price</TableHead>
+  1460→                        <TableHead className="text-xs text-right">Total</TableHead>
+  1461→                      </TableRow>
+  1462→                    </TableHeader>
+  1463→                    <TableBody>
+  1464→                      {selectedPurchase.items?.map((item, idx) => (
+  1465→                        <TableRow
+  1466→                          key={item.id}
+  1467→                          className={idx % 2 === 1 ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}
+  1468→                        >
+  1469→                          <TableCell className="text-xs tabular-nums">{idx + 1}</TableCell>
+  1470→                          <TableCell className="text-sm font-medium">
+  1471→                            {item.ingredient?.name || "Unknown"}
+  1472→                          </TableCell>
+  1473→                          <TableCell className="text-sm text-center tabular-nums">
+  1474→                            {item.quantity}
+  1475→                          </TableCell>
+  1476→                          <TableCell className="text-sm">
+  1477→                            {item.ingredient?.unit || ""}
+  1478→                          </TableCell>
+  1479→                          <TableCell className="text-sm text-right tabular-nums">
+  1480→                            {formatCurrency(item.unitPrice)}
+  1481→                          </TableCell>
+  1482→                          <TableCell className="text-sm text-right font-semibold tabular-nums">
+  1483→                            {formatCurrency(item.totalAmount)}
+  1484→                          </TableCell>
+  1485→                        </TableRow>
+  1486→                      ))}
+  1487→                      {(selectedPurchase.items?.length || 0) === 0 && (
+  1488→                        <TableRow>
+  1489→                          <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-6">
+  1490→                            No items in this purchase.
+  1491→                          </TableCell>
+  1492→                        </TableRow>
+  1493→                      )}
+  1494→                    </TableBody>
+  1495→                  </Table>
+  1496→                </div>
+  1497→              </div>
+  1498→
+  1499→              {/* Totals */}
+  1500→              <div className="flex justify-end">
+  1501→                <div className="w-full sm:w-72 space-y-2">
+  1502→                  <div className="flex items-center justify-between text-sm">
+  1503→                    <span className="text-muted-foreground">Subtotal</span>
+  1504→                    <span className="font-medium tabular-nums">
+  1505→                      {formatCurrency(selectedPurchase.totalAmount)}
+  1506→                    </span>
+  1507→                  </div>
+  1508→                  <div className="flex items-center justify-between text-sm">
+  1509→                    <span className="text-muted-foreground">Discount</span>
+  1510→                    <span className="font-medium tabular-nums">{formatCurrency(0)}</span>
+  1511→                  </div>
+  1512→                  <div className="flex items-center justify-between rounded-md bg-amber-500 text-white p-3 mt-2">
+  1513→                    <span className="font-semibold">Grand Total</span>
+  1514→                    <span className="text-lg font-bold tabular-nums">
+  1515→                      {formatCurrency(selectedPurchase.totalAmount)}
+  1516→                    </span>
+  1517→                  </div>
+  1518→                </div>
+  1519→              </div>
+  1520→
+  1521→              {/* Footer — signatures */}
+  1522→              <div className="grid grid-cols-2 gap-8 pt-8 border-t border-amber-200 dark:border-amber-800">
+  1523→                <div>
+  1524→                  <p className="text-xs text-muted-foreground mb-12">
+  1525→                    Received by:
+  1526→                  </p>
+  1527→                  <div className="border-t border-foreground/40" />
+  1528→                  <p className="text-xs text-muted-foreground mt-1">
+  1529→                    Name &amp; Signature
+  1530→                  </p>
+  1531→                </div>
+  1532→                <div>
+  1533→                  <p className="text-xs text-muted-foreground mb-12">
+  1534→                    Authorized by:
+  1535→                  </p>
+  1536→                  <div className="border-t border-foreground/40" />
+  1537→                  <p className="text-xs text-muted-foreground mt-1">
+  1538→                    Name &amp; Signature
+  1539→                  </p>
+  1540→                </div>
+  1541→              </div>
+  1542→
+  1543→              <p className="text-center text-[10px] text-muted-foreground pt-2">
+  1544→                This is a system-generated invoice from RCS Canteen Management.
+  1545→                Generated on {formatDate(new Date().toISOString())}.
+  1546→              </p>
+  1547→            </div>
+  1548→          )}
+  1549→
+  1550→          <DialogFooter className="no-print gap-2">
+  1551→            <Button
+  1552→              variant="outline"
+  1553→              onClick={() => setInvoiceOpen(false)}
+  1554→            >
+  1555→              Close
+  1556→            </Button>
+  1557→            <Button
+  1558→              onClick={handlePrintInvoice}
+  1559→              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+  1560→            >
+  1561→              <Printer className="h-4 w-4" />
+  1562→              Print Invoice
+  1563→            </Button>
+  1564→          </DialogFooter>
+  1565→        </DialogContent>
+  1566→      </Dialog>
+  1567→    </div>
+  1568→  );
+  1569→}
+  1570→

@@ -62,6 +62,7 @@ model Recipe {
   mealType    String   // Breakfast, Lunch, Dinner, Snack
   baseServings Int     @default(100) // base number of servings
   instructions String?
+  imageUrl    String?  // Optional: path to recipe image in /public/uploads/recipes/
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

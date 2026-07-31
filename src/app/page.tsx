@@ -5,9 +5,10 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/s
 import { AppSidebar, type ViewId } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { useTheme } from "next-themes";
-import { Moon, Sun, LogOut, User as UserIcon, Loader2 } from "lucide-react";
+import { Moon, Sun, LogOut, User as UserIcon, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NotificationsDropdown } from "@/components/notifications-dropdown";
+import { CommandPalette, useCommandPalette } from "@/components/command-palette";
 import { LoginView } from "@/components/auth/login-view";
 import { useAuth } from "@/components/auth/auth-provider";
 import {
@@ -195,6 +196,7 @@ function ViewRenderer({
 
 function AuthenticatedApp() {
   const [activeView, setActiveView] = useState<ViewId>("dashboard");
+  const { open: paletteOpen, setOpen: setPaletteOpen } = useCommandPalette();
 
   return (
     <SidebarProvider>
@@ -210,6 +212,19 @@ function AuthenticatedApp() {
                 {viewLabels[activeView]}
               </h2>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="hidden sm:flex items-center gap-2 rounded-full border bg-background/50 px-3 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              onClick={() => setPaletteOpen(true)}
+              aria-label="Open command palette"
+            >
+              <Search className="h-3.5 w-3.5" />
+              <span>Search...</span>
+              <kbd className="ml-2 rounded bg-muted px-1.5 py-0.5 text-[10px] font-mono">
+                ⌘K
+              </kbd>
+            </Button>
             <div className="flex items-center gap-1.5 rounded-full border border-emerald-200/60 bg-emerald-50/80 px-3 py-1 dark:border-emerald-800/40 dark:bg-emerald-950/20">
               <span className="live-dot relative flex h-2 w-2 text-emerald-500">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
@@ -237,6 +252,12 @@ function AuthenticatedApp() {
           </footer>
         </div>
       </SidebarInset>
+
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onNavigate={setActiveView}
+      />
     </SidebarProvider>
   );
 }

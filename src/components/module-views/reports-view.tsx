@@ -145,6 +145,7 @@ interface MonthlyTrendPoint {
   monthLabel: string;
   foodCost: number;
   operatingCost: number;
+  hasData: boolean;
 }
 
 interface MonthlyTrendResponse {
@@ -1904,6 +1905,9 @@ function MonthlyTrendSection({
   onRetry: () => void;
 }) {
   // Compute summary stats — based on total monthly cost (food + operating).
+  // Only months with `hasData: true` are eligible for highest/lowest and
+  // are used in the average so that empty months don't drag the numbers
+  // down to ₹0.
   const stats = useMemo(() => {
     if (!data.length) {
       return {
@@ -1911,33 +1915,51 @@ function MonthlyTrendSection({
         momChange: null as number | null,
         highest: null as MonthlyTrendPoint | null,
         lowest: null as MonthlyTrendPoint | null,
+        hasEmptyMonths: false,
+        monthsWithData: 0,
       };
     }
     const totals = data.map((d) => ({
       ...d,
       total: d.foodCost + d.operatingCost,
     }));
-    const sum = totals.reduce((acc, d) => acc + d.total, 0);
-    const avg = sum / totals.length;
+    const withData = totals.filter((d) => d.hasData);
 
-    const last = totals[totals.length - 1];
-    const prev = totals[totals.length - 2];
+    const sum = withData.reduce((acc, d) => acc + d.total, 0);
+    const avg = withData.length > 0 ? sum / withData.length : 0;
+
+    // MoM change compares last two months THAT HAVE data.
     let momChange: number | null = null;
-    if (prev && prev.total > 0) {
-      momChange = ((last.total - prev.total) / prev.total) * 100;
+    if (withData.length >= 2) {
+      const last = withData[withData.length - 1];
+      const prev = withData[withData.length - 2];
+      if (prev.total > 0) {
+        momChange = ((last.total - prev.total) / prev.total) * 100;
+      }
     }
 
-    const highest = totals.reduce(
+    const highest = withData.reduce(
       (max, d) => (d.total > max.total ? d : max),
-      totals[0]
+      withData[0]
     );
-    const lowest = totals.reduce(
+    const lowest = withData.reduce(
       (min, d) => (d.total < min.total ? d : min),
-      totals[0]
+      withData[0]
     );
 
-    return { avg, momChange, highest, lowest };
+    return {
+      avg,
+      momChange,
+      highest: highest ?? null,
+      lowest: lowest ?? null,
+      hasEmptyMonths: withData.length < totals.length,
+      monthsWithData: withData.length,
+    };
   }, [data]);
+
+  // Hatched fill pattern for months with no recorded data (food cost bar).
+  // Rendered as an SVG <pattern> inside the chart's <defs>.
+  const emptyMonthPatternId = 'empty-month-hatch';
 
   return (
     <Card className="overflow-hidden border-amber-200/70 dark:border-amber-800/40 transition-all hover:shadow-md">
@@ -1979,6 +2001,31 @@ function MonthlyTrendSection({
             {/* Combo Chart — bars (food cost) + line (operating cost) */}
             <ChartContainer config={monthlyTrendConfig} className="aspect-[16/9] w-full sm:h-[340px] sm:aspect-auto">
               <ComposedChart data={data} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+                <defs>
+                  {/* Hatched pattern used for months with no recorded data */}
+                  <pattern
+                    id={emptyMonthPatternId}
+                    patternUnits="userSpaceOnUse"
+                    width={6}
+                    height={6}
+                    patternTransform="rotate(45)"
+                  >
+                    <rect
+                      width={6}
+                      height={6}
+                      fill="#f59e0b22"
+                    />
+                    <line
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2={6}
+                      stroke="#f59e0b"
+                      strokeWidth={2}
+                      strokeOpacity={0.45}
+                    />
+                  </pattern>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
                 <XAxis
                   dataKey="monthLabel"
@@ -1996,14 +2043,29 @@ function MonthlyTrendSection({
                   content={
                     <ChartTooltipContent
                       labelFormatter={(label) => `${label}`}
-                      formatter={(value, name) => (
-                        <span className="tabular-nums">
-                          {name === 'foodCost'
-                            ? 'Food Cost: '
-                            : 'Operating Cost: '}
-                          {fmt.format(Number(value))}
-                        </span>
-                      )}
+                      formatter={(value, name, item) => {
+                        // For months with no data, show "No data" once.
+                        const hasData = (item as { payload?: MonthlyTrendPoint })?.payload?.hasData;
+                        if (!hasData) {
+                          if (name === 'foodCost') {
+                            return (
+                              <span className="italic text-muted-foreground">
+                                No data recorded this month
+                              </span>
+                            );
+                          }
+                          // Hide the operating cost line entry for empty months
+                          return <span className="hidden" />;
+                        }
+                        return (
+                          <span className="tabular-nums">
+                            {name === 'foodCost'
+                              ? 'Food Cost: '
+                              : 'Operating Cost: '}
+                            {fmt.format(Number(value))}
+                          </span>
+                        );
+                      }}
                     />
                   }
                 />
@@ -2021,10 +2083,16 @@ function MonthlyTrendSection({
                 <Bar
                   dataKey="foodCost"
                   name="foodCost"
-                  fill="#f59e0b"
                   radius={[6, 6, 0, 0]}
                   maxBarSize={48}
-                />
+                >
+                  {data.map((entry) => (
+                    <Cell
+                      key={entry.month}
+                      fill={entry.hasData ? '#f59e0b' : `url(#${emptyMonthPatternId})`}
+                    />
+                  ))}
+                </Bar>
                 <Line
                   type="monotone"
                   dataKey="operatingCost"
@@ -2037,12 +2105,42 @@ function MonthlyTrendSection({
               </ComposedChart>
             </ChartContainer>
 
+            {/* Inline legend / "No data" badges for empty months */}
+            {stats.hasEmptyMonths && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-muted-foreground">Months with no data:</span>
+                {data
+                  .filter((d) => !d.hasData)
+                  .map((d) => (
+                    <Badge
+                      key={d.month}
+                      variant="outline"
+                      className="bg-amber-50/60 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/60 gap-1"
+                    >
+                      <span
+                        className="inline-block h-3 w-3 rounded-sm"
+                        style={{
+                          backgroundImage:
+                            'repeating-linear-gradient(45deg, #f59e0b55 0 2px, transparent 2px 4px)',
+                          backgroundColor: '#f59e0b22',
+                        }}
+                      />
+                      {d.monthLabel}
+                    </Badge>
+                  ))}
+              </div>
+            )}
+
             {/* Summary cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <MonthlyTrendStatCard
                 title="Avg Monthly Cost"
-                value={fmt.format(stats.avg)}
-                subtitle="Food + operating, last 6 mo"
+                value={stats.monthsWithData === 0 ? 'N/A' : fmt.format(stats.avg)}
+                subtitle={
+                  stats.monthsWithData === 0
+                    ? 'No data recorded yet'
+                    : `Based on ${stats.monthsWithData} month${stats.monthsWithData === 1 ? '' : 's'} with data`
+                }
                 icon={<Wallet className="h-5 w-5" />}
                 iconBg="bg-amber-100 dark:bg-amber-900/30"
                 iconColor="text-amber-600 dark:text-amber-400"
@@ -2051,10 +2149,14 @@ function MonthlyTrendSection({
                 title="MoM Change"
                 value={
                   stats.momChange === null
-                    ? '—'
+                    ? 'N/A'
                     : `${stats.momChange >= 0 ? '+' : ''}${stats.momChange.toFixed(1)}%`
                 }
-                subtitle="Latest month vs previous"
+                subtitle={
+                  stats.momChange === null
+                    ? 'Need 2+ months with data'
+                    : 'Latest 2 months with data'
+                }
                 icon={
                   stats.momChange === null ? (
                     <Scale className="h-5 w-5" />
@@ -2082,21 +2184,34 @@ function MonthlyTrendSection({
               />
               <MonthlyTrendStatCard
                 title="Highest Cost Month"
-                value={fmt.format(stats.highest?.total ?? 0)}
-                subtitle={stats.highest?.monthLabel ?? '—'}
+                value={stats.highest ? fmt.format(stats.highest.total) : 'N/A'}
+                subtitle={stats.highest?.monthLabel ?? 'No data recorded yet'}
                 icon={<TrendingUp className="h-5 w-5" />}
                 iconBg="bg-rose-100 dark:bg-rose-900/30"
                 iconColor="text-rose-600 dark:text-rose-400"
               />
               <MonthlyTrendStatCard
                 title="Lowest Cost Month"
-                value={fmt.format(stats.lowest?.total ?? 0)}
-                subtitle={stats.lowest?.monthLabel ?? '—'}
+                value={stats.lowest ? fmt.format(stats.lowest.total) : 'N/A'}
+                subtitle={stats.lowest?.monthLabel ?? 'No data recorded yet'}
                 icon={<TrendingDown className="h-5 w-5" />}
                 iconBg="bg-emerald-100 dark:bg-emerald-900/30"
                 iconColor="text-emerald-600 dark:text-emerald-400"
               />
             </div>
+
+            {/* Note about missing months */}
+            {stats.hasEmptyMonths && (
+              <div className="flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-xs text-amber-800 dark:text-amber-300">
+                <Info className="h-4 w-4 mt-0.5 shrink-0" />
+                <p>
+                  <span className="font-semibold">Note:</span> Some months have no
+                  recorded data. Start recording purchases and expenses to see
+                  complete trends. Months without data are shown with a hatched
+                  pattern in the chart.
+                </p>
+              </div>
+            )}
           </>
         )}
       </CardContent>

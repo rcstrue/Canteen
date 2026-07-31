@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { name, description, mealType, baseServings, instructions, ingredients } = body
+    const { name, description, mealType, baseServings, instructions, ingredients, imageUrl } = body
 
     if (!name || !mealType) {
       return NextResponse.json(
@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
         mealType,
         baseServings: baseServings ?? 100,
         instructions,
+        imageUrl: typeof imageUrl === 'string' ? imageUrl : null,
         ingredients: {
           create: ingredients.map((ing: { ingredientId: string; quantity: number; unit: string }) => ({
             ingredientId: ing.ingredientId,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Card,
   CardContent,
@@ -47,6 +47,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ShoppingCart,
   Plus,
@@ -70,9 +71,12 @@ import {
   CircleDot,
   Printer,
   Flame,
+  ListChecks,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { downloadCSV } from "@/lib/export-utils";
 import { useToast } from "@/hooks/use-toast";
+import { toast as sonnerToast } from "sonner";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -222,6 +226,12 @@ export function PurchasesView() {
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [bulkPrintListOpen, setBulkPrintListOpen] = useState(false);
+
   // New purchase form
   const [formDate, setFormDate] = useState(getTodayStr());
   const [formSupplier, setFormSupplier] = useState("");
@@ -254,6 +264,12 @@ export function PurchasesView() {
     } finally {
       setLoading(false);
     }
+  }, [page, startDate, endDate, search]);
+
+  // Reset selection whenever the page or filter changes — selected ids from
+  // a previous page no longer correspond to visible rows.
+  useEffect(() => {
+    setSelectedIds(new Set());
   }, [page, startDate, endDate, search]);
 
   const fetchIngredients = useCallback(async () => {
@@ -330,6 +346,145 @@ export function PurchasesView() {
   const confirmDelete = (id: string) => {
     setDeleteId(id);
     setDeleteOpen(true);
+  };
+
+  // ── Bulk selection handlers ─────────────────────────────────────────────
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) => {
+      // If every visible purchase is already selected, clear; else select all.
+      const allSelected = purchases.length > 0 && purchases.every((p) => prev.has(p.id));
+      if (allSelected) {
+        return new Set();
+      }
+      const next = new Set(prev);
+      for (const p of purchases) {
+        next.add(p.id);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const selectedCount = selectedIds.size;
+  const isSelectionMode = selectedCount > 0;
+  const allVisibleSelected =
+    purchases.length > 0 && purchases.every((p) => selectedIds.has(p.id));
+  const someVisibleSelected =
+    purchases.some((p) => selectedIds.has(p.id)) && !allVisibleSelected;
+
+  // Get the actual purchase objects for the selected ids (those on the current page).
+  const selectedPurchases = useMemo(
+    () => purchases.filter((p) => selectedIds.has(p.id)),
+    [purchases, selectedIds]
+  );
+
+  const handleBulkExport = () => {
+    if (selectedPurchases.length === 0) {
+      sonnerToast.warning("No purchases selected", {
+        description: "Select at least one purchase to export.",
+      });
+      return;
+    }
+    const rows = selectedPurchases.map((p) => {
+      const status = getPurchaseStatus(p);
+      return {
+        Date: formatDate(p.date),
+        Supplier: p.supplier || "—",
+        "Invoice No": p.invoiceNo || "—",
+        "Items Count": String(p.items?.length ?? 0),
+        "Total Amount": String(p.totalAmount),
+        Status: status,
+      };
+    });
+    const today = getTodayStr();
+    downloadCSV(`purchases-selected-${today}.csv`, rows);
+    sonnerToast.success("Export complete", {
+      description: `${rows.length} purchase(s) exported as CSV.`,
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedPurchases.length === 0) return;
+    setBulkDeleting(true);
+    let success = 0;
+    let failed = 0;
+    try {
+      // Delete sequentially to avoid race conditions / DB locks.
+      for (const p of selectedPurchases) {
+        try {
+          const res = await fetch(`/api/purchases/${p.id}`, { method: "DELETE" });
+          if (res.ok) {
+            success++;
+          } else {
+            failed++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+      if (success > 0) {
+        sonnerToast.success(
+          `${success} purchase${success === 1 ? "" : "s"} deleted`,
+          {
+            description:
+              failed > 0
+                ? `${failed} could not be deleted.`
+                : "Selection cleared. Stock movements remain unchanged.",
+          }
+        );
+      } else if (failed > 0) {
+        sonnerToast.error("Bulk delete failed", {
+          description: "Could not delete any of the selected purchases.",
+        });
+      }
+      clearSelection();
+      setBulkDeleteOpen(false);
+      await fetchPurchases();
+    } catch (err) {
+      console.error("Error in bulk delete:", err);
+      sonnerToast.error("Bulk delete failed", {
+        description: "An unexpected error occurred.",
+      });
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const handleBulkPrintFirst = async () => {
+    if (selectedPurchases.length === 0) return;
+    // Fetch full detail for the first selected purchase and open the invoice dialog.
+    const first = selectedPurchases[0];
+    try {
+      const res = await fetch(`/api/purchases/${first.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedPurchase(data);
+        setBulkPrintListOpen(false);
+        setInvoiceOpen(true);
+        sonnerToast.info("Invoice opened", {
+          description: `Showing invoice for ${first.supplier || "this purchase"}. Print it, then re-open bulk print to view the next one.`,
+        });
+      } else {
+        sonnerToast.error("Failed to load invoice");
+      }
+    } catch (err) {
+      console.error("Error fetching invoice for bulk print:", err);
+      sonnerToast.error("Failed to load invoice");
+    }
   };
 
   // ── New Purchase Form ────────────────────────────────────────────────────
@@ -621,6 +776,73 @@ export function PurchasesView() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
+          {/* Bulk Actions Bar — sticky at top of table area */}
+          <AnimatePresence>
+            {isSelectionMode && (
+              <motion.div
+                key="bulk-actions-bar"
+                initial={{ opacity: 0, y: -12, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -12, height: 0 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="sticky top-0 z-20 overflow-hidden border-b border-amber-200 dark:border-amber-800/60 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30"
+              >
+                <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm">
+                      <ListChecks className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                        {selectedCount} purchase{selectedCount === 1 ? "" : "s"} selected
+                      </p>
+                      <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                        Choose an action below or clear the selection to exit
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkExport}
+                      className="border-amber-300 bg-white/70 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-transparent dark:text-amber-300 dark:hover:bg-amber-950/40"
+                    >
+                      <Download className="mr-1.5 h-3.5 w-3.5" />
+                      Export Selected
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setBulkPrintListOpen(true)}
+                      className="border-amber-300 bg-white/70 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-transparent dark:text-amber-300 dark:hover:bg-amber-950/40"
+                    >
+                      <Printer className="mr-1.5 h-3.5 w-3.5" />
+                      Print Invoices
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setBulkDeleteOpen(true)}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                      Delete Selected
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearSelection}
+                      className="text-amber-800 hover:bg-amber-100 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                    >
+                      <X className="mr-1 h-3.5 w-3.5" />
+                      Exit Selection
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           {loading ? (
             <div className="flex items-center justify-center py-16">
               <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
@@ -654,6 +876,19 @@ export function PurchasesView() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[44px] pl-4">
+                        <Checkbox
+                          aria-label="Select all visible purchases"
+                          checked={
+                            allVisibleSelected
+                              ? true
+                              : someVisibleSelected
+                              ? "indeterminate"
+                              : false
+                          }
+                          onCheckedChange={toggleSelectAll}
+                        />
+                      </TableHead>
                       <TableHead className="w-[120px]">Date</TableHead>
                       <TableHead>Supplier</TableHead>
                       <TableHead>Invoice No</TableHead>
@@ -668,12 +903,31 @@ export function PurchasesView() {
                       const status = getPurchaseStatus(purchase);
                       const statusConfig = getStatusConfig(status);
                       const StatusIcon = statusConfig.Icon;
+                      const isSelected = selectedIds.has(purchase.id);
                       return (
                       <TableRow
                         key={purchase.id}
-                        className="cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors"
-                        onClick={() => handleViewDetail(purchase)}
+                        data-state={isSelected ? "selected" : undefined}
+                        className={`cursor-pointer transition-colors ${
+                          isSelected
+                            ? "bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                            : "hover:bg-amber-50/50 dark:hover:bg-amber-950/20"
+                        }`}
+                        onClick={() =>
+                          isSelectionMode
+                            ? toggleSelect(purchase.id)
+                            : handleViewDetail(purchase)
+                        }
                       >
+                        <TableCell className="pl-4">
+                          <Checkbox
+                            aria-label={`Select purchase ${purchase.supplier || "without supplier"} from ${formatDate(purchase.date)}`}
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelect(purchase.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                          />
+                        </TableCell>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
                             <CalendarDays className="h-4 w-4 text-muted-foreground" />
@@ -716,6 +970,7 @@ export function PurchasesView() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              disabled={isSelectionMode}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleViewDetail(purchase);
@@ -727,6 +982,7 @@ export function PurchasesView() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              disabled={isSelectionMode}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleViewInvoice(purchase);
@@ -739,6 +995,7 @@ export function PurchasesView() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              disabled={isSelectionMode}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 confirmDelete(purchase.id);
@@ -759,20 +1016,39 @@ export function PurchasesView() {
 
               {/* Mobile Cards */}
               <div className="md:hidden space-y-3 p-4">
-                {purchases.map((purchase) => (
+                {purchases.map((purchase) => {
+                  const isSelected = selectedIds.has(purchase.id);
+                  return (
                   <Card
                     key={purchase.id}
-                    className="cursor-pointer hover:border-amber-300 dark:hover:border-amber-700 transition-colors"
-                    onClick={() => handleViewDetail(purchase)}
+                    className={`cursor-pointer transition-colors ${
+                      isSelected
+                        ? "border-amber-400 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/30"
+                        : "hover:border-amber-300 dark:hover:border-amber-700"
+                    }`}
+                    onClick={() =>
+                      isSelectionMode
+                        ? toggleSelect(purchase.id)
+                        : handleViewDetail(purchase)
+                    }
                   >
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-semibold text-sm">{purchase.supplier || "No Supplier"}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {formatDate(purchase.date)}
-                            {purchase.invoiceNo && ` · ${purchase.invoiceNo}`}
-                          </p>
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            aria-label={`Select purchase ${purchase.supplier || "without supplier"}`}
+                            checked={isSelected}
+                            onCheckedChange={() => toggleSelect(purchase.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="mt-0.5 data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                          />
+                          <div>
+                            <p className="font-semibold text-sm">{purchase.supplier || "No Supplier"}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {formatDate(purchase.date)}
+                              {purchase.invoiceNo && ` · ${purchase.invoiceNo}`}
+                            </p>
+                          </div>
                         </div>
                         <p className="font-bold text-amber-700 dark:text-amber-400">
                           {formatCurrency(purchase.totalAmount)}
@@ -802,6 +1078,7 @@ export function PurchasesView() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            disabled={isSelectionMode}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleViewDetail(purchase);
@@ -812,6 +1089,7 @@ export function PurchasesView() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            disabled={isSelectionMode}
                             onClick={(e) => {
                               e.stopPropagation();
                               handleViewInvoice(purchase);
@@ -824,6 +1102,7 @@ export function PurchasesView() {
                           <Button
                             variant="ghost"
                             size="sm"
+                            disabled={isSelectionMode}
                             onClick={(e) => {
                               e.stopPropagation();
                               confirmDelete(purchase.id);
@@ -836,7 +1115,8 @@ export function PurchasesView() {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             </>
           )}
@@ -1345,6 +1625,152 @@ export function PurchasesView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Bulk Delete Confirmation Dialog ───────────────────────────────── */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Delete {selectedPurchases.length} Purchase{selectedPurchases.length === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to permanently delete{" "}
+              <strong>{selectedPurchases.length}</strong> purchase
+              {selectedPurchases.length === 1 ? "" : "s"}. This action cannot be
+              undone. All selected purchase records and their items will be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-44 overflow-y-auto rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">
+            <p className="mb-2 font-semibold text-destructive">
+              Selected purchases:
+            </p>
+            <ul className="space-y-1 text-xs">
+              {selectedPurchases.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    {p.supplier || "No Supplier"}
+                    <span className="text-muted-foreground">
+                      {" · "}
+                      {formatDate(p.date)}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums">
+                    {formatCurrency(p.totalAmount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-md bg-destructive/10 p-3 text-xs text-destructive">
+            <strong>Note:</strong> Deleting purchases does NOT reverse the stock
+            movements that were created. Stock levels will remain as updated.
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {bulkDeleting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting {selectedPurchases.length}...
+                </>
+              ) : (
+                `Delete ${selectedPurchases.length} Purchase${selectedPurchases.length === 1 ? "" : "s"}`
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Bulk Print: Choose Invoice Dialog ──────────────────────────────── */}
+      <Dialog open={bulkPrintListOpen} onOpenChange={setBulkPrintListOpen}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="h-5 w-5 text-amber-600" />
+              Print {selectedPurchases.length} Invoice{selectedPurchases.length === 1 ? "" : "s"}
+            </DialogTitle>
+            <DialogDescription>
+              Select an invoice to preview and print. After printing, come back
+              to this dialog to open the next one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {selectedPurchases.map((p, idx) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  // Open this specific invoice immediately
+                  (async () => {
+                    try {
+                      const res = await fetch(`/api/purchases/${p.id}`);
+                      if (res.ok) {
+                        const data = await res.json();
+                        setSelectedPurchase(data);
+                        setBulkPrintListOpen(false);
+                        setInvoiceOpen(true);
+                      } else {
+                        sonnerToast.error("Failed to load invoice");
+                      }
+                    } catch {
+                      sonnerToast.error("Failed to load invoice");
+                    }
+                  })();
+                }}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-amber-200 dark:border-amber-800/60 bg-amber-50/40 dark:bg-amber-950/10 p-3 text-left transition-all hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 hover:shadow-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white">
+                    {idx + 1}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {p.supplier || "No Supplier"}
+                    </p>
+                    <p className="text-xs text-muted-foreground tabular-nums">
+                      {formatDate(p.date)}
+                      {p.invoiceNo && ` · ${p.invoiceNo}`}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                    {formatCurrency(p.totalAmount)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {p.items?.length || 0} items
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+            <strong>Tip:</strong> Click <em>Print Invoice</em> in the preview to
+            send it to your printer, then re-open this dialog to view the next
+            invoice.
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkPrintListOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={handleBulkPrintFirst}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              <Printer className="mr-1.5 h-4 w-4" />
+              Open First Invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Purchase Invoice Dialog (Printable) ─────────────────────────────── */}
       <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
