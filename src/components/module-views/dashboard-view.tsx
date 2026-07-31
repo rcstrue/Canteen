@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useSyncExternalStore, useCallback } from "react";
 import {
   Card,
   CardContent,
@@ -52,7 +52,11 @@ import {
   Soup,
   FileText,
   Target,
+  X,
+  Trash2,
+  Clock,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import {
   BarChart,
   Bar,
@@ -67,7 +71,7 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { motion, type Variants } from "framer-motion";
+import { motion, AnimatePresence, type Variants } from "framer-motion";
 import type { ViewId } from "@/components/app-sidebar";
 import { BudgetStatus } from "@/components/budget-status";
 
@@ -182,6 +186,460 @@ interface BudgetRecord {
 
 interface DashboardViewProps {
   onNavigate?: (view: ViewId) => void;
+}
+
+// ─── Activity Timeline Types ─────────────────────────────────────────────────
+
+type ActivityType =
+  | "PURCHASE"
+  | "MEAL"
+  | "EXPENSE"
+  | "WASTAGE"
+  | "ADJUSTMENT";
+
+interface ActivityItem {
+  id: string;
+  type: ActivityType;
+  description: string;
+  amount: number | null;
+  createdAt: string;
+  ingredientName: string | null;
+  supplierName: string | null;
+  recipeName: string | null;
+}
+
+interface QuickStats {
+  todayPurchasesTotal: number;
+  weekMealsCount: number;
+  monthWastageValue: number;
+  activeSuppliersCount: number;
+}
+
+// ─── Low-Stock Alert Banner ────────────────────────────────────────────────
+
+const LOW_STOCK_BANNER_DISMISS_KEY = "rcs-dashboard-lowstock-dismissed";
+const LOW_STOCK_BANNER_UPDATE_EVENT = "rcs-lowstock-update";
+
+/** SSR-safe subscription to a session-storage dismissal flag. Returns
+ *  `[isDismissed, dismiss]` — calling `dismiss` writes to sessionStorage and
+ *  notifies subscribers so the component re-renders without calling setState
+ *  synchronously inside an effect. */
+function useLowStockDismissed(): [boolean, () => void] {
+  const subscribe = useCallback((callback: () => void) => {
+    if (typeof window === "undefined") return () => {};
+    const handler = () => callback();
+    window.addEventListener(LOW_STOCK_BANNER_UPDATE_EVENT, handler);
+    window.addEventListener("storage", handler);
+    return () => {
+      window.removeEventListener(LOW_STOCK_BANNER_UPDATE_EVENT, handler);
+      window.removeEventListener("storage", handler);
+    };
+  }, []);
+
+  const getSnapshot = useCallback(() => {
+    try {
+      return window.sessionStorage.getItem(LOW_STOCK_BANNER_DISMISS_KEY) === "true";
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const getServerSnapshot = useCallback(() => false, []);
+
+  const isDismissed = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot
+  );
+
+  const dismiss = useCallback(() => {
+    try {
+      window.sessionStorage.setItem(LOW_STOCK_BANNER_DISMISS_KEY, "true");
+      window.dispatchEvent(new Event(LOW_STOCK_BANNER_UPDATE_EVENT));
+    } catch {
+      // Ignore write failure (private mode, etc.).
+    }
+  }, []);
+
+  return [isDismissed, dismiss];
+}
+
+interface LowStockBannerProps {
+  lowStockItems: DashboardData["lowStockAlerts"];
+  onNavigate?: (view: ViewId) => void;
+}
+
+function LowStockAlertBanner({ lowStockItems, onNavigate }: LowStockBannerProps) {
+  const [dismissed, handleDismiss] = useLowStockDismissed();
+
+  // Don't render anything if there are no low-stock items or banner was dismissed.
+  if (dismissed || lowStockItems.length === 0) return null;
+
+  const topThree = lowStockItems.slice(0, 3);
+  const isCriticalOnly = lowStockItems.some((i) => i.currentStock === 0);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -24, height: 0 }}
+      animate={{ opacity: 1, y: 0, height: "auto" }}
+      exit={{ opacity: 0, y: -24, height: 0 }}
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className="overflow-hidden"
+      role="alert"
+      aria-live="assertive"
+    >
+      <div
+        className={`relative overflow-hidden rounded-xl border shadow-md ${
+          isCriticalOnly
+            ? "border-rose-300/70 dark:border-rose-900/50"
+            : "border-amber-300/70 dark:border-amber-900/50"
+        } bg-gradient-to-r from-amber-100 via-orange-100 to-rose-100 dark:from-amber-950/60 dark:via-orange-950/50 dark:to-rose-950/40`}
+      >
+        {/* Decorative glow on the left edge */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -left-12 -top-12 h-40 w-40 rounded-full bg-amber-400/30 blur-3xl dark:bg-amber-500/20"
+        />
+        <div className="relative flex flex-col gap-4 p-4 sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+          {/* Left: icon + headline + top-3 items */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+            <div
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                isCriticalOnly
+                  ? "bg-rose-500/20 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+                  : "bg-amber-500/20 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+              }`}
+            >
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base font-bold text-amber-950 dark:text-amber-100 sm:text-lg">
+                  {lowStockItems.length} {lowStockItems.length === 1 ? "item needs" : "items need"} restocking
+                </h2>
+                <Badge
+                  variant={isCriticalOnly ? "destructive" : "secondary"}
+                  className={`shrink-0 ${
+                    isCriticalOnly
+                      ? ""
+                      : "bg-amber-200 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200"
+                  }`}
+                >
+                  {isCriticalOnly ? "Critical" : "Low Stock"}
+                </Badge>
+              </div>
+              <p className="mt-0.5 text-xs text-amber-900/70 dark:text-amber-200/70">
+                Stock at or below minimum par level — reorder soon to avoid shortages.
+              </p>
+              {/* Top 3 ingredient chips */}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {topThree.map((item) => {
+                  const isZero = item.currentStock === 0;
+                  return (
+                    <span
+                      key={item.id}
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+                        isZero
+                          ? "bg-rose-200/80 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200"
+                          : "bg-white/80 text-amber-900 dark:bg-amber-950/50 dark:text-amber-100"
+                      }`}
+                    >
+                      <Package className="h-3 w-3" />
+                      <span className="truncate max-w-[140px]">{item.name}</span>
+                      <span className="tabular-nums opacity-80">
+                        {new Intl.NumberFormat("en-IN", {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 1,
+                        }).format(item.currentStock)}
+                        /{new Intl.NumberFormat("en-IN", {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 1,
+                        }).format(item.minStock)}{" "}
+                        {item.unit}
+                      </span>
+                    </span>
+                  );
+                })}
+                {lowStockItems.length > 3 && (
+                  <span className="inline-flex items-center rounded-full bg-amber-900/10 px-2.5 py-1 text-xs font-medium text-amber-900 dark:bg-amber-100/10 dark:text-amber-100">
+                    +{lowStockItems.length - 3} more
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: action buttons */}
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => onNavigate?.("stock")}
+              className="bg-amber-600 text-white shadow-sm hover:bg-amber-700"
+            >
+              <Package className="h-4 w-4" />
+              View Stock
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={handleDismiss}
+              aria-label="Dismiss low stock alert"
+              className="h-9 w-9 text-amber-900/70 hover:bg-amber-200/60 hover:text-amber-900 dark:text-amber-200/70 dark:hover:bg-amber-900/40 dark:hover:text-amber-100"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Activity Timeline ─────────────────────────────────────────────────────
+
+interface ActivityTimelineProps {
+  activities: ActivityItem[];
+  loading: boolean;
+}
+
+const ACTIVITY_META: Record<
+  ActivityType,
+  { icon: typeof ShoppingCart; color: string; ring: string; label: string }
+> = {
+  PURCHASE: {
+    icon: ShoppingCart,
+    color: "text-amber-600 dark:text-amber-400",
+    ring: "bg-amber-100 dark:bg-amber-900/30",
+    label: "Purchase",
+  },
+  MEAL: {
+    icon: UtensilsCrossed,
+    color: "text-emerald-600 dark:text-emerald-400",
+    ring: "bg-emerald-100 dark:bg-emerald-900/30",
+    label: "Meal",
+  },
+  WASTAGE: {
+    icon: Trash2,
+    color: "text-rose-600 dark:text-rose-400",
+    ring: "bg-rose-100 dark:bg-rose-900/30",
+    label: "Wastage",
+  },
+  EXPENSE: {
+    icon: Receipt,
+    color: "text-blue-600 dark:text-blue-400",
+    ring: "bg-blue-100 dark:bg-blue-900/30",
+    label: "Expense",
+  },
+  ADJUSTMENT: {
+    icon: Package,
+    color: "text-stone-600 dark:text-stone-400",
+    ring: "bg-stone-200 dark:bg-stone-800/50",
+    label: "Adjustment",
+  },
+};
+
+function ActivityTimeline({ activities, loading }: ActivityTimelineProps) {
+  return (
+    <Card className="flex h-full flex-col shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+            <Activity className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+          </div>
+          Recent Activity
+        </CardTitle>
+        <CardDescription>
+          Latest purchases, meals, expenses & stock adjustments
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex-1">
+        {loading ? (
+          <div className="space-y-4">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <Skeleton className="h-9 w-9 shrink-0 rounded-full" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3.5 w-3/4" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : activities.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <Activity className="mb-2 h-10 w-10 text-muted-foreground/40" />
+            <p className="text-sm font-medium text-muted-foreground">
+              No Activity Yet
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Recent purchases, meals & expenses will appear here
+            </p>
+          </div>
+        ) : (
+          <ol className="relative max-h-[460px] overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20">
+            {activities.map((act, idx) => {
+              const meta = ACTIVITY_META[act.type] ?? ACTIVITY_META.ADJUSTMENT;
+              const Icon = meta.icon;
+              const isLast = idx === activities.length - 1;
+              const relativeTime = (() => {
+                try {
+                  return formatDistanceToNow(new Date(act.createdAt), {
+                    addSuffix: true,
+                  });
+                } catch {
+                  return "";
+                }
+              })();
+
+              return (
+                <li key={act.id} className="relative flex gap-3 pb-5 last:pb-0">
+                  {/* Timeline rail (vertical line) */}
+                  {!isLast && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-[18px] top-9 h-[calc(100%-1.5rem)] w-px bg-border"
+                    />
+                  )}
+                  {/* Icon circle */}
+                  <div
+                    className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${meta.ring}`}
+                  >
+                    <Icon className={`h-4 w-4 ${meta.color}`} />
+                  </div>
+                  {/* Content */}
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5">
+                      <p className="text-sm font-medium leading-snug">
+                        {act.description}
+                      </p>
+                      {act.amount !== null && act.amount > 0 && (
+                        <span className="shrink-0 text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                          {formatCurrency(act.amount)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {relativeTime}
+                      </span>
+                      <span className="text-muted-foreground/50">•</span>
+                      <span className="rounded-full bg-muted/60 px-1.5 py-0.5 font-medium text-muted-foreground">
+                        {meta.label}
+                      </span>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Quick Stats Sidebar ───────────────────────────────────────────────────
+
+interface QuickStatsSidebarProps {
+  stats: QuickStats | null;
+  loading: boolean;
+}
+
+function QuickStatsSidebar({ stats, loading }: QuickStatsSidebarProps) {
+  const items: Array<{
+    label: string;
+    value: string;
+    icon: typeof IndianRupee;
+    iconBg: string;
+    iconColor: string;
+  }> = stats
+    ? [
+        {
+          label: "Today's Purchases",
+          value: formatCurrency(stats.todayPurchasesTotal),
+          icon: ShoppingCart,
+          iconBg: "bg-amber-100 dark:bg-amber-900/30",
+          iconColor: "text-amber-600 dark:text-amber-400",
+        },
+        {
+          label: "This Week's Meals",
+          value: formatNumber(stats.weekMealsCount),
+          icon: UtensilsCrossed,
+          iconBg: "bg-emerald-100 dark:bg-emerald-900/30",
+          iconColor: "text-emerald-600 dark:text-emerald-400",
+        },
+        {
+          label: "This Month's Wastage",
+          value: formatCurrency(stats.monthWastageValue),
+          icon: Trash2,
+          iconBg: "bg-rose-100 dark:bg-rose-900/30",
+          iconColor: "text-rose-600 dark:text-rose-400",
+        },
+        {
+          label: "Active Suppliers",
+          value: formatNumber(stats.activeSuppliersCount),
+          icon: Users,
+          iconBg: "bg-orange-100 dark:bg-orange-900/30",
+          iconColor: "text-orange-600 dark:text-orange-400",
+        },
+      ]
+    : [];
+
+  return (
+    <Card className="flex h-full flex-col shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+            <BarChart3 className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+          </div>
+          Quick Stats
+        </CardTitle>
+        <CardDescription>Snapshot of key operational metrics</CardDescription>
+      </CardHeader>
+      <CardContent className="flex-1">
+        {loading || !stats ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 rounded-xl border p-3">
+                <Skeleton className="h-9 w-9 rounded-xl" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
+            {items.map((it) => {
+              const Icon = it.icon;
+              return (
+                <div
+                  key={it.label}
+                  className="flex items-center gap-3 rounded-xl border border-amber-200/40 bg-gradient-to-br from-amber-50/40 to-orange-50/30 p-3 transition-colors hover:border-amber-300/60 hover:bg-amber-50/60 dark:border-amber-900/30 dark:from-amber-950/20 dark:to-orange-950/10 dark:hover:bg-amber-950/30"
+                >
+                  <div
+                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${it.iconBg}`}
+                  >
+                    <Icon className={`h-4 w-4 ${it.iconColor}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-medium text-muted-foreground">
+                      {it.label}
+                    </p>
+                    <p className="text-base font-bold tabular-nums text-amber-950 dark:text-amber-100">
+                      {it.value}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -526,6 +984,12 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
   // Budget state
   const [currentBudget, setCurrentBudget] = useState<BudgetRecord | null>(null);
 
+  // Activity feed + quick stats state
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [quickStats, setQuickStats] = useState<QuickStats | null>(null);
+  const [quickStatsLoading, setQuickStatsLoading] = useState(true);
+
   useEffect(() => {
     async function fetchDashboard() {
       try {
@@ -618,6 +1082,130 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
       }
     }
     fetchBudget();
+  }, []);
+
+  // Fetch recent activity feed
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchActivity() {
+      try {
+        setActivitiesLoading(true);
+        const res = await fetch("/api/activity");
+        if (!res.ok) return;
+        const json = (await res.json()) as { data: ActivityItem[] };
+        if (!cancelled && Array.isArray(json?.data)) {
+          setActivities(json.data);
+        }
+      } catch (err) {
+        console.error("Activity feed fetch error:", err);
+      } finally {
+        if (!cancelled) setActivitiesLoading(false);
+      }
+    }
+    fetchActivity();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fetch quick stats for the sidebar (computed in parallel with the activity feed)
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchQuickStats() {
+      try {
+        setQuickStatsLoading(true);
+        const now = new Date();
+        const todayStart = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate()
+        );
+        const weekStart = new Date(todayStart);
+        // Start of week (Sunday-based to match /api/dashboard)
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        const todayStr = todayStart.toISOString().split("T")[0];
+        const weekStartStr = weekStart.toISOString().split("T")[0];
+
+        // Parallel fetches: today's purchases, this week's meals, this month's
+        // wastage, and active supplier count.
+        const [purchasesRes, mealsRes, wastageRes, suppliersRes] =
+          await Promise.all([
+            fetch(`/api/purchases?startDate=${todayStr}&limit=100`),
+            fetch(`/api/daily-meals?startDate=${weekStartStr}&limit=200`),
+            fetch(`/api/stock-movements?type=WASTAGE&limit=200`),
+            fetch("/api/suppliers?limit=500"),
+          ]);
+
+        let todayPurchasesTotal = 0;
+        if (purchasesRes.ok) {
+          const json = (await purchasesRes.json()) as {
+            data?: Array<{ date: string; totalAmount: number }>;
+          };
+          todayPurchasesTotal = (json.data ?? []).reduce((sum, p) => {
+            const d = new Date(p.date);
+            return d >= todayStart ? sum + p.totalAmount : sum;
+          }, 0);
+        }
+
+        let weekMealsCount = 0;
+        if (mealsRes.ok) {
+          const json = (await mealsRes.json()) as {
+            data?: Array<{ date: string; mealsServed: number }>;
+          };
+          weekMealsCount = (json.data ?? []).reduce((sum, m) => {
+            const d = new Date(m.date);
+            return d >= weekStart ? sum + m.mealsServed : sum;
+          }, 0);
+        }
+
+        let monthWastageValue = 0;
+        if (wastageRes.ok) {
+          const json = (await wastageRes.json()) as {
+            data?: Array<{ date: string; totalAmount: number }>;
+          };
+          monthWastageValue = (json.data ?? []).reduce((sum, s) => {
+            const d = new Date(s.date);
+            return d >= monthStart ? sum + s.totalAmount : sum;
+          }, 0);
+        }
+
+        let activeSuppliersCount = 0;
+        if (suppliersRes.ok) {
+          const json = await suppliersRes.json();
+          if (Array.isArray(json)) {
+            activeSuppliersCount = json.length;
+          } else if (json && typeof json === "object" && "total" in json) {
+            activeSuppliersCount = (json as { total: number }).total ?? 0;
+          } else if (
+            json &&
+            typeof json === "object" &&
+            "data" in json &&
+            Array.isArray((json as { data: unknown[] }).data)
+          ) {
+            activeSuppliersCount = (json as { data: unknown[] }).data.length;
+          }
+        }
+
+        if (!cancelled) {
+          setQuickStats({
+            todayPurchasesTotal,
+            weekMealsCount,
+            monthWastageValue,
+            activeSuppliersCount,
+          });
+        }
+      } catch (err) {
+        console.error("Quick stats fetch error:", err);
+      } finally {
+        if (!cancelled) setQuickStatsLoading(false);
+      }
+    }
+    fetchQuickStats();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // ─── Loading State ──────────────────────────────────────────────────────
@@ -744,6 +1332,14 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
       animate="visible"
       className="space-y-6"
     >
+      {/* ─── 0. Low-Stock Alert Banner (above the welcome section) ────────── */}
+      <AnimatePresence>
+        <LowStockAlertBanner
+          lowStockItems={data.lowStockAlerts}
+          onNavigate={onNavigate}
+        />
+      </AnimatePresence>
+
       {/* ─── 1. Welcome Banner (full width) ─────────────────────────────── */}
       <motion.div variants={itemVariants}>
         <Card className="overflow-hidden border-amber-200/60 bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100/40 shadow-sm transition-all hover:shadow-md dark:border-amber-900/40 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-amber-900/20">
@@ -1171,6 +1767,28 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
             )}
           </CardContent>
         </Card>
+      </motion.div>
+
+      {/* ─── 4.5 Recent Activity Timeline + Quick Stats Sidebar ─────────── */}
+      <motion.div
+        variants={containerVariants}
+        className="grid grid-cols-1 gap-4 lg:grid-cols-3"
+      >
+        {/* Timeline (left, takes 2/3 on large screens) */}
+        <motion.div variants={itemVariants} className="h-full lg:col-span-2">
+          <ActivityTimeline
+            activities={activities}
+            loading={activitiesLoading}
+          />
+        </motion.div>
+
+        {/* Quick Stats sidebar (right, takes 1/3 on large screens) */}
+        <motion.div variants={itemVariants} className="h-full">
+          <QuickStatsSidebar
+            stats={quickStats}
+            loading={quickStatsLoading}
+          />
+        </motion.div>
       </motion.div>
 
       {/* ─── 5. Meals Summary + Stock Health Gauge ──────────────────────── */}

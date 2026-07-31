@@ -107,10 +107,10 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter>
-        <SidebarSeparator />
+        <div className="sidebar-footer-accent" />
         <div className="px-3 py-2 group-data-[collapsible=icon]:hidden">
-          <div className="flex items-center gap-2 rounded-md bg-muted/50 px-2 py-1.5">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+          <div className="flex items-center gap-2 rounded-md bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 px-2 py-1.5 ring-1 ring-amber-200/50 dark:ring-amber-800/30">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-sm shadow-amber-500/30">
               <Flame className="h-3.5 w-3.5" />
             </div>
             <div className="min-w-0 flex-1">
@@ -123,7 +123,7 @@ export function AppSidebar({ activeView, onViewChange }: AppSidebarProps) {
             </div>
           </div>
           <p className="mt-2 text-center text-[10px] text-muted-foreground">
-            © 2026 RCS Canteen · v1.0.0
+            © 2026 RCS Canteen · v1.1.0
           </p>
         </div>
       </SidebarFooter>

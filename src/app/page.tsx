@@ -104,10 +104,10 @@ function UserMenu() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="flex items-center gap-2 rounded-full px-2 py-1 h-auto"
+          className="flex items-center gap-2 rounded-full pl-1.5 pr-3 py-1 h-auto hover:bg-amber-50 dark:hover:bg-amber-950/20 transition-colors"
         >
-          <Avatar className="h-7 w-7 border border-amber-200 dark:border-amber-800">
-            <AvatarFallback className="bg-gradient-to-br from-amber-400 to-orange-500 text-white text-xs font-bold">
+          <Avatar className="h-7 w-7 avatar-ring">
+            <AvatarFallback className="bg-gradient-to-br from-amber-400 to-orange-500 text-white text-xs font-bold rounded-full">
               {initials}
             </AvatarFallback>
           </Avatar>
@@ -124,8 +124,8 @@ function UserMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <div className="flex items-center gap-3 px-2 py-1.5">
-          <Avatar className="h-9 w-9 border border-amber-200 dark:border-amber-800">
-            <AvatarFallback className="bg-gradient-to-br from-amber-400 to-orange-500 text-white text-sm font-bold">
+          <Avatar className="h-9 w-9 avatar-ring">
+            <AvatarFallback className="bg-gradient-to-br from-amber-400 to-orange-500 text-white text-sm font-bold rounded-full">
               {initials}
             </AvatarFallback>
           </Avatar>
@@ -210,12 +210,12 @@ function AuthenticatedApp() {
                 {viewLabels[activeView]}
               </h2>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full border bg-muted/40 px-3 py-1">
-              <span className="relative flex h-2 w-2">
+            <div className="flex items-center gap-1.5 rounded-full border border-emerald-200/60 bg-emerald-50/80 px-3 py-1 dark:border-emerald-800/40 dark:bg-emerald-950/20">
+              <span className="live-dot relative flex h-2 w-2 text-emerald-500">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
               </span>
-              <span className="hidden text-xs font-medium text-muted-foreground sm:inline">
+              <span className="hidden text-xs font-medium text-emerald-700 dark:text-emerald-300 sm:inline">
                 Live · 600 Employees
               </span>
             </div>

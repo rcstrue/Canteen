@@ -146,3 +146,239 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: oklch(0.55 0.18 50);
 }
+
+/* ----------------------------------------------------------------
+   Native date input styling — match shadcn/ui aesthetic
+   ---------------------------------------------------------------- */
+input[type="date"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  opacity: 0.55;
+  filter: sepia(1) saturate(5) hue-rotate(5deg);
+  transition: opacity 0.15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 0.9;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8) sepia(1) saturate(3) hue-rotate(5deg);
+  opacity: 0.7;
+}
+
+input[type="date"]::-webkit-inner-spin-button,
+input[type="date"]::-webkit-clear-button {
+  display: none;
+}
+
+/* ----------------------------------------------------------------
+   Card hover lift — apply via .card-hover or on Card components
+   ---------------------------------------------------------------- */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 6px -1px oklch(0.55 0.18 50 / 0.08),
+    0 2px 4px -2px oklch(0.55 0.18 50 / 0.06);
+  border-color: oklch(0.85 0.04 70);
+}
+
+/* Metric tile glow on hover */
+.metric-tile {
+  position: relative;
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.metric-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    oklch(0.7 0.18 50 / 0.35),
+    transparent 40%,
+    transparent 60%,
+    oklch(0.65 0.15 60 / 0.25));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.metric-tile:hover {
+  transform: translateY(-3px);
+  box-shadow:
+    0 10px 25px -5px oklch(0.55 0.18 50 / 0.18),
+    0 4px 10px -3px oklch(0.55 0.18 50 / 0.1);
+}
+
+.metric-tile:hover::before {
+  opacity: 1;
+}
+
+/* ----------------------------------------------------------------
+   Subtle row hover — for tables
+   ---------------------------------------------------------------- */
+.row-hover {
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.row-hover:hover {
+  background-color: oklch(0.97 0.015 80);
+}
+
+.dark .row-hover:hover {
+  background-color: oklch(0.25 0.02 60 / 0.5);
+}
+
+/* ----------------------------------------------------------------
+   Avatar ring effect for header
+   ---------------------------------------------------------------- */
+.avatar-ring {
+  position: relative;
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px oklch(0.7 0.18 50 / 0.5);
+  transition: box-shadow 0.2s ease;
+}
+
+.avatar-ring:hover {
+  box-shadow:
+    0 0 0 2px var(--background),
+    0 0 0 4px oklch(0.65 0.18 50);
+}
+
+/* ----------------------------------------------------------------
+   Sidebar footer polish — gradient bar above footer
+   ---------------------------------------------------------------- */
+.sidebar-footer-accent {
+  background: linear-gradient(90deg,
+    transparent,
+    oklch(0.55 0.18 50 / 0.25),
+    transparent);
+  height: 1px;
+  margin: 0 8px 8px;
+}
+
+/* ----------------------------------------------------------------
+   Pulse dot for "Live" indicator
+   ---------------------------------------------------------------- */
+.live-dot {
+  position: relative;
+}
+
+.live-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 1px solid currentColor;
+  opacity: 0;
+  animation: live-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes live-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  80%, 100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* ----------------------------------------------------------------
+   Print styles for purchase invoices — see expanded block at end of file
+   ---------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------
+   Scroll fade — for horizontal scroll areas
+   ---------------------------------------------------------------- */
+.scroll-fade {
+  mask-image: linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent);
+}
+
+/* ----------------------------------------------------------------
+   Selection color
+   ---------------------------------------------------------------- */
+::selection {
+  background: oklch(0.55 0.18 50 / 0.25);
+  color: inherit;
+}
+
+/* ----------------------------------------------------------------
+   Focus-visible polish for keyboard nav
+   ---------------------------------------------------------------- */
+:focus-visible {
+  outline: 2px solid oklch(0.55 0.18 50 / 0.6);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Printable invoice styles ───────────────────────────────────────────────
+   When printing, hide everything in the body except the `.printable-invoice`
+   subtree. The dialog overlay & siblings are made invisible so only the
+   invoice is sent to the browser's print pipeline.
+   --------------------------------------------------------------------------- */
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+  .printable-invoice,
+  .printable-invoice * {
+    visibility: visible !important;
+  }
+  .printable-invoice {
+    position: absolute !important;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+  /* Hide non-printable helpers inside the invoice (print button, dialog close, etc.) */
+  .no-print,
+  .no-print * {
+    visibility: hidden !important;
+    display: none !important;
+  }
+  /* Ensure colors & backgrounds print correctly */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  @page {
+    margin: 14mm;
+    size: A4 portrait;
+  }
+}

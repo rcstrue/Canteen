@@ -1,0 +1,1991 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback, useMemo } from 'react';
+     4→import { motion, AnimatePresence } from 'framer-motion';
+     5→import {
+     6→  Card,
+     7→  CardContent,
+     8→  CardDescription,
+     9→  CardHeader,
+    10→  CardTitle,
+    11→} from '@/components/ui/card';
+    12→import { Badge } from '@/components/ui/badge';
+    13→import { Button } from '@/components/ui/button';
+    14→import { Input } from '@/components/ui/input';
+    15→import { Skeleton } from '@/components/ui/skeleton';
+    16→import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+    17→import { Switch } from '@/components/ui/switch';
+    18→import { Label } from '@/components/ui/label';
+    19→import {
+    20→  Table,
+    21→  TableBody,
+    22→  TableCell,
+    23→  TableHead,
+    24→  TableHeader,
+    25→  TableRow,
+    26→} from '@/components/ui/table';
+    27→import {
+    28→  ChartContainer,
+    29→  ChartTooltip,
+    30→  ChartTooltipContent,
+    31→  type ChartConfig,
+    32→} from '@/components/ui/chart';
+    33→import { toast } from 'sonner';
+    34→import {
+    35→  BarChart3,
+    36→  IndianRupee,
+    37→  Utensils,
+    38→  Users,
+    39→  TrendingUp,
+    40→  TrendingDown,
+    41→  Package,
+    42→  AlertTriangle,
+    43→  CheckCircle2,
+    44→  AlertCircle,
+    45→  XCircle,
+    46→  CalendarDays,
+    47→  ArrowUpRight,
+    48→  ArrowDownRight,
+    49→  Info,
+    50→  Download,
+    51→  Printer,
+    52→  LineChart as LineChartIcon,
+    53→  BarChart as BarChartIcon,
+    54→  Wallet,
+    55→  Scale,
+    56→} from 'lucide-react';
+    57→import {
+    58→  LineChart,
+    59→  Line,
+    60→  BarChart,
+    61→  Bar,
+    62→  PieChart,
+    63→  Pie,
+    64→  Cell,
+    65→  XAxis,
+    66→  YAxis,
+    67→  CartesianGrid,
+    68→  ResponsiveContainer,
+    69→  Legend,
+    70→  Label as RechartsLabel,
+    71→} from 'recharts';
+    72→import { downloadCSV } from '@/lib/export-utils';
+    73→
+    74→// ─── Types ────────────────────────────────────────────────────────────────────
+    75→
+    76→interface CostReport {
+    77→  period: { start: string; end: string; type: string };
+    78→  foodCost: {
+    79→    total: number;
+    80→    costPerMeal: number;
+    81→    categoryBreakdown: { category: string; totalCost: number; totalQuantity: number }[];
+    82→    dailyTrend: { date: string; cost: number }[];
+    83→  };
+    84→  meals: { total: number; count: number };
+    85→  expenses: { total: number; breakdown: { category: string; amount: number }[] };
+    86→  totalOperatingCost: number;
+    87→  operatingCostPerMeal: number;
+    88→}
+    89→
+    90→interface ConsumptionReport {
+    91→  period: { start: string; end: string; type: string };
+    92→  summary: {
+    93→    totalConsumption: number;
+    94→    totalWastage: number;
+    95→    wastagePercentage: number;
+    96→  };
+    97→  usageByIngredient: {
+    98→    ingredient: { id: string; name: string; unit: string; category: string; avgCost: number };
+    99→    consumptionQty: number;
+   100→    consumptionCost: number;
+   101→    wastageQty: number;
+   102→    wastageCost: number;
+   103→    totalQty: number;
+   104→    totalCost: number;
+   105→  }[];
+   106→  categoryBreakdown: { category: string; totalQty: number; totalCost: number; wastagePercent: number }[];
+   107→  dailyTrend: { date: string; consumption: number; wastage: number }[];
+   108→}
+   109→
+   110→interface VarianceReport {
+   111→  period: { start: string; end: string; type: string };
+   112→  summary: {
+   113→    totalTheoreticalCost: number;
+   114→    totalActualCost: number;
+   115→    totalVarianceCost: number;
+   116→    variancePercentage: number;
+   117→    totalWastage: number;
+   118→    criticalCount: number;
+   119→    warningCount: number;
+   120→  };
+   121→  varianceByIngredient: {
+   122→    ingredient: { id: string; name: string; unit: string; category: string; avgCost: number };
+   123→    theoreticalQty: number;
+   124→    actualQty: number;
+   125→    varianceQty: number;
+   126→    variancePercent: number;
+   127→    theoreticalCost: number;
+   128→    actualCost: number;
+   129→    varianceCost: number;
+   130→    wastageQty: number;
+   131→    status: 'normal' | 'warning' | 'critical';
+   132→  }[];
+   133→  criticalItems: unknown[];
+   134→  warningItems: unknown[];
+   135→}
+   136→
+   137→type PeriodType = 'today' | 'week' | 'month';
+   138→type TrendChartType = 'line' | 'bar';
+   139→
+   140→// ─── Helpers ──────────────────────────────────────────────────────────────────
+   141→
+   142→const fmt = new Intl.NumberFormat('en-IN', {
+   143→  style: 'currency',
+   144→  currency: 'INR',
+   145→  minimumFractionDigits: 0,
+   146→  maximumFractionDigits: 2,
+   147→});
+   148→
+   149→const fmtNum = new Intl.NumberFormat('en-IN', {
+   150→  maximumFractionDigits: 2,
+   151→});
+   152→
+   153→const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
+   154→
+   155→// Cohesive palette per spec: amber-500, orange-500, rose-500, emerald-500, violet-500, cyan-500
+   156→const PALETTE = [
+   157→  '#f59e0b', // amber-500
+   158→  '#f97316', // orange-500
+   159→  '#f43f5e', // rose-500
+   160→  '#10b981', // emerald-500
+   161→  '#8b5cf6', // violet-500
+   162→  '#06b6d4', // cyan-500
+   163→];
+   164→
+   165→const CATEGORY_COLORS: Record<string, string> = {
+   166→  Grains: '#f59e0b', // amber
+   167→  Pulses: '#f97316', // orange
+   168→  Vegetables: '#10b981', // emerald
+   169→  Oil: '#8b5cf6', // violet
+   170→  Spices: '#f43f5e', // rose
+   171→  Dairy: '#06b6d4', // cyan
+   172→  Meat: '#ef4444', // red
+   173→  Other: '#6b7280', // gray
+   174→};
+   175→
+   176→function getCategoryColor(category: string): string {
+   177→  return CATEGORY_COLORS[category] ?? PALETTE[Math.abs(hash(category)) % PALETTE.length];
+   178→}
+   179→
+   180→function hash(s: string): number {
+   181→  let h = 0;
+   182→  for (let i = 0; i < s.length; i++) h = (h << 5) - h + s.charCodeAt(i);
+   183→  return h;
+   184→}
+   185→
+   186→/** Format as DD/MM/YYYY (Indian format). */
+   187→function formatDate(dateStr: string): string {
+   188→  if (!dateStr) return '';
+   189→  const d = new Date(dateStr);
+   190→  if (isNaN(d.getTime())) return dateStr;
+   191→  const dd = String(d.getDate()).padStart(2, '0');
+   192→  const mm = String(d.getMonth() + 1).padStart(2, '0');
+   193→  const yyyy = d.getFullYear();
+   194→  return `${dd}/${mm}/${yyyy}`;
+   195→}
+   196→
+   197→/** Short format DD/MM for chart axes. */
+   198→function formatShortDate(dateStr: string): string {
+   199→  if (!dateStr) return '';
+   200→  const d = new Date(dateStr);
+   201→  if (isNaN(d.getTime())) return dateStr;
+   202→  const dd = String(d.getDate()).padStart(2, '0');
+   203→  const mm = String(d.getMonth() + 1).padStart(2, '0');
+   204→  return `${dd}/${mm}`;
+   205→}
+   206→
+   207→/** Compute the previous-period date range (same duration immediately before `start`). */
+   208→function getPreviousRange(start: string, end: string): { start: string; end: string } {
+   209→  const s = new Date(start);
+   210→  const e = new Date(end);
+   211→  const duration = e.getTime() - s.getTime();
+   212→  const prevEnd = new Date(s.getTime() - 1); // day before current start
+   213→  const prevStart = new Date(prevEnd.getTime() - duration);
+   214→  return {
+   215→    start: prevStart.toISOString().split('T')[0],
+   216→    end: prevEnd.toISOString().split('T')[0],
+   217→  };
+   218→}
+   219→
+   220→// ─── Chart Configs ────────────────────────────────────────────────────────────
+   221→
+   222→const costTrendConfig: ChartConfig = {
+   223→  cost: { label: 'Daily Cost', color: '#f59e0b' },
+   224→};
+   225→
+   226→const costBreakdownConfig: ChartConfig = {
+   227→  value: { label: 'Cost' },
+   228→};
+   229→
+   230→const consumptionBarConfig: ChartConfig = {
+   231→  totalQty: { label: 'Qty Consumed', color: '#f59e0b' },
+   232→  wastageQty: { label: 'Wastage', color: '#f43f5e' },
+   233→};
+   234→
+   235→const consumptionTrendConfig: ChartConfig = {
+   236→  consumption: { label: 'Consumption', color: '#f59e0b' },
+   237→  wastage: { label: 'Wastage', color: '#f43f5e' },
+   238→};
+   239→
+   240→const consumptionCategoryConfig: ChartConfig = {
+   241→  value: { label: 'Cost' },
+   242→};
+   243→
+   244→const varianceBarConfig: ChartConfig = {
+   245→  theoretical: { label: 'Theoretical', color: '#f59e0b' },
+   246→  actual: { label: 'Actual', color: '#f97316' },
+   247→};
+   248→
+   249→// ─── Component ────────────────────────────────────────────────────────────────
+   250→
+   251→export function ReportsView() {
+   252→  const [period, setPeriod] = useState<PeriodType>('month');
+   253→  const [startDate, setStartDate] = useState('');
+   254→  const [endDate, setEndDate] = useState('');
+   255→  const [activeTab, setActiveTab] = useState('cost');
+   256→
+   257→  // New feature toggles
+   258→  const [compareMode, setCompareMode] = useState(false);
+   259→  const [trendChartType, setTrendChartType] = useState<TrendChartType>('line');
+   260→
+   261→  const [costData, setCostData] = useState<CostReport | null>(null);
+   262→  const [consumptionData, setConsumptionData] = useState<ConsumptionReport | null>(null);
+   263→  const [varianceData, setVarianceData] = useState<VarianceReport | null>(null);
+   264→
+   265→  // Previous-period comparison data
+   266→  const [prevCostData, setPrevCostData] = useState<CostReport | null>(null);
+   267→  const [prevConsumptionData, setPrevConsumptionData] = useState<ConsumptionReport | null>(null);
+   268→  const [prevVarianceData, setPrevVarianceData] = useState<VarianceReport | null>(null);
+   269→
+   270→  const [costLoading, setCostLoading] = useState(false);
+   271→  const [consumptionLoading, setConsumptionLoading] = useState(false);
+   272→  const [varianceLoading, setVarianceLoading] = useState(false);
+   273→
+   274→  const [costError, setCostError] = useState('');
+   275→  const [consumptionError, setConsumptionError] = useState('');
+   276→  const [varianceError, setVarianceError] = useState('');
+   277→
+   278→  const isCustomRange = !!(startDate && endDate);
+   279→
+   280→  const buildQuery = useCallback(() => {
+   281→    const params = new URLSearchParams();
+   282→    if (isCustomRange) {
+   283→      params.set('startDate', startDate);
+   284→      params.set('endDate', endDate);
+   285→      params.set('period', period);
+   286→    } else {
+   287→      params.set('period', period);
+   288→    }
+   289→    return params.toString();
+   290→  }, [period, startDate, endDate, isCustomRange]);
+   291→
+   292→  const fetchCostReport = useCallback(async () => {
+   293→    setCostLoading(true);
+   294→    setCostError('');
+   295→    try {
+   296→      const res = await fetch(`/api/reports/cost?${buildQuery()}`);
+   297→      if (!res.ok) throw new Error('Failed to fetch cost report');
+   298→      const data = (await res.json()) as CostReport;
+   299→      setCostData(data);
+   300→    } catch {
+   301→      setCostError('Failed to load cost report');
+   302→    } finally {
+   303→      setCostLoading(false);
+   304→    }
+   305→  }, [buildQuery]);
+   306→
+   307→  const fetchConsumptionReport = useCallback(async () => {
+   308→    setConsumptionLoading(true);
+   309→    setConsumptionError('');
+   310→    try {
+   311→      const res = await fetch(`/api/reports/consumption?${buildQuery()}`);
+   312→      if (!res.ok) throw new Error('Failed to fetch consumption report');
+   313→      const data = (await res.json()) as ConsumptionReport;
+   314→      setConsumptionData(data);
+   315→    } catch {
+   316→      setConsumptionError('Failed to load consumption report');
+   317→    } finally {
+   318→      setConsumptionLoading(false);
+   319→    }
+   320→  }, [buildQuery]);
+   321→
+   322→  const fetchVarianceReport = useCallback(async () => {
+   323→    setVarianceLoading(true);
+   324→    setVarianceError('');
+   325→    try {
+   326→      const res = await fetch(`/api/reports/variance?${buildQuery()}`);
+   327→      if (!res.ok) throw new Error('Failed to fetch variance report');
+   328→      const data = (await res.json()) as VarianceReport;
+   329→      setVarianceData(data);
+   330→    } catch {
+   331→      setVarianceError('Failed to load variance report');
+   332→    } finally {
+   333→      setVarianceLoading(false);
+   334→    }
+   335→  }, [buildQuery]);
+   336→
+   337→  // Fetch all reports when period changes
+   338→  useEffect(() => {
+   339→    fetchCostReport();
+   340→    fetchConsumptionReport();
+   341→    fetchVarianceReport();
+   342→  }, [fetchCostReport, fetchConsumptionReport, fetchVarianceReport]);
+   343→
+   344→  // Fetch previous-period comparison data when compareMode is enabled
+   345→  useEffect(() => {
+   346→    if (!compareMode) {
+   347→      setPrevCostData(null);
+   348→      setPrevConsumptionData(null);
+   349→      setPrevVarianceData(null);
+   350→      return;
+   351→    }
+   352→    const baseStart = costData?.period.start;
+   353→    const baseEnd = costData?.period.end;
+   354→    if (!baseStart || !baseEnd) return;
+   355→
+   356→    const prev = getPreviousRange(baseStart, baseEnd);
+   357→    const q = new URLSearchParams({
+   358→      startDate: prev.start,
+   359→      endDate: prev.end,
+   360→      period,
+   361→    }).toString();
+   362→
+   363→    (async () => {
+   364→      try {
+   365→        const [c, co, v] = await Promise.all([
+   366→          fetch(`/api/reports/cost?${q}`).then((r) => r.json() as Promise<CostReport>),
+   367→          fetch(`/api/reports/consumption?${q}`).then((r) => r.json() as Promise<ConsumptionReport>),
+   368→          fetch(`/api/reports/variance?${q}`).then((r) => r.json() as Promise<VarianceReport>),
+   369→        ]);
+   370→        setPrevCostData(c);
+   371→        setPrevConsumptionData(co);
+   372→        setPrevVarianceData(v);
+   373→      } catch {
+   374→        toast.error('Could not load previous-period data for comparison.');
+   375→      }
+   376→    })();
+   377→  }, [compareMode, costData?.period.start, costData?.period.end, period]);
+   378→
+   379→  const handlePeriodChange = (p: PeriodType) => {
+   380→    setPeriod(p);
+   381→    setStartDate('');
+   382→    setEndDate('');
+   383→  };
+   384→
+   385→  const handleCustomApply = () => {
+   386→    if (startDate && endDate) {
+   387→      fetchCostReport();
+   388→      fetchConsumptionReport();
+   389→      fetchVarianceReport();
+   390→    }
+   391→  };
+   392→
+   393→  const totalEmployees = 600;
+   394→
+   395→  // ─── CSV export handlers ─────────────────────────────────────────────────
+   396→
+   397→  const exportCostCSV = () => {
+   398→    if (!costData) return;
+   399→    const rows = costData.foodCost.dailyTrend.map((row, idx) => {
+   400→      const avgMealsPerDay =
+   401→        costData.foodCost.dailyTrend.length > 0
+   402→          ? costData.meals.total / costData.foodCost.dailyTrend.length
+   403→          : 0;
+   404→      return {
+   405→        'Date (DD/MM/YYYY)': formatDate(row.date),
+   406→        'Day Cost': row.cost.toFixed(2),
+   407→        'Meals Served': Math.round(avgMealsPerDay),
+   408→        'Cost Per Meal': (avgMealsPerDay > 0 ? row.cost / avgMealsPerDay : 0).toFixed(2),
+   409→        'Index': idx + 1,
+   410→      };
+   411→    });
+   412→    downloadCSV(`cost-report-${period}-${Date.now()}.csv`, rows);
+   413→    toast.success('Cost report exported.');
+   414→  };
+   415→
+   416→  const exportConsumptionCSV = () => {
+   417→    if (!consumptionData) return;
+   418→    const rows = consumptionData.usageByIngredient.map((i) => ({
+   419→      Ingredient: i.ingredient.name,
+   420→      Category: i.ingredient.category,
+   421→      Unit: i.ingredient.unit,
+   422→      'Qty Consumed': i.consumptionQty.toFixed(2),
+   423→      'Consumption Cost': i.consumptionCost.toFixed(2),
+   424→      'Wastage Qty': i.wastageQty.toFixed(2),
+   425→      'Wastage Cost': i.wastageCost.toFixed(2),
+   426→      'Total Qty': i.totalQty.toFixed(2),
+   427→      'Total Cost': i.totalCost.toFixed(2),
+   428→    }));
+   429→    downloadCSV(`consumption-report-${period}-${Date.now()}.csv`, rows);
+   430→    toast.success('Consumption report exported.');
+   431→  };
+   432→
+   433→  const exportVarianceCSV = () => {
+   434→    if (!varianceData) return;
+   435→    const rows = varianceData.varianceByIngredient.map((i) => ({
+   436→      Ingredient: i.ingredient.name,
+   437→      Category: i.ingredient.category,
+   438→      Unit: i.ingredient.unit,
+   439→      'Theoretical Qty': i.theoreticalQty.toFixed(2),
+   440→      'Actual Qty': i.actualQty.toFixed(2),
+   441→      'Variance Qty': i.varianceQty.toFixed(2),
+   442→      'Variance %': i.variancePercent.toFixed(2),
+   443→      'Theoretical Cost': i.theoreticalCost.toFixed(2),
+   444→      'Actual Cost': i.actualCost.toFixed(2),
+   445→      'Variance Cost': i.varianceCost.toFixed(2),
+   446→      'Wastage Qty': i.wastageQty.toFixed(2),
+   447→      Status: i.status,
+   448→    }));
+   449→    downloadCSV(`variance-report-${period}-${Date.now()}.csv`, rows);
+   450→    toast.success('Variance report exported.');
+   451→  };
+   452→
+   453→  // ─── Render ───────────────────────────────────────────────────────────────
+   454→
+   455→  return (
+   456→    <div className="space-y-6">
+   457→      {/* Header */}
+   458→      <div className="flex items-center gap-3">
+   459→        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   460→          <BarChart3 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   461→        </div>
+   462→        <div>
+   463→          <h1 className="text-2xl font-bold tracking-tight">Reports</h1>
+   464→          <p className="text-muted-foreground">
+   465→            Cost, consumption, and variance analysis for canteen operations
+   466→          </p>
+   467→        </div>
+   468→      </div>
+   469→
+   470→      {/* Period Selector + Global Actions */}
+   471→      <Card className="transition-all hover:shadow-md">
+   472→        <CardContent className="p-4">
+   473→          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+   474→            <div className="flex flex-wrap items-center gap-3">
+   475→              <div className="flex items-center gap-2">
+   476→                <CalendarDays className="h-4 w-4 text-amber-600" />
+   477→                <span className="text-sm font-medium">Period:</span>
+   478→              </div>
+   479→              {/* Pill-style period selector */}
+   480→              <div className="inline-flex rounded-full bg-muted p-1">
+   481→                {(['today', 'week', 'month'] as PeriodType[]).map((p) => {
+   482→                  const active = period === p && !isCustomRange;
+   483→                  return (
+   484→                    <button
+   485→                      key={p}
+   486→                      type="button"
+   487→                      onClick={() => handlePeriodChange(p)}
+   488→                      className={`rounded-full px-4 py-1.5 text-sm font-medium transition-all ${
+   489→                        active
+   490→                          ? 'bg-primary text-primary-foreground shadow-sm'
+   491→                          : 'text-muted-foreground hover:text-foreground'
+   492→                      }`}
+   493→                    >
+   494→                      {p === 'today' ? 'Today' : p === 'week' ? 'This Week' : 'This Month'}
+   495→                    </button>
+   496→                  );
+   497→                })}
+   498→              </div>
+   499→            </div>
+   500→
+   501→            <div className="flex flex-wrap items-center gap-2">
+   502→              <Input
+   503→                type="date"
+   504→                value={startDate}
+   505→                onChange={(e) => setStartDate(e.target.value)}
+   506→                className="h-9 w-auto text-sm"
+   507→                aria-label="Custom start date"
+   508→              />
+   509→              <span className="text-sm text-muted-foreground">to</span>
+   510→              <Input
+   511→                type="date"
+   512→                value={endDate}
+   513→                onChange={(e) => setEndDate(e.target.value)}
+   514→                className="h-9 w-auto text-sm"
+   515→                aria-label="Custom end date"
+   516→              />
+   517→              <Button
+   518→                size="sm"
+   519→                onClick={handleCustomApply}
+   520→                disabled={!startDate || !endDate}
+   521→                className="bg-amber-600 hover:bg-amber-700 text-white"
+   522→              >
+   523→                Apply
+   524→              </Button>
+   525→
+   526→              {/* Compare toggle */}
+   527→              <div className="ml-2 flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+   528→                <Switch
+   529→                  id="compare-mode"
+   530→                  checked={compareMode}
+   531→                  onCheckedChange={setCompareMode}
+   532→                  aria-label="Toggle comparison with previous period"
+   533→                />
+   534→                <Label htmlFor="compare-mode" className="cursor-pointer text-xs font-medium">
+   535→                  Compare
+   536→                </Label>
+   537→              </div>
+   538→
+   539→              <Button
+   540→                size="sm"
+   541→                variant="outline"
+   542→                onClick={() => window.print()}
+   543→                className="gap-1.5"
+   544→              >
+   545→                <Printer className="h-4 w-4" />
+   546→                Print
+   547→              </Button>
+   548→            </div>
+   549→          </div>
+   550→        </CardContent>
+   551→      </Card>
+   552→
+   553→      {/* Tabs */}
+   554→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   555→        <TabsList className="w-full sm:w-auto">
+   556→          <TabsTrigger value="cost" className="gap-1.5">
+   557→            <IndianRupee className="h-4 w-4" />
+   558→            Cost Report
+   559→          </TabsTrigger>
+   560→          <TabsTrigger value="consumption" className="gap-1.5">
+   561→            <Package className="h-4 w-4" />
+   562→            Consumption Report
+   563→          </TabsTrigger>
+   564→          <TabsTrigger value="variance" className="gap-1.5">
+   565→            <AlertTriangle className="h-4 w-4" />
+   566→            Variance Report
+   567→          </TabsTrigger>
+   568→        </TabsList>
+   569→
+   570→        <AnimatePresence mode="wait">
+   571→          <motion.div
+   572→            key={activeTab}
+   573→            initial={{ opacity: 0, y: 8 }}
+   574→            animate={{ opacity: 1, y: 0 }}
+   575→            exit={{ opacity: 0, y: -8 }}
+   576→            transition={{ duration: 0.2, ease: 'easeOut' }}
+   577→          >
+   578→            {/* ─── Cost Report Tab ──────────────────────────────────────────── */}
+   579→            <TabsContent value="cost" className="space-y-6 mt-4">
+   580→              {costLoading ? (
+   581→                <CostReportSkeleton />
+   582→              ) : costError ? (
+   583→                <ErrorState message={costError} onRetry={fetchCostReport} />
+   584→              ) : costData ? (
+   585→                <>
+   586→                  {/* Report Summary Header */}
+   587→                  <ReportSummaryHeader
+   588→                    title="Cost Report"
+   589→                    metric={fmt.format(costData.totalOperatingCost)}
+   590→                    metricLabel="Total Operating Cost"
+   591→                    periodStart={costData.period.start}
+   592→                    periodEnd={costData.period.end}
+   593→                    onExport={exportCostCSV}
+   594→                    accent="amber"
+   595→                  />
+   596→
+   597→                  {/* KPI Cards — integrated with operating cost context */}
+   598→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   599→                    <SummaryCard
+   600→                      title="Food Cost"
+   601→                      value={fmt.format(costData.foodCost.total)}
+   602→                      icon={<IndianRupee className="h-5 w-5" />}
+   603→                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+   604→                      iconColor="text-amber-600 dark:text-amber-400"
+   605→                      subtitle={`${fmtNum.format(costData.meals.total)} meals served`}
+   606→                      previousValue={
+   607→                        compareMode && prevCostData
+   608→                          ? fmt.format(prevCostData.foodCost.total)
+   609→                          : undefined
+   610→                      }
+   611→                      goodWhenDown
+   612→                    />
+   613→                    <SummaryCard
+   614→                      title="Food Cost / Meal"
+   615→                      value={fmt.format(costData.foodCost.costPerMeal)}
+   616→                      icon={<Utensils className="h-5 w-5" />}
+   617→                      iconBg="bg-orange-100 dark:bg-orange-900/30"
+   618→                      iconColor="text-orange-600 dark:text-orange-400"
+   619→                      subtitle="Raw ingredient cost per meal"
+   620→                      previousValue={
+   621→                        compareMode && prevCostData
+   622→                          ? fmt.format(prevCostData.foodCost.costPerMeal)
+   623→                          : undefined
+   624→                      }
+   625→                      goodWhenDown
+   626→                    />
+   627→                    <SummaryCard
+   628→                      title="Operating Cost / Meal"
+   629→                      value={fmt.format(costData.operatingCostPerMeal)}
+   630→                      icon={<Wallet className="h-5 w-5" />}
+   631→                      iconBg="bg-rose-100 dark:bg-rose-900/30"
+   632→                      iconColor="text-rose-600 dark:text-rose-400"
+   633→                      subtitle="Food + expenses per meal"
+   634→                      previousValue={
+   635→                        compareMode && prevCostData
+   636→                          ? fmt.format(prevCostData.operatingCostPerMeal)
+   637→                          : undefined
+   638→                      }
+   639→                      goodWhenDown
+   640→                    />
+   641→                    <SummaryCard
+   642→                      title="Operating Expenses"
+   643→                      value={fmt.format(costData.expenses.total)}
+   644→                      icon={<TrendingUp className="h-5 w-5" />}
+   645→                      iconBg="bg-violet-100 dark:bg-violet-900/30"
+   646→                      iconColor="text-violet-600 dark:text-violet-400"
+   647→                      subtitle={`Based on ${totalEmployees} employees`}
+   648→                      previousValue={
+   649→                        compareMode && prevCostData
+   650→                          ? fmt.format(prevCostData.expenses.total)
+   651→                          : undefined
+   652→                      }
+   653→                      goodWhenDown
+   654→                    />
+   655→                  </div>
+   656→
+   657→                  {/* Charts Row */}
+   658→                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   659→                    {/* Cost Breakdown by Category (Donut with % labels) */}
+   660→                    <Card className="transition-all hover:shadow-md">
+   661→                      <CardHeader className="pb-2">
+   662→                        <CardTitle className="text-base">Cost Breakdown by Category</CardTitle>
+   663→                        <CardDescription>Food cost distribution across ingredient categories</CardDescription>
+   664→                      </CardHeader>
+   665→                      <CardContent>
+   666→                        {costData.foodCost.categoryBreakdown.length > 0 ? (
+   667→                          <ChartContainer
+   668→                            config={costBreakdownConfig}
+   669→                            className="mx-auto aspect-square max-h-[320px]"
+   670→                          >
+   671→                            <PieChart>
+   672→                              <ChartTooltip
+   673→                                content={
+   674→                                  <ChartTooltipContent
+   675→                                    formatter={(value, name) => (
+   676→                                      <span>
+   677→                                        {name}: <span className="font-semibold tabular-nums">{fmt.format(Number(value))}</span>
+   678→                                      </span>
+   679→                                    )}
+   680→                                  />
+   681→                                }
+   682→                              />
+   683→                              <Pie
+   684→                                data={costData.foodCost.categoryBreakdown.map((c) => ({
+   685→                                  name: c.category,
+   686→                                  value: c.totalCost,
+   687→                                }))}
+   688→                                cx="50%"
+   689→                                cy="50%"
+   690→                                innerRadius={55}
+   691→                                outerRadius={95}
+   692→                                paddingAngle={2}
+   693→                                dataKey="value"
+   694→                                nameKey="name"
+   695→                                labelLine={false}
+   696→                                label={renderPiePercentLabel}
+   697→                              >
+   698→                                {costData.foodCost.categoryBreakdown.map((entry) => (
+   699→                                  <Cell key={entry.category} fill={getCategoryColor(entry.category)} />
+   700→                                ))}
+   701→                              </Pie>
+   702→                              <Legend
+   703→                                verticalAlign="bottom"
+   704→                                height={36}
+   705→                                iconType="circle"
+   706→                                formatter={(value) => (
+   707→                                  <span className="text-xs">{value}</span>
+   708→                                )}
+   709→                              />
+   710→                            </PieChart>
+   711→                          </ChartContainer>
+   712→                        ) : (
+   713→                          <EmptyState message="No category data available" />
+   714→                        )}
+   715→                      </CardContent>
+   716→                    </Card>
+   717→
+   718→                    {/* Daily Cost Trend (with chart-type toggle) */}
+   719→                    <Card className="transition-all hover:shadow-md">
+   720→                      <CardHeader className="pb-2">
+   721→                        <div className="flex items-start justify-between">
+   722→                          <div>
+   723→                            <CardTitle className="text-base">Daily Cost Trend</CardTitle>
+   724→                            <CardDescription>Food cost trend over the selected period</CardDescription>
+   725→                          </div>
+   726→                          <ChartTypeToggle value={trendChartType} onChange={setTrendChartType} />
+   727→                        </div>
+   728→                      </CardHeader>
+   729→                      <CardContent>
+   730→                        {costData.foodCost.dailyTrend.length > 0 ? (
+   731→                          <ChartContainer config={costTrendConfig} className="aspect-[2/1] w-full">
+   732→                            {trendChartType === 'line' ? (
+   733→                              <LineChart data={costData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+   734→                                <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+   735→                                <XAxis
+   736→                                  dataKey="date"
+   737→                                  tickFormatter={formatShortDate}
+   738→                                  tick={{ fontSize: 11 }}
+   739→                                  tickMargin={8}
+   740→                                  interval="preserveStartEnd"
+   741→                                  angle={-15}
+   742→                                  textAnchor="end"
+   743→                                  height={50}
+   744→                                  className="text-muted-foreground"
+   745→                                />
+   746→                                <YAxis
+   747→                                  tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+   748→                                  tick={{ fontSize: 11 }}
+   749→                                  className="text-muted-foreground"
+   750→                                />
+   751→                                <ChartTooltip
+   752→                                  content={
+   753→                                    <ChartTooltipContent
+   754→                                      labelFormatter={(label) => formatDate(label as string)}
+   755→                                      formatter={(value) => (
+   756→                                        <span className="tabular-nums">{fmt.format(Number(value))}</span>
+   757→                                      )}
+   758→                                    />
+   759→                                  }
+   760→                                />
+   761→                                <Line
+   762→                                  type="monotone"
+   763→                                  dataKey="cost"
+   764→                                  stroke="#f59e0b"
+   765→                                  strokeWidth={2}
+   766→                                  dot={{ r: 3, fill: '#f59e0b' }}
+   767→                                  activeDot={{ r: 5, fill: '#d97706' }}
+   768→                                />
+   769→                              </LineChart>
+   770→                            ) : (
+   771→                              <BarChart data={costData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+   772→                                <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+   773→                                <XAxis
+   774→                                  dataKey="date"
+   775→                                  tickFormatter={formatShortDate}
+   776→                                  tick={{ fontSize: 11 }}
+   777→                                  tickMargin={8}
+   778→                                  interval="preserveStartEnd"
+   779→                                  angle={-15}
+   780→                                  textAnchor="end"
+   781→                                  height={50}
+   782→                                  className="text-muted-foreground"
+   783→                                />
+   784→                                <YAxis
+   785→                                  tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+   786→                                  tick={{ fontSize: 11 }}
+   787→                                  className="text-muted-foreground"
+   788→                                />
+   789→                                <ChartTooltip
+   790→                                  content={
+   791→                                    <ChartTooltipContent
+   792→                                      labelFormatter={(label) => formatDate(label as string)}
+   793→                                      formatter={(value) => (
+   794→                                        <span className="tabular-nums">{fmt.format(Number(value))}</span>
+   795→                                      )}
+   796→                                    />
+   797→                                  }
+   798→                                />
+   799→                                <Bar dataKey="cost" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+   800→                                  <RechartsLabel
+   801→                                    dataKey="cost"
+   802→                                    position="top"
+   803→                                    formatter={(v: number) => `₹${fmtNum.format(v)}`}
+   804→                                    style={{ fontSize: 9, fill: '#92400e' }}
+   805→                                  />
+   806→                                </Bar>
+   807→                              </BarChart>
+   808→                            )}
+   809→                          </ChartContainer>
+   810→                        ) : (
+   811→                          <EmptyState message="No daily trend data available" />
+   812→                        )}
+   813→                      </CardContent>
+   814→                    </Card>
+   815→                  </div>
+   816→
+   817→                  {/* Cost Table */}
+   818→                  <Card className="transition-all hover:shadow-md">
+   819→                    <CardHeader className="pb-2">
+   820→                      <CardTitle className="text-base">Daily Cost Details</CardTitle>
+   821→                      <CardDescription>Breakdown of daily costs and meals served</CardDescription>
+   822→                    </CardHeader>
+   823→                    <CardContent>
+   824→                      {costData.foodCost.dailyTrend.length > 0 ? (
+   825→                        <div className="max-h-96 overflow-y-auto">
+   826→                          <Table>
+   827→                            <TableHeader>
+   828→                              <TableRow>
+   829→                                <TableHead>Date</TableHead>
+   830→                                <TableHead className="text-right">Total Cost</TableHead>
+   831→                                <TableHead className="text-right">Meals Served</TableHead>
+   832→                                <TableHead className="text-right">Cost Per Meal</TableHead>
+   833→                              </TableRow>
+   834→                            </TableHeader>
+   835→                            <TableBody>
+   836→                              {costData.foodCost.dailyTrend.map((row) => {
+   837→                                const mealsForDay = costData.foodCost.dailyTrend.length
+   838→                                  ? costData.meals.total / costData.foodCost.dailyTrend.length
+   839→                                  : 0;
+   840→                                const costPerMeal =
+   841→                                  mealsForDay > 0 ? row.cost / mealsForDay : 0;
+   842→                                return (
+   843→                                  <TableRow key={row.date} className="hover:bg-muted/50 transition-colors">
+   844→                                    <TableCell className="font-medium tabular-nums">
+   845→                                      {formatDate(row.date)}
+   846→                                    </TableCell>
+   847→                                    <TableCell className="text-right tabular-nums">
+   848→                                      {fmt.format(row.cost)}
+   849→                                    </TableCell>
+   850→                                    <TableCell className="text-right tabular-nums">
+   851→                                      {fmtNum.format(Math.round(mealsForDay))}
+   852→                                    </TableCell>
+   853→                                    <TableCell className="text-right tabular-nums">
+   854→                                      {fmt.format(costPerMeal)}
+   855→                                    </TableCell>
+   856→                                  </TableRow>
+   857→                                );
+   858→                              })}
+   859→                            </TableBody>
+   860→                          </Table>
+   861→                        </div>
+   862→                      ) : (
+   863→                        <EmptyState message="No daily cost data available" />
+   864→                      )}
+   865→                    </CardContent>
+   866→                  </Card>
+   867→
+   868→                  {/* Expense Breakdown */}
+   869→                  {costData.expenses.breakdown.length > 0 && (
+   870→                    <Card className="transition-all hover:shadow-md">
+   871→                      <CardHeader className="pb-2">
+   872→                        <CardTitle className="text-base">Operating Expenses</CardTitle>
+   873→                        <CardDescription>Expense breakdown by category</CardDescription>
+   874→                      </CardHeader>
+   875→                      <CardContent>
+   876→                        <div className="max-h-64 overflow-y-auto">
+   877→                          <Table>
+   878→                            <TableHeader>
+   879→                              <TableRow>
+   880→                                <TableHead>Category</TableHead>
+   881→                                <TableHead className="text-right">Amount</TableHead>
+   882→                                <TableHead className="text-right">Share</TableHead>
+   883→                              </TableRow>
+   884→                            </TableHeader>
+   885→                            <TableBody>
+   886→                              {costData.expenses.breakdown.map((exp) => (
+   887→                                <TableRow key={exp.category} className="hover:bg-muted/50 transition-colors">
+   888→                                  <TableCell className="font-medium">{exp.category}</TableCell>
+   889→                                  <TableCell className="text-right tabular-nums">{fmt.format(exp.amount)}</TableCell>
+   890→                                  <TableCell className="text-right tabular-nums">
+   891→                                    {costData.expenses.total > 0
+   892→                                      ? ((exp.amount / costData.expenses.total) * 100).toFixed(1)
+   893→                                      : '0'}
+   894→                                    %
+   895→                                  </TableCell>
+   896→                                </TableRow>
+   897→                              ))}
+   898→                              <TableRow className="font-bold bg-amber-50/50 dark:bg-amber-950/20">
+   899→                                <TableCell>Total</TableCell>
+   900→                                <TableCell className="text-right tabular-nums">
+   901→                                  {fmt.format(costData.expenses.total)}
+   902→                                </TableCell>
+   903→                                <TableCell className="text-right">100%</TableCell>
+   904→                              </TableRow>
+   905→                            </TableBody>
+   906→                          </Table>
+   907→                        </div>
+   908→                      </CardContent>
+   909→                    </Card>
+   910→                  )}
+   911→                </>
+   912→              ) : (
+   913→                <Card>
+   914→                  <CardContent className="flex h-40 items-center justify-center text-muted-foreground">
+   915→                    No cost data available
+   916→                  </CardContent>
+   917→                </Card>
+   918→              )}
+   919→            </TabsContent>
+   920→
+   921→            {/* ─── Consumption Report Tab ───────────────────────────────────── */}
+   922→            <TabsContent value="consumption" className="space-y-6 mt-4">
+   923→              {consumptionLoading ? (
+   924→                <ConsumptionReportSkeleton />
+   925→              ) : consumptionError ? (
+   926→                <ErrorState message={consumptionError} onRetry={fetchConsumptionReport} />
+   927→              ) : consumptionData ? (
+   928→                <>
+   929→                  <ReportSummaryHeader
+   930→                    title="Consumption Report"
+   931→                    metric={fmt.format(consumptionData.summary.totalConsumption)}
+   932→                    metricLabel="Total Consumption Value"
+   933→                    periodStart={consumptionData.period.start}
+   934→                    periodEnd={consumptionData.period.end}
+   935→                    onExport={exportConsumptionCSV}
+   936→                    accent="orange"
+   937→                  />
+   938→
+   939→                  {/* Summary Cards */}
+   940→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   941→                    <SummaryCard
+   942→                      title="Consumption Value"
+   943→                      value={fmt.format(consumptionData.summary.totalConsumption)}
+   944→                      icon={<Package className="h-5 w-5" />}
+   945→                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+   946→                      iconColor="text-amber-600 dark:text-amber-400"
+   947→                      subtitle="Total consumption value"
+   948→                      previousValue={
+   949→                        compareMode && prevConsumptionData
+   950→                          ? fmt.format(prevConsumptionData.summary.totalConsumption)
+   951→                          : undefined
+   952→                      }
+   953→                      goodWhenDown
+   954→                    />
+   955→                    <SummaryCard
+   956→                      title="Wastage Value"
+   957→                      value={fmt.format(consumptionData.summary.totalWastage)}
+   958→                      icon={<TrendingDown className="h-5 w-5" />}
+   959→                      iconBg="bg-rose-100 dark:bg-rose-900/30"
+   960→                      iconColor="text-rose-600 dark:text-rose-400"
+   961→                      subtitle={`${consumptionData.summary.wastagePercentage.toFixed(1)}% of total`}
+   962→                      previousValue={
+   963→                        compareMode && prevConsumptionData
+   964→                          ? fmt.format(prevConsumptionData.summary.totalWastage)
+   965→                          : undefined
+   966→                      }
+   967→                      goodWhenDown
+   968→                    />
+   969→                    <SummaryCard
+   970→                      title="Ingredients Used"
+   971→                      value={String(consumptionData.usageByIngredient.length)}
+   972→                      icon={<BarChart3 className="h-5 w-5" />}
+   973→                      iconBg="bg-violet-100 dark:bg-violet-900/30"
+   974→                      iconColor="text-violet-600 dark:text-violet-400"
+   975→                      subtitle="Distinct ingredients consumed"
+   976→                    />
+   977→                    <SummaryCard
+   978→                      title="Categories"
+   979→                      value={String(consumptionData.categoryBreakdown.length)}
+   980→                      icon={<Package className="h-5 w-5" />}
+   981→                      iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+   982→                      iconColor="text-emerald-600 dark:text-emerald-400"
+   983→                      subtitle="Categories tracked"
+   984→                    />
+   985→                  </div>
+   986→
+   987→                  {/* Charts Row */}
+   988→                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   989→                    {/* Top Consuming Ingredients (Horizontal Bar) */}
+   990→                    <Card className="transition-all hover:shadow-md">
+   991→                      <CardHeader className="pb-2">
+   992→                        <CardTitle className="text-base">Top Consuming Ingredients</CardTitle>
+   993→                        <CardDescription>By quantity consumed</CardDescription>
+   994→                      </CardHeader>
+   995→                      <CardContent>
+   996→                        {consumptionData.usageByIngredient.length > 0 ? (
+   997→                          <ChartContainer
+   998→                            config={consumptionBarConfig}
+   999→                            className="aspect-[2/1] w-full"
+  1000→                          >
+  1001→                            <BarChart
+  1002→                              data={consumptionData.usageByIngredient.slice(0, 8).map((i) => ({
+  1003→                                name: i.ingredient.name.length > 12
+  1004→                                  ? i.ingredient.name.substring(0, 12) + '…'
+  1005→                                  : i.ingredient.name,
+  1006→                                totalQty: i.consumptionQty,
+  1007→                                wastageQty: i.wastageQty,
+  1008→                                unit: i.ingredient.unit,
+  1009→                              }))}
+  1010→                              layout="vertical"
+  1011→                              margin={{ top: 5, right: 30, bottom: 5, left: 0 }}
+  1012→                            >
+  1013→                              <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1014→                              <XAxis type="number" tick={{ fontSize: 11 }} className="text-muted-foreground" />
+  1015→                              <YAxis
+  1016→                                type="category"
+  1017→                                dataKey="name"
+  1018→                                width={90}
+  1019→                                tick={{ fontSize: 11 }}
+  1020→                                className="text-muted-foreground"
+  1021→                              />
+  1022→                              <ChartTooltip
+  1023→                                content={
+  1024→                                  <ChartTooltipContent
+  1025→                                    formatter={(value, _name, props) => {
+  1026→                                      const unit = props.payload?.unit || '';
+  1027→                                      return (
+  1028→                                        <span className="tabular-nums">
+  1029→                                          {fmtNum.format(Number(value))} {unit}
+  1030→                                        </span>
+  1031→                                      );
+  1032→                                    }}
+  1033→                                  />
+  1034→                                }
+  1035→                              />
+  1036→                              <Bar dataKey="totalQty" fill="#f59e0b" radius={[0, 4, 4, 0]}>
+  1037→                                <RechartsLabel
+  1038→                                  dataKey="totalQty"
+  1039→                                  position="right"
+  1040→                                  formatter={(v: number) => fmtNum.format(v)}
+  1041→                                  style={{ fontSize: 9, fill: '#92400e' }}
+  1042→                                />
+  1043→                              </Bar>
+  1044→                              <Bar dataKey="wastageQty" fill="#f43f5e" radius={[0, 4, 4, 0]} />
+  1045→                            </BarChart>
+  1046→                          </ChartContainer>
+  1047→                        ) : (
+  1048→                          <EmptyState message="No consumption data available" />
+  1049→                        )}
+  1050→                      </CardContent>
+  1051→                    </Card>
+  1052→
+  1053→                    {/* Consumption by Category (Donut with % labels) */}
+  1054→                    <Card className="transition-all hover:shadow-md">
+  1055→                      <CardHeader className="pb-2">
+  1056→                        <CardTitle className="text-base">Consumption by Category</CardTitle>
+  1057→                        <CardDescription>Cost distribution by ingredient category</CardDescription>
+  1058→                      </CardHeader>
+  1059→                      <CardContent>
+  1060→                        {consumptionData.categoryBreakdown.length > 0 ? (
+  1061→                          <ChartContainer
+  1062→                            config={consumptionCategoryConfig}
+  1063→                            className="mx-auto aspect-square max-h-[320px]"
+  1064→                          >
+  1065→                            <PieChart>
+  1066→                              <ChartTooltip
+  1067→                                content={
+  1068→                                  <ChartTooltipContent
+  1069→                                    formatter={(value, name) => (
+  1070→                                      <span>
+  1071→                                        {name}: <span className="font-semibold tabular-nums">{fmt.format(Number(value))}</span>
+  1072→                                      </span>
+  1073→                                    )}
+  1074→                                  />
+  1075→                                }
+  1076→                              />
+  1077→                              <Pie
+  1078→                                data={consumptionData.categoryBreakdown.map((c) => ({
+  1079→                                  name: c.category,
+  1080→                                  value: c.totalCost,
+  1081→                                }))}
+  1082→                                cx="50%"
+  1083→                                cy="50%"
+  1084→                                innerRadius={55}
+  1085→                                outerRadius={95}
+  1086→                                paddingAngle={2}
+  1087→                                dataKey="value"
+  1088→                                nameKey="name"
+  1089→                                labelLine={false}
+  1090→                                label={renderPiePercentLabel}
+  1091→                              >
+  1092→                                {consumptionData.categoryBreakdown.map((entry) => (
+  1093→                                  <Cell key={entry.category} fill={getCategoryColor(entry.category)} />
+  1094→                                ))}
+  1095→                              </Pie>
+  1096→                              <Legend
+  1097→                                verticalAlign="bottom"
+  1098→                                height={36}
+  1099→                                iconType="circle"
+  1100→                                formatter={(value) => (
+  1101→                                  <span className="text-xs">{value}</span>
+  1102→                                )}
+  1103→                              />
+  1104→                            </PieChart>
+  1105→                          </ChartContainer>
+  1106→                        ) : (
+  1107→                          <EmptyState message="No category data available" />
+  1108→                        )}
+  1109→                      </CardContent>
+  1110→                    </Card>
+  1111→                  </div>
+  1112→
+  1113→                  {/* Consumption Table */}
+  1114→                  <Card className="transition-all hover:shadow-md">
+  1115→                    <CardHeader className="pb-2">
+  1116→                      <CardTitle className="text-base">Ingredient Consumption Details</CardTitle>
+  1117→                      <CardDescription>Detailed breakdown of consumed and wasted ingredients</CardDescription>
+  1118→                    </CardHeader>
+  1119→                    <CardContent>
+  1120→                      {consumptionData.usageByIngredient.length > 0 ? (
+  1121→                        <div className="max-h-96 overflow-y-auto">
+  1122→                          <Table>
+  1123→                            <TableHeader>
+  1124→                              <TableRow>
+  1125→                                <TableHead>Ingredient</TableHead>
+  1126→                                <TableHead>Category</TableHead>
+  1127→                                <TableHead className="text-right">Qty Consumed</TableHead>
+  1128→                                <TableHead className="text-right">Unit</TableHead>
+  1129→                                <TableHead className="text-right">Total Cost</TableHead>
+  1130→                                <TableHead className="text-right">Wastage Qty</TableHead>
+  1131→                              </TableRow>
+  1132→                            </TableHeader>
+  1133→                            <TableBody>
+  1134→                              {consumptionData.usageByIngredient.map((item) => (
+  1135→                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
+  1136→                                  <TableCell className="font-medium">{item.ingredient.name}</TableCell>
+  1137→                                  <TableCell>
+  1138→                                    <Badge
+  1139→                                      variant="outline"
+  1140→                                      className="text-xs"
+  1141→                                      style={{
+  1142→                                        borderColor: getCategoryColor(item.ingredient.category),
+  1143→                                        color: getCategoryColor(item.ingredient.category),
+  1144→                                      }}
+  1145→                                    >
+  1146→                                      {item.ingredient.category}
+  1147→                                    </Badge>
+  1148→                                  </TableCell>
+  1149→                                  <TableCell className="text-right tabular-nums">
+  1150→                                    {fmtNum.format(item.consumptionQty)}
+  1151→                                  </TableCell>
+  1152→                                  <TableCell className="text-right text-muted-foreground">
+  1153→                                    {item.ingredient.unit}
+  1154→                                  </TableCell>
+  1155→                                  <TableCell className="text-right tabular-nums">
+  1156→                                    {fmt.format(item.totalCost)}
+  1157→                                  </TableCell>
+  1158→                                  <TableCell className="text-right tabular-nums">
+  1159→                                    {item.wastageQty > 0 ? (
+  1160→                                      <span className="text-rose-600 dark:text-rose-400 font-medium">
+  1161→                                        {fmtNum.format(item.wastageQty)}
+  1162→                                      </span>
+  1163→                                    ) : (
+  1164→                                      <span className="text-muted-foreground">0</span>
+  1165→                                    )}
+  1166→                                  </TableCell>
+  1167→                                </TableRow>
+  1168→                              ))}
+  1169→                            </TableBody>
+  1170→                          </Table>
+  1171→                        </div>
+  1172→                      ) : (
+  1173→                        <EmptyState message="No consumption data available" />
+  1174→                      )}
+  1175→                    </CardContent>
+  1176→                  </Card>
+  1177→
+  1178→                  {/* Daily Consumption Trend (with chart-type toggle) */}
+  1179→                  {consumptionData.dailyTrend.length > 0 && (
+  1180→                    <Card className="transition-all hover:shadow-md">
+  1181→                      <CardHeader className="pb-2">
+  1182→                        <div className="flex items-start justify-between">
+  1183→                          <div>
+  1184→                            <CardTitle className="text-base">Daily Consumption Trend</CardTitle>
+  1185→                            <CardDescription>Consumption vs wastage over time</CardDescription>
+  1186→                          </div>
+  1187→                          <ChartTypeToggle value={trendChartType} onChange={setTrendChartType} />
+  1188→                        </div>
+  1189→                      </CardHeader>
+  1190→                      <CardContent>
+  1191→                        <ChartContainer
+  1192→                          config={consumptionTrendConfig}
+  1193→                          className="aspect-[2/1] w-full"
+  1194→                        >
+  1195→                          {trendChartType === 'line' ? (
+  1196→                            <LineChart
+  1197→                              data={consumptionData.dailyTrend.map((d) => ({
+  1198→                                date: d.date,
+  1199→                                consumption: d.consumption,
+  1200→                                wastage: d.wastage,
+  1201→                              }))}
+  1202→                              margin={{ top: 10, right: 12, bottom: 5, left: 0 }}
+  1203→                            >
+  1204→                              <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1205→                              <XAxis
+  1206→                                dataKey="date"
+  1207→                                tickFormatter={formatShortDate}
+  1208→                                tick={{ fontSize: 11 }}
+  1209→                                tickMargin={8}
+  1210→                                interval="preserveStartEnd"
+  1211→                                angle={-15}
+  1212→                                textAnchor="end"
+  1213→                                height={50}
+  1214→                                className="text-muted-foreground"
+  1215→                              />
+  1216→                              <YAxis
+  1217→                                tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+  1218→                                tick={{ fontSize: 11 }}
+  1219→                                className="text-muted-foreground"
+  1220→                              />
+  1221→                              <ChartTooltip
+  1222→                                content={
+  1223→                                  <ChartTooltipContent
+  1224→                                    labelFormatter={(label) => formatDate(label as string)}
+  1225→                                    formatter={(value) => (
+  1226→                                      <span className="tabular-nums">{fmt.format(Number(value))}</span>
+  1227→                                    )}
+  1228→                                  />
+  1229→                                }
+  1230→                              />
+  1231→                              <Line
+  1232→                                type="monotone"
+  1233→                                dataKey="consumption"
+  1234→                                stroke="#f59e0b"
+  1235→                                strokeWidth={2}
+  1236→                                dot={{ r: 3, fill: '#f59e0b' }}
+  1237→                                activeDot={{ r: 5 }}
+  1238→                              />
+  1239→                              <Line
+  1240→                                type="monotone"
+  1241→                                dataKey="wastage"
+  1242→                                stroke="#f43f5e"
+  1243→                                strokeWidth={2}
+  1244→                                dot={{ r: 3, fill: '#f43f5e' }}
+  1245→                                activeDot={{ r: 5 }}
+  1246→                              />
+  1247→                            </LineChart>
+  1248→                          ) : (
+  1249→                            <BarChart
+  1250→                              data={consumptionData.dailyTrend.map((d) => ({
+  1251→                                date: d.date,
+  1252→                                consumption: d.consumption,
+  1253→                                wastage: d.wastage,
+  1254→                              }))}
+  1255→                              margin={{ top: 10, right: 12, bottom: 5, left: 0 }}
+  1256→                            >
+  1257→                              <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1258→                              <XAxis
+  1259→                                dataKey="date"
+  1260→                                tickFormatter={formatShortDate}
+  1261→                                tick={{ fontSize: 11 }}
+  1262→                                tickMargin={8}
+  1263→                                interval="preserveStartEnd"
+  1264→                                angle={-15}
+  1265→                                textAnchor="end"
+  1266→                                height={50}
+  1267→                                className="text-muted-foreground"
+  1268→                              />
+  1269→                              <YAxis
+  1270→                                tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+  1271→                                tick={{ fontSize: 11 }}
+  1272→                                className="text-muted-foreground"
+  1273→                              />
+  1274→                              <ChartTooltip
+  1275→                                content={
+  1276→                                  <ChartTooltipContent
+  1277→                                    labelFormatter={(label) => formatDate(label as string)}
+  1278→                                    formatter={(value) => (
+  1279→                                      <span className="tabular-nums">{fmt.format(Number(value))}</span>
+  1280→                                    )}
+  1281→                                  />
+  1282→                                }
+  1283→                              />
+  1284→                              <Bar dataKey="consumption" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+  1285→                              <Bar dataKey="wastage" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+  1286→                            </BarChart>
+  1287→                          )}
+  1288→                        </ChartContainer>
+  1289→                      </CardContent>
+  1290→                    </Card>
+  1291→                  )}
+  1292→                </>
+  1293→              ) : (
+  1294→                <Card>
+  1295→                  <CardContent className="flex h-40 items-center justify-center text-muted-foreground">
+  1296→                    No consumption data available
+  1297→                  </CardContent>
+  1298→                </Card>
+  1299→              )}
+  1300→            </TabsContent>
+  1301→
+  1302→            {/* ─── Variance Report Tab ──────────────────────────────────────── */}
+  1303→            <TabsContent value="variance" className="space-y-6 mt-4">
+  1304→              {varianceLoading ? (
+  1305→                <VarianceReportSkeleton />
+  1306→              ) : varianceError ? (
+  1307→                <ErrorState message={varianceError} onRetry={fetchVarianceReport} />
+  1308→              ) : varianceData ? (
+  1309→                <>
+  1310→                  <ReportSummaryHeader
+  1311→                    title="Variance Report"
+  1312→                    metric={fmt.format(varianceData.summary.totalVarianceCost)}
+  1313→                    metricLabel="Total Variance Cost"
+  1314→                    periodStart={varianceData.period.start}
+  1315→                    periodEnd={varianceData.period.end}
+  1316→                    onExport={exportVarianceCSV}
+  1317→                    accent="rose"
+  1318→                  />
+  1319→
+  1320→                  {/* Explanation Banner */}
+  1321→                  <Card className="border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20">
+  1322→                    <CardContent className="p-4">
+  1323→                      <div className="flex gap-3">
+  1324→                        <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+  1325→                        <div className="text-sm">
+  1326→                          <p className="font-medium text-amber-800 dark:text-amber-300 mb-1">
+  1327→                            Understanding Variance Report
+  1328→                          </p>
+  1329→                          <p className="text-amber-700 dark:text-amber-400">
+  1330→                            <strong>Theoretical consumption</strong> is calculated from recipe quantities × meals served.{' '}
+  1331→                            <strong>Actual consumption</strong> is recorded from stock movements. The difference (variance)
+  1332→                            helps identify potential waste, over-portioning, or theft. A positive variance means more was
+  1333→                            consumed than expected.
+  1334→                          </p>
+  1335→                        </div>
+  1336→                      </div>
+  1337→                    </CardContent>
+  1338→                  </Card>
+  1339→
+  1340→                  {/* Summary Cards */}
+  1341→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  1342→                    <SummaryCard
+  1343→                      title="Total Variance"
+  1344→                      value={fmt.format(varianceData.summary.totalVarianceCost)}
+  1345→                      icon={<Scale className="h-5 w-5" />}
+  1346→                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+  1347→                      iconColor="text-amber-600 dark:text-amber-400"
+  1348→                      subtitle={`${fmtPct(varianceData.summary.variancePercentage)} of theoretical`}
+  1349→                      trend={varianceData.summary.totalVarianceCost > 0 ? 'up' : 'down'}
+  1350→                      previousValue={
+  1351→                        compareMode && prevVarianceData
+  1352→                          ? fmt.format(prevVarianceData.summary.totalVarianceCost)
+  1353→                          : undefined
+  1354→                      }
+  1355→                      goodWhenDown
+  1356→                    />
+  1357→                    <SummaryCard
+  1358→                      title="Normal"
+  1359→                      value={String(
+  1360→                        varianceData.varianceByIngredient.filter((i) => i.status === 'normal').length
+  1361→                      )}
+  1362→                      icon={<CheckCircle2 className="h-5 w-5" />}
+  1363→                      iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+  1364→                      iconColor="text-emerald-600 dark:text-emerald-400"
+  1365→                      subtitle="≤5% variance"
+  1366→                    />
+  1367→                    <SummaryCard
+  1368→                      title="Warning"
+  1369→                      value={String(varianceData.summary.warningCount)}
+  1370→                      icon={<AlertCircle className="h-5 w-5" />}
+  1371→                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+  1372→                      iconColor="text-amber-600 dark:text-amber-400"
+  1373→                      subtitle="≤15% variance"
+  1374→                    />
+  1375→                    <SummaryCard
+  1376→                      title="Critical"
+  1377→                      value={String(varianceData.summary.criticalCount)}
+  1378→                      icon={<XCircle className="h-5 w-5" />}
+  1379→                      iconBg="bg-rose-100 dark:bg-rose-900/30"
+  1380→                      iconColor="text-rose-600 dark:text-rose-400"
+  1381→                      subtitle=">15% variance"
+  1382→                    />
+  1383→                  </div>
+  1384→
+  1385→                  {/* Variance Bar Chart */}
+  1386→                  <Card className="transition-all hover:shadow-md">
+  1387→                    <CardHeader className="pb-2">
+  1388→                      <CardTitle className="text-base">Theoretical vs Actual Consumption</CardTitle>
+  1389→                      <CardDescription>Comparison of expected vs actual ingredient usage</CardDescription>
+  1390→                    </CardHeader>
+  1391→                    <CardContent>
+  1392→                      {varianceData.varianceByIngredient.length > 0 ? (
+  1393→                        <ChartContainer
+  1394→                          config={varianceBarConfig}
+  1395→                          className="aspect-[2/1] w-full"
+  1396→                        >
+  1397→                          <BarChart
+  1398→                            data={varianceData.varianceByIngredient.slice(0, 10).map((i) => ({
+  1399→                              name: i.ingredient.name.length > 15
+  1400→                                ? i.ingredient.name.substring(0, 15) + '…'
+  1401→                                : i.ingredient.name,
+  1402→                              theoretical: i.theoreticalQty,
+  1403→                              actual: i.actualQty,
+  1404→                              unit: i.ingredient.unit,
+  1405→                            }))}
+  1406→                            margin={{ top: 10, right: 12, bottom: 5, left: 0 }}
+  1407→                          >
+  1408→                            <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1409→                            <XAxis
+  1410→                              dataKey="name"
+  1411→                              tick={{ fontSize: 11 }}
+  1412→                              tickMargin={8}
+  1413→                              interval={0}
+  1414→                              angle={-20}
+  1415→                              textAnchor="end"
+  1416→                              height={70}
+  1417→                              className="text-muted-foreground"
+  1418→                            />
+  1419→                            <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
+  1420→                            <ChartTooltip
+  1421→                              content={
+  1422→                                <ChartTooltipContent
+  1423→                                  formatter={(value, _name, props) => {
+  1424→                                    const unit = props.payload?.unit || '';
+  1425→                                    return (
+  1426→                                      <span className="tabular-nums">
+  1427→                                        {fmtNum.format(Number(value))} {unit}
+  1428→                                      </span>
+  1429→                                    );
+  1430→                                  }}
+  1431→                                />
+  1432→                              }
+  1433→                            />
+  1434→                            <Legend iconType="circle" />
+  1435→                            <Bar dataKey="theoretical" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+  1436→                            <Bar dataKey="actual" fill="#f97316" radius={[4, 4, 0, 0]} />
+  1437→                          </BarChart>
+  1438→                        </ChartContainer>
+  1439→                      ) : (
+  1440→                        <EmptyState message="No variance data available" />
+  1441→                      )}
+  1442→                    </CardContent>
+  1443→                  </Card>
+  1444→
+  1445→                  {/* Variance Table */}
+  1446→                  <Card className="transition-all hover:shadow-md">
+  1447→                    <CardHeader className="pb-2">
+  1448→                      <CardTitle className="text-base">Variance by Ingredient</CardTitle>
+  1449→                      <CardDescription>
+  1450→                        Detailed comparison of theoretical vs actual consumption
+  1451→                      </CardDescription>
+  1452→                    </CardHeader>
+  1453→                    <CardContent>
+  1454→                      {varianceData.varianceByIngredient.length > 0 ? (
+  1455→                        <div className="max-h-96 overflow-y-auto">
+  1456→                          <Table>
+  1457→                            <TableHeader>
+  1458→                              <TableRow>
+  1459→                                <TableHead>Ingredient</TableHead>
+  1460→                                <TableHead className="text-right">Theoretical Qty</TableHead>
+  1461→                                <TableHead className="text-right">Actual Qty</TableHead>
+  1462→                                <TableHead className="text-right">Variance Qty</TableHead>
+  1463→                                <TableHead className="text-right">Variance %</TableHead>
+  1464→                                <TableHead className="text-center">Status</TableHead>
+  1465→                              </TableRow>
+  1466→                            </TableHeader>
+  1467→                            <TableBody>
+  1468→                              {varianceData.varianceByIngredient.map((item) => (
+  1469→                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
+  1470→                                  <TableCell className="font-medium">
+  1471→                                    {item.ingredient.name}
+  1472→                                    <span className="text-muted-foreground text-xs ml-1">
+  1473→                                      ({item.ingredient.unit})
+  1474→                                    </span>
+  1475→                                  </TableCell>
+  1476→                                  <TableCell className="text-right tabular-nums">
+  1477→                                    {fmtNum.format(item.theoreticalQty)}
+  1478→                                  </TableCell>
+  1479→                                  <TableCell className="text-right tabular-nums">
+  1480→                                    {fmtNum.format(item.actualQty)}
+  1481→                                  </TableCell>
+  1482→                                  <TableCell className="text-right tabular-nums">
+  1483→                                    <span
+  1484→                                      className={
+  1485→                                        item.varianceQty > 0
+  1486→                                          ? 'text-rose-600 dark:text-rose-400'
+  1487→                                          : item.varianceQty < 0
+  1488→                                          ? 'text-emerald-600 dark:text-emerald-400'
+  1489→                                          : ''
+  1490→                                      }
+  1491→                                    >
+  1492→                                      {item.varianceQty > 0 ? '+' : ''}
+  1493→                                      {fmtNum.format(item.varianceQty)}
+  1494→                                    </span>
+  1495→                                  </TableCell>
+  1496→                                  <TableCell className="text-right tabular-nums">
+  1497→                                    <span
+  1498→                                      className={
+  1499→                                        Math.abs(item.variancePercent) > 15
+  1500→                                          ? 'text-rose-600 dark:text-rose-400 font-semibold'
+  1501→                                          : Math.abs(item.variancePercent) > 5
+  1502→                                          ? 'text-amber-600 dark:text-amber-400 font-medium'
+  1503→                                          : 'text-emerald-600 dark:text-emerald-400'
+  1504→                                      }
+  1505→                                    >
+  1506→                                      {fmtPct(item.variancePercent)}
+  1507→                                    </span>
+  1508→                                  </TableCell>
+  1509→                                  <TableCell className="text-center">
+  1510→                                    <VarianceBadge status={item.status} />
+  1511→                                  </TableCell>
+  1512→                                </TableRow>
+  1513→                              ))}
+  1514→                            </TableBody>
+  1515→                          </Table>
+  1516→                        </div>
+  1517→                      ) : (
+  1518→                        <EmptyState message="No variance data available" />
+  1519→                      )}
+  1520→                    </CardContent>
+  1521→                  </Card>
+  1522→
+  1523→                  {/* Variance Cost Summary */}
+  1524→                  {varianceData.varianceByIngredient.length > 0 && (
+  1525→                    <Card className="transition-all hover:shadow-md">
+  1526→                      <CardHeader className="pb-2">
+  1527→                        <CardTitle className="text-base">Variance Cost Impact</CardTitle>
+  1528→                        <CardDescription>Financial impact of variance by ingredient</CardDescription>
+  1529→                      </CardHeader>
+  1530→                      <CardContent>
+  1531→                        <div className="max-h-64 overflow-y-auto">
+  1532→                          <Table>
+  1533→                            <TableHeader>
+  1534→                              <TableRow>
+  1535→                                <TableHead>Ingredient</TableHead>
+  1536→                                <TableHead className="text-right">Theoretical Cost</TableHead>
+  1537→                                <TableHead className="text-right">Actual Cost</TableHead>
+  1538→                                <TableHead className="text-right">Variance Cost</TableHead>
+  1539→                                <TableHead className="text-center">Status</TableHead>
+  1540→                              </TableRow>
+  1541→                            </TableHeader>
+  1542→                            <TableBody>
+  1543→                              {varianceData.varianceByIngredient.map((item) => (
+  1544→                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
+  1545→                                  <TableCell className="font-medium">{item.ingredient.name}</TableCell>
+  1546→                                  <TableCell className="text-right tabular-nums">
+  1547→                                    {fmt.format(item.theoreticalCost)}
+  1548→                                  </TableCell>
+  1549→                                  <TableCell className="text-right tabular-nums">
+  1550→                                    {fmt.format(item.actualCost)}
+  1551→                                  </TableCell>
+  1552→                                  <TableCell className="text-right tabular-nums">
+  1553→                                    <span
+  1554→                                      className={
+  1555→                                        item.varianceCost > 0
+  1556→                                          ? 'text-rose-600 dark:text-rose-400'
+  1557→                                          : item.varianceCost < 0
+  1558→                                          ? 'text-emerald-600 dark:text-emerald-400'
+  1559→                                          : ''
+  1560→                                      }
+  1561→                                    >
+  1562→                                      {item.varianceCost > 0 ? '+' : ''}
+  1563→                                      {fmt.format(item.varianceCost)}
+  1564→                                    </span>
+  1565→                                  </TableCell>
+  1566→                                  <TableCell className="text-center">
+  1567→                                    <VarianceBadge status={item.status} />
+  1568→                                  </TableCell>
+  1569→                                </TableRow>
+  1570→                              ))}
+  1571→                              <TableRow className="font-bold bg-amber-50/50 dark:bg-amber-950/20">
+  1572→                                <TableCell>Total</TableCell>
+  1573→                                <TableCell className="text-right tabular-nums">
+  1574→                                  {fmt.format(varianceData.summary.totalTheoreticalCost)}
+  1575→                                </TableCell>
+  1576→                                <TableCell className="text-right tabular-nums">
+  1577→                                  {fmt.format(varianceData.summary.totalActualCost)}
+  1578→                                </TableCell>
+  1579→                                <TableCell className="text-right tabular-nums">
+  1580→                                  <span
+  1581→                                    className={
+  1582→                                      varianceData.summary.totalVarianceCost > 0
+  1583→                                        ? 'text-rose-600 dark:text-rose-400'
+  1584→                                        : 'text-emerald-600 dark:text-emerald-400'
+  1585→                                    }
+  1586→                                  >
+  1587→                                    {varianceData.summary.totalVarianceCost > 0 ? '+' : ''}
+  1588→                                    {fmt.format(varianceData.summary.totalVarianceCost)}
+  1589→                                  </span>
+  1590→                                </TableCell>
+  1591→                                <TableCell />
+  1592→                              </TableRow>
+  1593→                            </TableBody>
+  1594→                          </Table>
+  1595→                        </div>
+  1596→                      </CardContent>
+  1597→                    </Card>
+  1598→                  )}
+  1599→                </>
+  1600→              ) : (
+  1601→                <Card>
+  1602→                  <CardContent className="flex h-40 items-center justify-center text-muted-foreground">
+  1603→                    No variance data available
+  1604→                  </CardContent>
+  1605→                </Card>
+  1606→              )}
+  1607→            </TabsContent>
+  1608→          </motion.div>
+  1609→        </AnimatePresence>
+  1610→      </Tabs>
+  1611→    </div>
+  1612→  );
+  1613→}
+  1614→
+  1615→// ─── Sub-Components ──────────────────────────────────────────────────────────
+  1616→
+  1617→function SummaryCard({
+  1618→  title,
+  1619→  value,
+  1620→  icon,
+  1621→  iconBg,
+  1622→  iconColor,
+  1623→  subtitle,
+  1624→  trend,
+  1625→  previousValue,
+  1626→  goodWhenDown,
+  1627→}: {
+  1628→  title: string;
+  1629→  value: string;
+  1630→  icon: React.ReactNode;
+  1631→  iconBg: string;
+  1632→  iconColor: string;
+  1633→  subtitle?: string;
+  1634→  trend?: 'up' | 'down';
+  1635→  previousValue?: string;
+  1636→  goodWhenDown?: boolean;
+  1637→}) {
+  1638→  // Compute delta vs previous value
+  1639→  const delta = useMemo(() => {
+  1640→    if (!previousValue) return null;
+  1641→    const currNum = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
+  1642→    const prevNum = parseFloat(previousValue.replace(/[^0-9.-]/g, '')) || 0;
+  1643→    if (prevNum === 0) return null;
+  1644→    return ((currNum - prevNum) / Math.abs(prevNum)) * 100;
+  1645→  }, [value, previousValue]);
+  1646→
+  1647→  const deltaPositive = delta !== null && delta > 0;
+  1648→  const deltaIsGood =
+  1649→    delta !== null
+  1650→      ? goodWhenDown
+  1651→        ? !deltaPositive
+  1652→        : deltaPositive
+  1653→      : null;
+  1654→
+  1655→  return (
+  1656→    <Card className="transition-all hover:shadow-md">
+  1657→      <CardContent className="p-4">
+  1658→        <div className="flex items-center justify-between">
+  1659→          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconBg}`}>
+  1660→            <span className={iconColor}>{icon}</span>
+  1661→          </div>
+  1662→          {trend && (
+  1663→            <span
+  1664→              className={
+  1665→                trend === 'up'
+  1666→                  ? 'flex items-center text-rose-500 text-xs font-medium'
+  1667→                  : 'flex items-center text-emerald-500 text-xs font-medium'
+  1668→              }
+  1669→            >
+  1670→              {trend === 'up' ? (
+  1671→                <ArrowUpRight className="h-3.5 w-3.5" />
+  1672→              ) : (
+  1673→                <ArrowDownRight className="h-3.5 w-3.5" />
+  1674→              )}
+  1675→            </span>
+  1676→          )}
+  1677→        </div>
+  1678→        <div className="mt-3">
+  1679→          <p className="text-sm text-muted-foreground">{title}</p>
+  1680→          <p className="text-2xl font-bold tabular-nums">{value}</p>
+  1681→          {previousValue && (
+  1682→            <p className="text-xs text-muted-foreground mt-0.5">
+  1683→              Prev: <span className="tabular-nums">{previousValue}</span>
+  1684→              {delta !== null && (
+  1685→                <span
+  1686→                  className={`ml-1 font-medium ${
+  1687→                    deltaIsGood ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+  1688→                  }`}
+  1689→                >
+  1690→                  ({delta >= 0 ? '+' : ''}{delta.toFixed(1)}%)
+  1691→                </span>
+  1692→              )}
+  1693→            </p>
+  1694→          )}
+  1695→          {subtitle && !previousValue && (
+  1696→            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+  1697→          )}
+  1698→        </div>
+  1699→      </CardContent>
+  1700→    </Card>
+  1701→  );
+  1702→}
+  1703→
+  1704→function VarianceBadge({ status }: { status: 'normal' | 'warning' | 'critical' }) {
+  1705→  switch (status) {
+  1706→    case 'normal':
+  1707→      return (
+  1708→        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800">
+  1709→          <CheckCircle2 className="h-3 w-3 mr-1" />
+  1710→          Normal
+  1711→        </Badge>
+  1712→      );
+  1713→    case 'warning':
+  1714→      return (
+  1715→        <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800">
+  1716→          <AlertCircle className="h-3 w-3 mr-1" />
+  1717→          Warning
+  1718→        </Badge>
+  1719→      );
+  1720→    case 'critical':
+  1721→      return (
+  1722→        <Badge className="bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800">
+  1723→          <XCircle className="h-3 w-3 mr-1" />
+  1724→          Critical
+  1725→        </Badge>
+  1726→      );
+  1727→  }
+  1728→}
+  1729→
+  1730→function ChartTypeToggle({
+  1731→  value,
+  1732→  onChange,
+  1733→}: {
+  1734→  value: TrendChartType;
+  1735→  onChange: (v: TrendChartType) => void;
+  1736→}) {
+  1737→  return (
+  1738→    <div className="inline-flex rounded-md border bg-muted/50 p-0.5">
+  1739→      <button
+  1740→        type="button"
+  1741→        onClick={() => onChange('line')}
+  1742→        className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-all ${
+  1743→          value === 'line'
+  1744→            ? 'bg-background shadow-sm text-foreground'
+  1745→            : 'text-muted-foreground hover:text-foreground'
+  1746→        }`}
+  1747→        aria-label="Show line chart"
+  1748→      >
+  1749→        <LineChartIcon className="h-3.5 w-3.5" />
+  1750→        Line
+  1751→      </button>
+  1752→      <button
+  1753→        type="button"
+  1754→        onClick={() => onChange('bar')}
+  1755→        className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-all ${
+  1756→          value === 'bar'
+  1757→            ? 'bg-background shadow-sm text-foreground'
+  1758→            : 'text-muted-foreground hover:text-foreground'
+  1759→        }`}
+  1760→        aria-label="Show bar chart"
+  1761→      >
+  1762→        <BarChartIcon className="h-3.5 w-3.5" />
+  1763→        Bar
+  1764→      </button>
+  1765→    </div>
+  1766→  );
+  1767→}
+  1768→
+  1769→function ReportSummaryHeader({
+  1770→  title,
+  1771→  metric,
+  1772→  metricLabel,
+  1773→  periodStart,
+  1774→  periodEnd,
+  1775→  onExport,
+  1776→  accent,
+  1777→}: {
+  1778→  title: string;
+  1779→  metric: string;
+  1780→  metricLabel: string;
+  1781→  periodStart: string;
+  1782→  periodEnd: string;
+  1783→  onExport: () => void;
+  1784→  accent: 'amber' | 'orange' | 'rose';
+  1785→}) {
+  1786→  const accentClasses = {
+  1787→    amber: 'from-amber-500 to-orange-500',
+  1788→    orange: 'from-orange-500 to-rose-500',
+  1789→    rose: 'from-rose-500 to-violet-500',
+  1790→  }[accent];
+  1791→
+  1792→  return (
+  1793→    <Card className={`overflow-hidden border-0 bg-gradient-to-r ${accentClasses} text-white`}>
+  1794→      <CardContent className="p-5">
+  1795→        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+  1796→          <div>
+  1797→            <p className="text-sm font-medium uppercase tracking-wide text-white/80">{title}</p>
+  1798→            <p className="mt-1 text-3xl font-bold tabular-nums sm:text-4xl">{metric}</p>
+  1799→            <p className="text-sm text-white/90 mt-1">{metricLabel}</p>
+  1800→            <p className="text-xs text-white/70 mt-2 tabular-nums">
+  1801→              Period: {formatDate(periodStart)} – {formatDate(periodEnd)}
+  1802→            </p>
+  1803→          </div>
+  1804→          <Button
+  1805→            onClick={onExport}
+  1806→            variant="secondary"
+  1807→            className="bg-white/95 text-foreground hover:bg-white gap-1.5"
+  1808→          >
+  1809→            <Download className="h-4 w-4" />
+  1810→            Export CSV
+  1811→          </Button>
+  1812→        </div>
+  1813→      </CardContent>
+  1814→    </Card>
+  1815→  );
+  1816→}
+  1817→
+  1818→function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  1819→  return (
+  1820→    <Card>
+  1821→      <CardContent className="flex flex-col items-center justify-center p-8">
+  1822→        <XCircle className="h-10 w-10 text-destructive mb-2" />
+  1823→        <p className="text-destructive font-medium">{message}</p>
+  1824→        <Button variant="outline" size="sm" className="mt-3" onClick={onRetry}>
+  1825→          Retry
+  1826→        </Button>
+  1827→      </CardContent>
+  1828→    </Card>
+  1829→  );
+  1830→}
+  1831→
+  1832→function EmptyState({ message }: { message: string }) {
+  1833→  return (
+  1834→    <div className="flex h-[200px] items-center justify-center text-muted-foreground text-sm">
+  1835→      {message}
+  1836→    </div>
+  1837→  );
+  1838→}
+  1839→
+  1840→// Custom recharts label that renders the percentage of each pie slice.
+  1841→function renderPiePercentLabel({
+  1842→  cx,
+  1843→  cy,
+  1844→  midAngle,
+  1845→  innerRadius,
+  1846→  outerRadius,
+  1847→  percent,
+  1848→}: {
+  1849→  cx?: number;
+  1850→  cy?: number;
+  1851→  midAngle?: number;
+  1852→  innerRadius?: number;
+  1853→  outerRadius?: number;
+  1854→  percent?: number;
+  1855→}) {
+  1856→  if (percent === undefined) return null;
+  1857→  const RADIAN = Math.PI / 180;
+  1858→  const radius = (Number(innerRadius) + Number(outerRadius)) / 2;
+  1859→  const x = Number(cx) + radius * Math.cos(-midAngle! * RADIAN);
+  1860→  const y = Number(cy) + radius * Math.sin(-midAngle! * RADIAN);
+  1861→  // Hide label for very small slices
+  1862→  if (percent < 0.04) return null;
+  1863→  return (
+  1864→    <text
+  1865→      x={x}
+  1866→      y={y}
+  1867→      fill="white"
+  1868→      textAnchor="middle"
+  1869→      dominantBaseline="central"
+  1870→      fontSize={12}
+  1871→      fontWeight={700}
+  1872→    >
+  1873→      {`${(percent * 100).toFixed(0)}%`}
+  1874→    </text>
+  1875→  );
+  1876→}
+  1877→
+  1878→// ─── Loading Skeletons ───────────────────────────────────────────────────────
+  1879→
+  1880→function CostReportSkeleton() {
+  1881→  return (
+  1882→    <div className="space-y-6">
+  1883→      <Skeleton className="h-28 w-full rounded-xl" />
+  1884→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  1885→        {Array.from({ length: 4 }).map((_, i) => (
+  1886→          <Card key={i}>
+  1887→            <CardContent className="p-4">
+  1888→              <Skeleton className="h-10 w-10 rounded-lg mb-3" />
+  1889→              <Skeleton className="h-4 w-24 mb-2" />
+  1890→              <Skeleton className="h-8 w-32" />
+  1891→            </CardContent>
+  1892→          </Card>
+  1893→        ))}
+  1894→      </div>
+  1895→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+  1896→        <Card>
+  1897→          <CardContent className="p-4">
+  1898→            <Skeleton className="h-5 w-40 mb-2" />
+  1899→            <Skeleton className="h-5 w-60 mb-4" />
+  1900→            <Skeleton className="h-[300px] w-full" />
+  1901→          </CardContent>
+  1902→        </Card>
+  1903→        <Card>
+  1904→          <CardContent className="p-4">
+  1905→            <Skeleton className="h-5 w-40 mb-2" />
+  1906→            <Skeleton className="h-5 w-60 mb-4" />
+  1907→            <Skeleton className="h-[300px] w-full" />
+  1908→          </CardContent>
+  1909→        </Card>
+  1910→      </div>
+  1911→      <Card>
+  1912→        <CardContent className="p-4">
+  1913→          <Skeleton className="h-5 w-40 mb-4" />
+  1914→          {Array.from({ length: 5 }).map((_, i) => (
+  1915→            <Skeleton key={i} className="h-10 w-full mb-2" />
+  1916→          ))}
+  1917→        </CardContent>
+  1918→      </Card>
+  1919→    </div>
+  1920→  );
+  1921→}
+  1922→
+  1923→function ConsumptionReportSkeleton() {
+  1924→  return (
+  1925→    <div className="space-y-6">
+  1926→      <Skeleton className="h-28 w-full rounded-xl" />
+  1927→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  1928→        {Array.from({ length: 4 }).map((_, i) => (
+  1929→          <Card key={i}>
+  1930→            <CardContent className="p-4">
+  1931→              <Skeleton className="h-10 w-10 rounded-lg mb-3" />
+  1932→              <Skeleton className="h-4 w-28 mb-2" />
+  1933→              <Skeleton className="h-8 w-36" />
+  1934→            </CardContent>
+  1935→          </Card>
+  1936→        ))}
+  1937→      </div>
+  1938→      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+  1939→        <Card>
+  1940→          <CardContent className="p-4">
+  1941→            <Skeleton className="h-[300px] w-full" />
+  1942→          </CardContent>
+  1943→        </Card>
+  1944→        <Card>
+  1945→          <CardContent className="p-4">
+  1946→            <Skeleton className="h-[300px] w-full" />
+  1947→          </CardContent>
+  1948→        </Card>
+  1949→      </div>
+  1950→      <Card>
+  1951→        <CardContent className="p-4">
+  1952→          {Array.from({ length: 6 }).map((_, i) => (
+  1953→            <Skeleton key={i} className="h-10 w-full mb-2" />
+  1954→          ))}
+  1955→        </CardContent>
+  1956→      </Card>
+  1957→    </div>
+  1958→  );
+  1959→}
+  1960→
+  1961→function VarianceReportSkeleton() {
+  1962→  return (
+  1963→    <div className="space-y-6">
+  1964→      <Skeleton className="h-28 w-full rounded-xl" />
+  1965→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  1966→        {Array.from({ length: 4 }).map((_, i) => (
+  1967→          <Card key={i}>
+  1968→            <CardContent className="p-4">
+  1969→              <Skeleton className="h-10 w-10 rounded-lg mb-3" />
+  1970→              <Skeleton className="h-4 w-24 mb-2" />
+  1971→              <Skeleton className="h-8 w-28" />
+  1972→            </CardContent>
+  1973→          </Card>
+  1974→        ))}
+  1975→      </div>
+  1976→      <Card>
+  1977→        <CardContent className="p-4">
+  1978→          <Skeleton className="h-[250px] w-full" />
+  1979→        </CardContent>
+  1980→      </Card>
+  1981→      <Card>
+  1982→        <CardContent className="p-4">
+  1983→          {Array.from({ length: 6 }).map((_, i) => (
+  1984→            <Skeleton key={i} className="h-10 w-full mb-2" />
+  1985→          ))}
+  1986→        </CardContent>
+  1987→      </Card>
+  1988→    </div>
+  1989→  );
+  1990→}
+  1991→

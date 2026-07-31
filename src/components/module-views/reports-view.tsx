@@ -53,12 +53,15 @@ import {
   BarChart as BarChartIcon,
   Wallet,
   Scale,
+  Flame,
+  Sparkles,
 } from 'lucide-react';
 import {
   LineChart,
   Line,
   BarChart,
   Bar,
+  ComposedChart,
   PieChart,
   Pie,
   Cell,
@@ -136,6 +139,18 @@ interface VarianceReport {
 
 type PeriodType = 'today' | 'week' | 'month';
 type TrendChartType = 'line' | 'bar';
+
+interface MonthlyTrendPoint {
+  month: string;
+  monthLabel: string;
+  foodCost: number;
+  operatingCost: number;
+}
+
+interface MonthlyTrendResponse {
+  generatedAt: string;
+  months: MonthlyTrendPoint[];
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -246,6 +261,11 @@ const varianceBarConfig: ChartConfig = {
   actual: { label: 'Actual', color: '#f97316' },
 };
 
+const monthlyTrendConfig: ChartConfig = {
+  foodCost: { label: 'Food Cost', color: '#f59e0b' },
+  operatingCost: { label: 'Operating Cost', color: '#10b981' },
+};
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ReportsView() {
@@ -274,6 +294,11 @@ export function ReportsView() {
   const [costError, setCostError] = useState('');
   const [consumptionError, setConsumptionError] = useState('');
   const [varianceError, setVarianceError] = useState('');
+
+  // Monthly trend (6 months) — shown above the tabs.
+  const [trendData, setTrendData] = useState<MonthlyTrendPoint[]>([]);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [trendError, setTrendError] = useState('');
 
   const isCustomRange = !!(startDate && endDate);
 
@@ -340,6 +365,26 @@ export function ReportsView() {
     fetchConsumptionReport();
     fetchVarianceReport();
   }, [fetchCostReport, fetchConsumptionReport, fetchVarianceReport]);
+
+  // Fetch 6-month trend once on mount (independent of period filter).
+  const fetchMonthlyTrend = useCallback(async () => {
+    setTrendLoading(true);
+    setTrendError('');
+    try {
+      const res = await fetch('/api/reports/monthly-trend');
+      if (!res.ok) throw new Error('Failed to fetch monthly trend');
+      const data = (await res.json()) as MonthlyTrendResponse;
+      setTrendData(data.months || []);
+    } catch {
+      setTrendError('Failed to load monthly trend');
+    } finally {
+      setTrendLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchMonthlyTrend();
+  }, [fetchMonthlyTrend]);
 
   // Fetch previous-period comparison data when compareMode is enabled
   useEffect(() => {
@@ -549,6 +594,14 @@ export function ReportsView() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Cost Trend Analysis — 6-month combo chart + summary cards */}
+      <MonthlyTrendSection
+        data={trendData}
+        loading={trendLoading}
+        error={trendError}
+        onRetry={fetchMonthlyTrend}
+      />
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1833,6 +1886,278 @@ function EmptyState({ message }: { message: string }) {
   return (
     <div className="flex h-[200px] items-center justify-center text-muted-foreground text-sm">
       {message}
+    </div>
+  );
+}
+
+// ─── Monthly Trend Section (6-month combo chart + summary cards) ─────────────
+
+function MonthlyTrendSection({
+  data,
+  loading,
+  error,
+  onRetry,
+}: {
+  data: MonthlyTrendPoint[];
+  loading: boolean;
+  error: string;
+  onRetry: () => void;
+}) {
+  // Compute summary stats — based on total monthly cost (food + operating).
+  const stats = useMemo(() => {
+    if (!data.length) {
+      return {
+        avg: 0,
+        momChange: null as number | null,
+        highest: null as MonthlyTrendPoint | null,
+        lowest: null as MonthlyTrendPoint | null,
+      };
+    }
+    const totals = data.map((d) => ({
+      ...d,
+      total: d.foodCost + d.operatingCost,
+    }));
+    const sum = totals.reduce((acc, d) => acc + d.total, 0);
+    const avg = sum / totals.length;
+
+    const last = totals[totals.length - 1];
+    const prev = totals[totals.length - 2];
+    let momChange: number | null = null;
+    if (prev && prev.total > 0) {
+      momChange = ((last.total - prev.total) / prev.total) * 100;
+    }
+
+    const highest = totals.reduce(
+      (max, d) => (d.total > max.total ? d : max),
+      totals[0]
+    );
+    const lowest = totals.reduce(
+      (min, d) => (d.total < min.total ? d : min),
+      totals[0]
+    );
+
+    return { avg, momChange, highest, lowest };
+  }, [data]);
+
+  return (
+    <Card className="overflow-hidden border-amber-200/70 dark:border-amber-800/40 transition-all hover:shadow-md">
+      <CardHeader className="pb-3 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm">
+              <Sparkles className="h-5 w-5" />
+            </div>
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                Cost Trend Analysis
+              </CardTitle>
+              <CardDescription>
+                6-month combo of food cost (bars) and operating cost (line)
+              </CardDescription>
+            </div>
+          </div>
+          {data.length > 0 && (
+            <Badge
+              variant="outline"
+              className="bg-white/70 dark:bg-background/70 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-700 gap-1"
+            >
+              <CalendarDays className="h-3 w-3" />
+              {data[0].monthLabel} – {data[data.length - 1].monthLabel}
+            </Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="p-4 sm:p-6 space-y-6">
+        {loading ? (
+          <MonthlyTrendSkeleton />
+        ) : error ? (
+          <ErrorState message={error} onRetry={onRetry} />
+        ) : data.length === 0 ? (
+          <EmptyState message="No monthly trend data available" />
+        ) : (
+          <>
+            {/* Combo Chart — bars (food cost) + line (operating cost) */}
+            <ChartContainer config={monthlyTrendConfig} className="aspect-[16/9] w-full sm:h-[340px] sm:aspect-auto">
+              <ComposedChart data={data} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                <XAxis
+                  dataKey="monthLabel"
+                  tick={{ fontSize: 12 }}
+                  tickMargin={8}
+                  interval="preserveStartEnd"
+                  className="text-muted-foreground"
+                />
+                <YAxis
+                  tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+                  tick={{ fontSize: 11 }}
+                  className="text-muted-foreground"
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(label) => `${label}`}
+                      formatter={(value, name) => (
+                        <span className="tabular-nums">
+                          {name === 'foodCost'
+                            ? 'Food Cost: '
+                            : 'Operating Cost: '}
+                          {fmt.format(Number(value))}
+                        </span>
+                      )}
+                    />
+                  }
+                />
+                <Legend
+                  verticalAlign="top"
+                  align="right"
+                  height={36}
+                  iconType="circle"
+                  formatter={(value) => (
+                    <span className="text-xs">
+                      {value === 'foodCost' ? 'Food Cost' : 'Operating Cost'}
+                    </span>
+                  )}
+                />
+                <Bar
+                  dataKey="foodCost"
+                  name="foodCost"
+                  fill="#f59e0b"
+                  radius={[6, 6, 0, 0]}
+                  maxBarSize={48}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="operatingCost"
+                  name="operatingCost"
+                  stroke="#10b981"
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#10b981' }}
+                  activeDot={{ r: 6, fill: '#059669' }}
+                />
+              </ComposedChart>
+            </ChartContainer>
+
+            {/* Summary cards */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <MonthlyTrendStatCard
+                title="Avg Monthly Cost"
+                value={fmt.format(stats.avg)}
+                subtitle="Food + operating, last 6 mo"
+                icon={<Wallet className="h-5 w-5" />}
+                iconBg="bg-amber-100 dark:bg-amber-900/30"
+                iconColor="text-amber-600 dark:text-amber-400"
+              />
+              <MonthlyTrendStatCard
+                title="MoM Change"
+                value={
+                  stats.momChange === null
+                    ? '—'
+                    : `${stats.momChange >= 0 ? '+' : ''}${stats.momChange.toFixed(1)}%`
+                }
+                subtitle="Latest month vs previous"
+                icon={
+                  stats.momChange === null ? (
+                    <Scale className="h-5 w-5" />
+                  ) : stats.momChange >= 0 ? (
+                    <ArrowUpRight className="h-5 w-5" />
+                  ) : (
+                    <ArrowDownRight className="h-5 w-5" />
+                  )
+                }
+                iconBg="bg-orange-100 dark:bg-orange-900/30"
+                iconColor={
+                  stats.momChange === null
+                    ? 'text-muted-foreground'
+                    : stats.momChange >= 0
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }
+                valueColor={
+                  stats.momChange === null
+                    ? undefined
+                    : stats.momChange >= 0
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }
+              />
+              <MonthlyTrendStatCard
+                title="Highest Cost Month"
+                value={fmt.format(stats.highest?.total ?? 0)}
+                subtitle={stats.highest?.monthLabel ?? '—'}
+                icon={<TrendingUp className="h-5 w-5" />}
+                iconBg="bg-rose-100 dark:bg-rose-900/30"
+                iconColor="text-rose-600 dark:text-rose-400"
+              />
+              <MonthlyTrendStatCard
+                title="Lowest Cost Month"
+                value={fmt.format(stats.lowest?.total ?? 0)}
+                subtitle={stats.lowest?.monthLabel ?? '—'}
+                icon={<TrendingDown className="h-5 w-5" />}
+                iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+                iconColor="text-emerald-600 dark:text-emerald-400"
+              />
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function MonthlyTrendStatCard({
+  title,
+  value,
+  subtitle,
+  icon,
+  iconBg,
+  iconColor,
+  valueColor,
+}: {
+  title: string;
+  value: string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  iconBg: string;
+  iconColor: string;
+  valueColor?: string;
+}) {
+  return (
+    <Card className="transition-all hover:shadow-md">
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconBg}`}>
+            <span className={iconColor}>{icon}</span>
+          </div>
+        </div>
+        <div className="mt-3">
+          <p className="text-sm text-muted-foreground">{title}</p>
+          <p className={`text-2xl font-bold tabular-nums ${valueColor ?? ''}`}>
+            {value}
+          </p>
+          {subtitle && (
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MonthlyTrendSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Skeleton className="h-[340px] w-full rounded-xl" />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i}>
+            <CardContent className="p-4">
+              <Skeleton className="h-10 w-10 rounded-lg mb-3" />
+              <Skeleton className="h-4 w-24 mb-2" />
+              <Skeleton className="h-8 w-32" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }

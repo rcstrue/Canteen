@@ -548,7 +548,7 @@ export function SuppliersView() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-hover border-amber-200/60 dark:border-amber-800/30">
           <CardContent className="flex items-center gap-4 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
               <Building2 className="h-6 w-6 text-amber-600 dark:text-amber-400" />
@@ -560,7 +560,7 @@ export function SuppliersView() {
           </CardContent>
         </Card>
 
-        <Card className="border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-hover border-amber-200/60 dark:border-amber-800/30">
           <CardContent className="flex items-center gap-4 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
               <IndianRupee className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
@@ -572,7 +572,7 @@ export function SuppliersView() {
           </CardContent>
         </Card>
 
-        <Card className="border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-hover border-amber-200/60 dark:border-amber-800/30">
           <CardContent className="flex items-center gap-4 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
               <Package className="h-6 w-6 text-green-600 dark:text-green-400" />

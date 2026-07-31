@@ -68,6 +68,8 @@ import {
   CheckCircle2,
   Banknote,
   CircleDot,
+  Printer,
+  Flame,
 } from "lucide-react";
 import { downloadCSV } from "@/lib/export-utils";
 import { useToast } from "@/hooks/use-toast";
@@ -143,6 +145,16 @@ function getTodayStr(): string {
   return d.toISOString().split("T")[0];
 }
 
+/** Build a friendly PUR-XXXX invoice number from a purchase id. */
+function getInvoiceNumber(purchase: Purchase): string {
+  if (purchase.invoiceNo && purchase.invoiceNo.trim()) {
+    return purchase.invoiceNo.trim();
+  }
+  // Derive a deterministic short id from the purchase id
+  const short = purchase.id.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase();
+  return `PUR-${short || "0000"}`;
+}
+
 // Purchase status based on date (simulated since no status field in DB)
 type PurchaseStatus = "Pending" | "Received" | "Paid";
 
@@ -206,6 +218,7 @@ export function PurchasesView() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [newPurchaseOpen, setNewPurchaseOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<Purchase | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -278,6 +291,23 @@ export function PurchasesView() {
     } catch (err) {
       console.error("Error fetching purchase detail:", err);
     }
+  };
+
+  const handleViewInvoice = async (purchase: Purchase) => {
+    try {
+      const res = await fetch(`/api/purchases/${purchase.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedPurchase(data);
+        setInvoiceOpen(true);
+      }
+    } catch (err) {
+      console.error("Error fetching purchase for invoice:", err);
+    }
+  };
+
+  const handlePrintInvoice = () => {
+    window.print();
   };
 
   const handleDelete = async () => {
@@ -699,6 +729,18 @@ export function PurchasesView() {
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
+                                handleViewInvoice(purchase);
+                              }}
+                              className="text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+                              title="View / Print Invoice"
+                            >
+                              <Printer className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 confirmDelete(purchase.id);
                               }}
                               className="text-destructive hover:text-destructive"
@@ -766,6 +808,18 @@ export function PurchasesView() {
                             }}
                           >
                             <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewInvoice(purchase);
+                            }}
+                            className="text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300"
+                            title="View / Print Invoice"
+                          >
+                            <Printer className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -1004,6 +1058,24 @@ export function PurchasesView() {
               </div>
             </div>
           )}
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDetailOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                setDetailOpen(false);
+                setInvoiceOpen(true);
+              }}
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+            >
+              <Printer className="h-4 w-4" />
+              Print Invoice
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1273,6 +1345,225 @@ export function PurchasesView() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ── Purchase Invoice Dialog (Printable) ─────────────────────────────── */}
+      <Dialog open={invoiceOpen} onOpenChange={setInvoiceOpen}>
+        <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto">
+          <DialogHeader className="no-print">
+            <DialogTitle className="flex items-center gap-2">
+              <Printer className="h-5 w-5 text-amber-600" />
+              Purchase Invoice
+            </DialogTitle>
+            <DialogDescription>
+              Review the invoice below, then click Print to send it to your printer.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedPurchase && (
+            <div className="printable-invoice rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-background p-6 sm:p-8 space-y-6">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 border-b border-amber-200 dark:border-amber-800 pb-5">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 text-white shadow-sm">
+                    <Flame className="h-7 w-7" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold tracking-tight text-amber-700 dark:text-amber-400">
+                      RCS Canteen
+                    </h1>
+                    <p className="text-xs text-muted-foreground">
+                      Dahej, Gujarat, India
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Canteen Stock &amp; Cost Management
+                    </p>
+                  </div>
+                </div>
+                <div className="sm:text-right">
+                  <p className="text-lg font-bold text-amber-700 dark:text-amber-400">
+                    Purchase Invoice
+                  </p>
+                  <p className="text-sm font-mono font-semibold">
+                    {getInvoiceNumber(selectedPurchase)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Date: <span className="font-medium text-foreground tabular-nums">{formatDate(selectedPurchase.date)}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Supplier + meta */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="rounded-lg border border-amber-100 dark:border-amber-900/40 p-4 bg-amber-50/40 dark:bg-amber-950/10">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">
+                    Supplier
+                  </p>
+                  <p className="font-semibold text-sm">
+                    {selectedPurchase.supplier || "—"}
+                  </p>
+                  {selectedPurchase.invoiceNo && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Ref Invoice: <span className="font-mono">{selectedPurchase.invoiceNo}</span>
+                    </p>
+                  )}
+                  {selectedPurchase.notes && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Notes: {selectedPurchase.notes}
+                    </p>
+                  )}
+                </div>
+                <div className="rounded-lg border border-amber-100 dark:border-amber-900/40 p-4 bg-amber-50/40 dark:bg-amber-950/10">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-2">
+                    Payment Summary
+                  </p>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Items</span>
+                    <span className="font-semibold tabular-nums">
+                      {selectedPurchase.items?.length || 0}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-1">
+                    <span className="text-muted-foreground">Status</span>
+                    {(() => {
+                      const s = getPurchaseStatus(selectedPurchase);
+                      const sc = getStatusConfig(s);
+                      const SI = sc.Icon;
+                      return (
+                        <Badge
+                          variant="outline"
+                          className={`gap-1 text-[10px] font-semibold ${sc.badgeClass}`}
+                        >
+                          <SI className="h-3 w-3" />
+                          {sc.label}
+                        </Badge>
+                      );
+                    })()}
+                  </div>
+                </div>
+              </div>
+
+              {/* Items Table */}
+              <div>
+                <h4 className="mb-2 text-sm font-semibold flex items-center gap-2">
+                  <Package className="h-4 w-4 text-amber-600" />
+                  Items
+                </h4>
+                <div className="rounded-lg border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-amber-100/70 dark:bg-amber-900/30">
+                        <TableHead className="text-xs">#</TableHead>
+                        <TableHead className="text-xs">Ingredient</TableHead>
+                        <TableHead className="text-xs text-center">Qty</TableHead>
+                        <TableHead className="text-xs">Unit</TableHead>
+                        <TableHead className="text-xs text-right">Unit Price</TableHead>
+                        <TableHead className="text-xs text-right">Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedPurchase.items?.map((item, idx) => (
+                        <TableRow
+                          key={item.id}
+                          className={idx % 2 === 1 ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}
+                        >
+                          <TableCell className="text-xs tabular-nums">{idx + 1}</TableCell>
+                          <TableCell className="text-sm font-medium">
+                            {item.ingredient?.name || "Unknown"}
+                          </TableCell>
+                          <TableCell className="text-sm text-center tabular-nums">
+                            {item.quantity}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {item.ingredient?.unit || ""}
+                          </TableCell>
+                          <TableCell className="text-sm text-right tabular-nums">
+                            {formatCurrency(item.unitPrice)}
+                          </TableCell>
+                          <TableCell className="text-sm text-right font-semibold tabular-nums">
+                            {formatCurrency(item.totalAmount)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {(selectedPurchase.items?.length || 0) === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-sm text-muted-foreground py-6">
+                            No items in this purchase.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="flex justify-end">
+                <div className="w-full sm:w-72 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span className="font-medium tabular-nums">
+                      {formatCurrency(selectedPurchase.totalAmount)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Discount</span>
+                    <span className="font-medium tabular-nums">{formatCurrency(0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between rounded-md bg-amber-500 text-white p-3 mt-2">
+                    <span className="font-semibold">Grand Total</span>
+                    <span className="text-lg font-bold tabular-nums">
+                      {formatCurrency(selectedPurchase.totalAmount)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer — signatures */}
+              <div className="grid grid-cols-2 gap-8 pt-8 border-t border-amber-200 dark:border-amber-800">
+                <div>
+                  <p className="text-xs text-muted-foreground mb-12">
+                    Received by:
+                  </p>
+                  <div className="border-t border-foreground/40" />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Name &amp; Signature
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-12">
+                    Authorized by:
+                  </p>
+                  <div className="border-t border-foreground/40" />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Name &amp; Signature
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-center text-[10px] text-muted-foreground pt-2">
+                This is a system-generated invoice from RCS Canteen Management.
+                Generated on {formatDate(new Date().toISOString())}.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter className="no-print gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setInvoiceOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              onClick={handlePrintInvoice}
+              className="bg-amber-600 hover:bg-amber-700 text-white gap-1.5"
+            >
+              <Printer className="h-4 w-4" />
+              Print Invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

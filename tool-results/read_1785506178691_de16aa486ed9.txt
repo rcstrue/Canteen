@@ -1,0 +1,1842 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect } from "react";
+     4→import {
+     5→  Card,
+     6→  CardContent,
+     7→  CardDescription,
+     8→  CardHeader,
+     9→  CardTitle,
+    10→} from "@/components/ui/card";
+    11→import { Badge } from "@/components/ui/badge";
+    12→import { Button } from "@/components/ui/button";
+    13→import { Progress } from "@/components/ui/progress";
+    14→import { Skeleton } from "@/components/ui/skeleton";
+    15→import {
+    16→  Table,
+    17→  TableBody,
+    18→  TableCell,
+    19→  TableHead,
+    20→  TableHeader,
+    21→  TableRow,
+    22→} from "@/components/ui/table";
+    23→import {
+    24→  ChartContainer,
+    25→  ChartTooltip,
+    26→  ChartTooltipContent,
+    27→  type ChartConfig,
+    28→} from "@/components/ui/chart";
+    29→import {
+    30→  TrendingUp,
+    31→  TrendingDown,
+    32→  Minus,
+    33→  AlertTriangle,
+    34→  Package,
+    35→  UtensilsCrossed,
+    36→  IndianRupee,
+    37→  ShoppingCart,
+    38→  Flame,
+    39→  Receipt,
+    40→  Users,
+    41→  CalendarDays,
+    42→  ArrowRight,
+    43→  ClipboardList,
+    44→  PlusCircle,
+    45→  Activity,
+    46→  ShieldCheck,
+    47→  Calendar,
+    48→  ArrowUp,
+    49→  ArrowDown,
+    50→  BarChart3,
+    51→  Warehouse,
+    52→  Soup,
+    53→  FileText,
+    54→  Target,
+    55→} from "lucide-react";
+    56→import {
+    57→  BarChart,
+    58→  Bar,
+    59→  XAxis,
+    60→  YAxis,
+    61→  CartesianGrid,
+    62→  Cell,
+    63→  ResponsiveContainer,
+    64→  LabelList,
+    65→  PieChart,
+    66→  Pie,
+    67→  LineChart,
+    68→  Line,
+    69→} from "recharts";
+    70→import { motion, type Variants } from "framer-motion";
+    71→import type { ViewId } from "@/components/app-sidebar";
+    72→import { BudgetStatus } from "@/components/budget-status";
+    73→
+    74→// ─── Constants ───────────────────────────────────────────────────────────────
+    75→
+    76→/** RCS Canteen serves 600 employees */
+    77→const EMPLOYEE_COUNT = 600;
+    78→
+    79→/** Cohesive chart palette — amber/orange first, then warm complementary tones */
+    80→const CHART_COLORS = [
+    81→  "#f59e0b", // amber-500
+    82→  "#f97316", // orange-500
+    83→  "#f43f5e", // rose-500
+    84→  "#10b981", // emerald-500
+    85→  "#8b5cf6", // violet-500
+    86→  "#d97706", // amber-600
+    87→  "#ea580c", // orange-600
+    88→  "#e11d48", // rose-600
+    89→];
+    90→
+    91→/** Category → color mapping (for bar chart color differentiation by category) */
+    92→const CATEGORY_COLORS: Record<string, string> = {
+    93→  Grains: "#f59e0b",
+    94→  Vegetables: "#10b981",
+    95→  Dairy: "#8b5cf6",
+    96→  Spices: "#f43f5e",
+    97→  Oils: "#f97316",
+    98→  Oil: "#f97316",
+    99→  Pulses: "#d97706",
+   100→  Meat: "#e11d48",
+   101→  Fruits: "#84cc16",
+   102→  Beverages: "#06b6d4",
+   103→  Bakery: "#a855f7",
+   104→  Condiments: "#ec4899",
+   105→};
+   106→
+   107→function getCategoryColor(category: string): string {
+   108→  if (CATEGORY_COLORS[category]) return CATEGORY_COLORS[category];
+   109→  // Fallback: hash the category name to pick a consistent color
+   110→  let hash = 0;
+   111→  for (let i = 0; i < category.length; i++) {
+   112→    hash = (hash << 5) - hash + category.charCodeAt(i);
+   113→    hash |= 0;
+   114→  }
+   115→  return CHART_COLORS[Math.abs(hash) % CHART_COLORS.length];
+   116→}
+   117→
+   118→// ─── Types ───────────────────────────────────────────────────────────────────
+   119→
+   120→interface DashboardData {
+   121→  foodCost: { today: number; week: number; month: number };
+   122→  meals: { today: number; month: number };
+   123→  costPerMeal: number;
+   124→  lowStockAlerts: Array<{
+   125→    id: string;
+   126→    name: string;
+   127→    unit: string;
+   128→    category: string;
+   129→    currentStock: number;
+   130→    minStock: number;
+   131→  }>;
+   132→  topConsumingIngredients: Array<{
+   133→    ingredient: {
+   134→      id: string;
+   135→      name: string;
+   136→      unit: string;
+   137→      category: string;
+   138→    };
+   139→    totalQuantity: number;
+   140→    totalCost: number;
+   141→  }>;
+   142→  todayMeals: Array<{
+   143→    id: string;
+   144→    date: string;
+   145→    mealType: string;
+   146→    mealsServed: number;
+   147→    recipe: { name: string };
+   148→  }>;
+   149→  expenses: {
+   150→    month: number;
+   151→    breakdown: Array<{ category: string; amount: number }>;
+   152→  };
+   153→  totalOperatingCost: number;
+   154→  costTrend: Array<{ date: string; cost: number }>;
+   155→}
+   156→
+   157→interface IngredientListItem {
+   158→  id: string;
+   159→  name: string;
+   160→  unit: string;
+   161→  category: string;
+   162→  currentStock: number;
+   163→  minStock: number;
+   164→}
+   165→
+   166→interface CostReportData {
+   167→  foodCost: { total: number; costPerMeal: number };
+   168→  meals: { total: number };
+   169→  totalOperatingCost: number;
+   170→}
+   171→
+   172→interface BudgetRecord {
+   173→  id: string;
+   174→  month: string;
+   175→  foodBudget: number;
+   176→  operatingBudget: number;
+   177→  totalBudget: number;
+   178→  alertThreshold: number;
+   179→  createdAt: string;
+   180→  updatedAt: string;
+   181→}
+   182→
+   183→interface DashboardViewProps {
+   184→  onNavigate?: (view: ViewId) => void;
+   185→}
+   186→
+   187→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   188→
+   189→function formatCurrency(value: number): string {
+   190→  return new Intl.NumberFormat("en-IN", {
+   191→    style: "currency",
+   192→    currency: "INR",
+   193→    minimumFractionDigits: 2,
+   194→    maximumFractionDigits: 2,
+   195→  }).format(value);
+   196→}
+   197→
+   198→function formatCurrencyShort(value: number): string {
+   199→  if (value >= 100000) return `₹${(value / 100000).toFixed(2)}L`;
+   200→  if (value >= 1000) return `₹${(value / 1000).toFixed(1)}k`;
+   201→  return formatCurrency(value);
+   202→}
+   203→
+   204→function formatNumber(value: number): string {
+   205→  return new Intl.NumberFormat("en-IN").format(value);
+   206→}
+   207→
+   208→function formatNumberDecimal(value: number): string {
+   209→  return new Intl.NumberFormat("en-IN", {
+   210→    minimumFractionDigits: 1,
+   211→    maximumFractionDigits: 1,
+   212→  }).format(value);
+   213→}
+   214→
+   215→function mealTypeLabel(type: string): string {
+   216→  const map: Record<string, string> = {
+   217→    BREAKFAST: "Breakfast",
+   218→    LUNCH: "Lunch",
+   219→    DINNER: "Dinner",
+   220→    SNACKS: "Snacks",
+   221→    TEA: "Tea",
+   222→  };
+   223→  return map[type] || type;
+   224→}
+   225→
+   226→function formatDateLong(): string {
+   227→  return new Date().toLocaleDateString("en-IN", {
+   228→    weekday: "long",
+   229→    day: "numeric",
+   230→    month: "long",
+   231→    year: "numeric",
+   232→  });
+   233→}
+   234→
+   235→/** Compute percentage change between current and baseline. Returns null if invalid. */
+   236→function pctChange(current: number, baseline: number): number | null {
+   237→  if (!baseline || baseline <= 0) return null;
+   238→  return ((current - baseline) / baseline) * 100;
+   239→}
+   240→
+   241→// ─── Animation Variants ─────────────────────────────────────────────────────
+   242→
+   243→const containerVariants: Variants = {
+   244→  hidden: { opacity: 0 },
+   245→  visible: {
+   246→    opacity: 1,
+   247→    transition: { staggerChildren: 0.06, delayChildren: 0.05 },
+   248→  },
+   249→};
+   250→
+   251→const itemVariants: Variants = {
+   252→  hidden: { opacity: 0, y: 16 },
+   253→  visible: {
+   254→    opacity: 1,
+   255→    y: 0,
+   256→    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
+   257→  },
+   258→};
+   259→
+   260→// ─── Chart Configs ──────────────────────────────────────────────────────────
+   261→
+   262→const consumptionChartConfig: ChartConfig = {
+   263→  totalQuantity: { label: "Quantity Consumed", color: "#f59e0b" },
+   264→};
+   265→
+   266→const expenseChartConfig: ChartConfig = {
+   267→  amount: { label: "Amount (₹)", color: "#f97316" },
+   268→};
+   269→
+   270→const costTrendChartConfig: ChartConfig = {
+   271→  cost: { label: "Food Cost (₹)", color: "#f59e0b" },
+   272→};
+   273→
+   274→// ─── Reusable: Trend Badge ──────────────────────────────────────────────────
+   275→
+   276→interface TrendBadgeProps {
+   277→  /** Percentage change (positive = increase, negative = decrease) */
+   278→  pct: number | null;
+   279→  /** For cost metrics, "lower is better" → up arrow = red. For meals/positive metrics, "up is better" */
+   280→  lowerIsBetter?: boolean;
+   281→  /** Comparison label e.g. "vs avg day" */
+   282→  label: string;
+   283→}
+   284→
+   285→function TrendBadge({ pct, lowerIsBetter = true, label }: TrendBadgeProps) {
+   286→  if (pct === null || !isFinite(pct)) {
+   287→    return (
+   288→      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+   289→        <Minus className="h-3.5 w-3.5" />
+   290→        <span>{label}</span>
+   291→      </div>
+   292→    );
+   293→  }
+   294→
+   295→  const isUp = pct > 0;
+   296→  const isFlat = Math.abs(pct) < 0.5;
+   297→  const goodDirection = lowerIsBetter ? !isUp : isUp;
+   298→  const colorClass = isFlat
+   299→    ? "text-muted-foreground"
+   300→    : goodDirection
+   301→      ? "text-emerald-600 dark:text-emerald-400"
+   302→      : "text-rose-600 dark:text-rose-400";
+   303→  const Icon = isFlat ? Minus : isUp ? TrendingUp : TrendingDown;
+   304→
+   305→  return (
+   306→    <div className="flex items-center gap-1.5 text-xs">
+   307→      <Icon className={`h-4 w-4 ${colorClass}`} />
+   308→      <span className={`font-bold tabular-nums ${colorClass}`}>
+   309→        {isFlat ? "0%" : `${isUp ? "+" : ""}${pct.toFixed(1)}%`}
+   310→      </span>
+   311→      <span className="text-muted-foreground">{label}</span>
+   312→    </div>
+   313→  );
+   314→}
+   315→
+   316→// ─── Reusable: Metric Card ──────────────────────────────────────────────────
+   317→
+   318→interface MetricCardProps {
+   319→  title: string;
+   320→  value: string;
+   321→  icon: React.ReactNode;
+   322→  iconBgClass: string;
+   323→  trend?: React.ReactNode;
+   324→  subValue?: React.ReactNode;
+   325→}
+   326→
+   327→function MetricCard({
+   328→  title,
+   329→  value,
+   330→  icon,
+   331→  iconBgClass,
+   332→  trend,
+   333→  subValue,
+   334→}: MetricCardProps) {
+   335→  return (
+   336→    <Card className="group relative h-full overflow-hidden border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 dark:border-amber-900/40 dark:from-amber-950/30 dark:to-orange-950/20">
+   337→      {/* Gradient border effect on hover */}
+   338→      <div className="pointer-events-none absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(249,115,22,0.15))", padding: "1.5px" }}>
+   339→        <div className="h-full w-full rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20" />
+   340→      </div>
+   341→      <CardHeader className="relative flex flex-row items-center justify-between pb-2">
+   342→        <CardDescription className="text-sm font-medium text-amber-900/80 dark:text-amber-200/80">
+   343→          {title}
+   344→        </CardDescription>
+   345→        <div
+   346→          className={`flex h-9 w-9 items-center justify-center rounded-xl ${iconBgClass}`}
+   347→        >
+   348→          {icon}
+   349→        </div>
+   350→      </CardHeader>
+   351→      <CardContent className="relative flex flex-col gap-2">
+   352→        <div className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100">
+   353→          {value}
+   354→        </div>
+   355→        {subValue}
+   356→        {trend && (
+   357→          <div className="mt-0.5 inline-flex items-center gap-1.5 self-start rounded-full bg-amber-100/60 px-2.5 py-1 dark:bg-amber-900/30">
+   358→            {trend}
+   359→          </div>
+   360→        )}
+   361→      </CardContent>
+   362→    </Card>
+   363→  );
+   364→}
+   365→
+   366→// ─── Stock Health Gauge ─────────────────────────────────────────────────────
+   367→
+   368→function CircularGauge({ percent }: { percent: number }) {
+   369→  const size = 168;
+   370→  const stroke = 14;
+   371→  const radius = (size - stroke) / 2;
+   372→  const circumference = 2 * Math.PI * radius;
+   373→  const clamped = Math.max(0, Math.min(100, percent));
+   374→  const dashOffset = circumference - (clamped / 100) * circumference;
+   375→
+   376→  // Color shifts: red (low) → amber (mid) → emerald (high)
+   377→  const color =
+   378→    clamped >= 80 ? "#10b981" : clamped >= 60 ? "#f59e0b" : "#f43f5e";
+   379→
+   380→  return (
+   381→    <div
+   382→      className="relative"
+   383→      style={{ width: size, height: size }}
+   384→      role="meter"
+   385→      aria-valuenow={Math.round(clamped)}
+   386→      aria-valuemin={0}
+   387→      aria-valuemax={100}
+   388→      aria-label="Stock health percentage"
+   389→    >
+   390→      <svg width={size} height={size} className="-rotate-90">
+   391→        <circle
+   392→          cx={size / 2}
+   393→          cy={size / 2}
+   394→          r={radius}
+   395→          fill="none"
+   396→          stroke="var(--muted)"
+   397→          strokeWidth={stroke}
+   398→        />
+   399→        <circle
+   400→          cx={size / 2}
+   401→          cy={size / 2}
+   402→          r={radius}
+   403→          fill="none"
+   404→          stroke={color}
+   405→          strokeWidth={stroke}
+   406→          strokeLinecap="round"
+   407→          strokeDasharray={circumference}
+   408→          strokeDashoffset={dashOffset}
+   409→          style={{
+   410→            transition: "stroke-dashoffset 0.8s ease, stroke 0.4s ease",
+   411→          }}
+   412→        />
+   413→      </svg>
+   414→      <div className="absolute inset-0 flex flex-col items-center justify-center">
+   415→        <span
+   416→          className="text-3xl font-bold tabular-nums"
+   417→          style={{ color }}
+   418→        >
+   419→          {Math.round(clamped)}%
+   420→        </span>
+   421→        <span className="mt-0.5 text-xs font-medium text-muted-foreground">
+   422→          Above Par
+   423→        </span>
+   424→      </div>
+   425→    </div>
+   426→  );
+   427→}
+   428→
+   429→// ─── Donut Pie Label Renderer ───────────────────────────────────────────────
+   430→
+   431→/** Renders percentage labels INSIDE donut slices */
+   432→function renderPiePercentLabel(props: {
+   433→  cx: number;
+   434→  cy: number;
+   435→  midAngle: number;
+   436→  innerRadius: number;
+   437→  outerRadius: number;
+   438→  percent: number;
+   439→}) {
+   440→  const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props;
+   441→  if (percent < 0.05) return null; // hide labels on slices < 5%
+   442→
+   443→  const RADIAN = Math.PI / 180;
+   444→  const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+   445→  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+   446→  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+   447→
+   448→  return (
+   449→    <text
+   450→      x={x}
+   451→      y={y}
+   452→      fill="#fff"
+   453→      textAnchor="middle"
+   454→      dominantBaseline="central"
+   455→      fontSize={12}
+   456→      fontWeight={700}
+   457→      style={{ pointerEvents: "none" }}
+   458→    >
+   459→      {(percent * 100).toFixed(0)}%
+   460→    </text>
+   461→  );
+   462→}
+   463→
+   464→// ─── Loading Skeletons ──────────────────────────────────────────────────────
+   465→
+   466→function MetricCardSkeleton() {
+   467→  return (
+   468→    <Card className="h-full">
+   469→      <CardHeader className="flex flex-row items-center justify-between pb-2">
+   470→        <Skeleton className="h-4 w-24" />
+   471→        <Skeleton className="h-9 w-9 rounded-xl" />
+   472→      </CardHeader>
+   473→      <CardContent>
+   474→        <Skeleton className="mb-2 h-7 w-32" />
+   475→        <Skeleton className="mb-2 h-3 w-20" />
+   476→        <Skeleton className="h-3 w-28" />
+   477→      </CardContent>
+   478→    </Card>
+   479→  );
+   480→}
+   481→
+   482→function BannerSkeleton() {
+   483→  return (
+   484→    <Card className="h-full">
+   485→      <CardContent className="p-6">
+   486→        <Skeleton className="mb-2 h-4 w-32" />
+   487→        <Skeleton className="mb-1 h-8 w-64" />
+   488→        <Skeleton className="mb-6 h-4 w-48" />
+   489→        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+   490→          <Skeleton className="h-16 w-full" />
+   491→          <Skeleton className="h-[100px] w-full md:col-span-2" />
+   492→        </div>
+   493→      </CardContent>
+   494→    </Card>
+   495→  );
+   496→}
+   497→
+   498→function LargeCardSkeleton() {
+   499→  return (
+   500→    <Card className="h-full">
+   501→      <CardHeader>
+   502→        <Skeleton className="h-5 w-40" />
+   503→        <Skeleton className="h-3 w-56" />
+   504→      </CardHeader>
+   505→      <CardContent>
+   506→        <Skeleton className="h-48 w-full" />
+   507→      </CardContent>
+   508→    </Card>
+   509→  );
+   510→}
+   511→
+   512→// ─── Main Component ─────────────────────────────────────────────────────────
+   513→
+   514→export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
+   515→  const [data, setData] = useState<DashboardData | null>(null);
+   516→  const [allIngredients, setAllIngredients] = useState<IngredientListItem[]>(
+   517→    []
+   518→  );
+   519→  const [loading, setLoading] = useState(true);
+   520→  const [error, setError] = useState<string | null>(null);
+   521→
+   522→  // Monthly comparison state
+   523→  const [currentMonthReport, setCurrentMonthReport] = useState<CostReportData | null>(null);
+   524→  const [prevMonthReport, setPrevMonthReport] = useState<CostReportData | null>(null);
+   525→
+   526→  // Budget state
+   527→  const [currentBudget, setCurrentBudget] = useState<BudgetRecord | null>(null);
+   528→
+   529→  useEffect(() => {
+   530→    async function fetchDashboard() {
+   531→      try {
+   532→        setLoading(true);
+   533→        setError(null);
+   534→        const [dashRes, ingRes] = await Promise.all([
+   535→          fetch("/api/dashboard"),
+   536→          fetch("/api/ingredients"),
+   537→        ]);
+   538→        if (!dashRes.ok) {
+   539→          throw new Error(
+   540→            `Failed to fetch dashboard data (${dashRes.status})`
+   541→          );
+   542→        }
+   543→        const json = await dashRes.json();
+   544→        setData(json);
+   545→        // Ingredients fetch is best-effort (used for stock health gauge)
+   546→        if (ingRes.ok) {
+   547→          const ingJson = (await ingRes.json()) as IngredientListItem[];
+   548→          setAllIngredients(ingJson);
+   549→        }
+   550→      } catch (err) {
+   551→        console.error("Dashboard fetch error:", err);
+   552→        setError(
+   553→          err instanceof Error ? err.message : "Failed to load dashboard"
+   554→        );
+   555→      } finally {
+   556→        setLoading(false);
+   557→      }
+   558→    }
+   559→    fetchDashboard();
+   560→  }, []);
+   561→
+   562→  // Fetch monthly comparison data
+   563→  useEffect(() => {
+   564→    async function fetchMonthlyComparison() {
+   565→      try {
+   566→        const now = new Date();
+   567→        // Current month: first day to now
+   568→        const curStart = new Date(now.getFullYear(), now.getMonth(), 1)
+   569→          .toISOString()
+   570→          .split("T")[0];
+   571→        const curEnd = now.toISOString().split("T")[0];
+   572→
+   573→        // Previous month: first day to last day
+   574→        const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+   575→          .toISOString()
+   576→          .split("T")[0];
+   577→        const prevEnd = new Date(now.getFullYear(), now.getMonth(), 0)
+   578→          .toISOString()
+   579→          .split("T")[0];
+   580→
+   581→        const [curRes, prevRes] = await Promise.all([
+   582→          fetch(
+   583→            `/api/reports/cost?period=month&startDate=${curStart}&endDate=${curEnd}`
+   584→          ),
+   585→          fetch(
+   586→            `/api/reports/cost?period=month&startDate=${prevStart}&endDate=${prevEnd}`
+   587→          ),
+   588→        ]);
+   589→
+   590→        if (curRes.ok) {
+   591→          setCurrentMonthReport(await curRes.json());
+   592→        }
+   593→        if (prevRes.ok) {
+   594→          setPrevMonthReport(await prevRes.json());
+   595→        }
+   596→      } catch (err) {
+   597→        console.error("Monthly comparison fetch error:", err);
+   598→      }
+   599→    }
+   600→    fetchMonthlyComparison();
+   601→  }, []);
+   602→
+   603→  // Fetch current month's budget
+   604→  useEffect(() => {
+   605→    async function fetchBudget() {
+   606→      try {
+   607→        const res = await fetch("/api/budgets");
+   608→        if (res.ok) {
+   609→          const budgets = (await res.json()) as BudgetRecord[];
+   610→          const currentMonth = new Date().toISOString().slice(0, 7);
+   611→          const current = budgets.find((b) => b.month === currentMonth);
+   612→          if (current) {
+   613→            setCurrentBudget(current);
+   614→          }
+   615→        }
+   616→      } catch (err) {
+   617→        console.error("Budget fetch error:", err);
+   618→      }
+   619→    }
+   620→    fetchBudget();
+   621→  }, []);
+   622→
+   623→  // ─── Loading State ──────────────────────────────────────────────────────
+   624→
+   625→  if (loading) {
+   626→    return (
+   627→      <div className="space-y-6">
+   628→        <BannerSkeleton />
+   629→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+   630→          {Array.from({ length: 6 }).map((_, i) => (
+   631→            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+   632→          ))}
+   633→        </div>
+   634→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   635→          {Array.from({ length: 4 }).map((_, i) => (
+   636→            <MetricCardSkeleton key={i} />
+   637→          ))}
+   638→        </div>
+   639→        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+   640→          <LargeCardSkeleton />
+   641→          <LargeCardSkeleton />
+   642→        </div>
+   643→        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+   644→          <LargeCardSkeleton />
+   645→          <LargeCardSkeleton />
+   646→        </div>
+   647→        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+   648→          <LargeCardSkeleton />
+   649→          <LargeCardSkeleton />
+   650→        </div>
+   651→        <LargeCardSkeleton />
+   652→      </div>
+   653→    );
+   654→  }
+   655→
+   656→  // ─── Error State ────────────────────────────────────────────────────────
+   657→
+   658→  if (error || !data) {
+   659→    return (
+   660→      <div className="space-y-6">
+   661→        <Card className="border-destructive/50">
+   662→          <CardHeader>
+   663→            <CardTitle className="flex items-center gap-2 text-destructive">
+   664→              <AlertTriangle className="h-5 w-5" />
+   665→              Error Loading Dashboard
+   666→            </CardTitle>
+   667→            <CardDescription>
+   668→              {error ||
+   669→                "Unable to load dashboard data. Please try again later."}
+   670→            </CardDescription>
+   671→          </CardHeader>
+   672→          <CardContent>
+   673→            <button
+   674→              onClick={() => window.location.reload()}
+   675→              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+   676→            >
+   677→              Retry
+   678→            </button>
+   679→          </CardContent>
+   680→        </Card>
+   681→      </div>
+   682→    );
+   683→  }
+   684→
+   685→  // ─── Computed Values ────────────────────────────────────────────────────
+   686→
+   687→  // Estimated weekly meals from month + today data (rough heuristic)
+   688→  const weekMeals = data.meals.month
+   689→    ? Math.round((data.meals.today * 7 + data.meals.month) / 8)
+   690→    : data.meals.today * 7;
+   691→
+   692→  // Trend calculations (vs averages derived from existing data)
+   693→  const avgDailyFromWeek = data.foodCost.week / 7;
+   694→  const avgWeeklyFromMonth = data.foodCost.month / 4.33;
+   695→  const todayVsAvgDay = pctChange(data.foodCost.today, avgDailyFromWeek);
+   696→  const weekVsAvgWeek = pctChange(data.foodCost.week, avgWeeklyFromMonth);
+   697→
+   698→  // Cost per employee (monthly total operating cost / 600 employees)
+   699→  const costPerEmployee = data.totalOperatingCost / EMPLOYEE_COUNT;
+   700→  const dailyCostPerEmployee = costPerEmployee / 30;
+   701→
+   702→  // Stock health: % of ingredients at/above par level
+   703→  const totalIngredientCount =
+   704→    allIngredients.length > 0 ? allIngredients.length : data.lowStockAlerts.length;
+   705→  const aboveParCount =
+   706→    allIngredients.length > 0
+   707→      ? allIngredients.filter((i) => i.currentStock >= i.minStock).length
+   708→      : Math.max(0, totalIngredientCount - data.lowStockAlerts.length);
+   709→  const stockHealthPct =
+   710→    totalIngredientCount > 0
+   711→      ? (aboveParCount / totalIngredientCount) * 100
+   712→      : 100;
+   713→
+   714→  // Top consuming ingredients chart data
+   715→  const consumptionChartData = data.topConsumingIngredients
+   716→    .slice(0, 8)
+   717→    .map((item) => ({
+   718→      name:
+   719→        item.ingredient.name.length > 14
+   720→          ? item.ingredient.name.slice(0, 13) + "…"
+   721→          : item.ingredient.name,
+   722→      fullName: item.ingredient.name,
+   723→      totalQuantity: Number(item.totalQuantity.toFixed(1)),
+   724→      unit: item.ingredient.unit,
+   725→      totalCost: item.totalCost,
+   726→      category: item.ingredient.category,
+   727→      color: getCategoryColor(item.ingredient.category),
+   728→    }));
+   729→
+   730→  // Expense breakdown chart data — sorted desc, capped to 6 categories
+   731→  const expenseChartData = [...data.expenses.breakdown]
+   732→    .sort((a, b) => b.amount - a.amount)
+   733→    .slice(0, 6)
+   734→    .map((item, idx) => ({
+   735→      name: item.category,
+   736→      amount: item.amount,
+   737→      color: CHART_COLORS[idx % CHART_COLORS.length],
+   738→    }));
+   739→
+   740→  return (
+   741→    <motion.div
+   742→      variants={containerVariants}
+   743→      initial="hidden"
+   744→      animate="visible"
+   745→      className="space-y-6"
+   746→    >
+   747→      {/* ─── 1. Welcome Banner (full width) ─────────────────────────────── */}
+   748→      <motion.div variants={itemVariants}>
+   749→        <Card className="overflow-hidden border-amber-200/60 bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100/40 shadow-sm transition-all hover:shadow-md dark:border-amber-900/40 dark:from-amber-950/40 dark:via-orange-950/30 dark:to-amber-900/20">
+   750→          <CardContent className="p-6">
+   751→            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+   752→              {/* Left: greeting + date */}
+   753→              <div className="flex items-start gap-4">
+   754→                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/40">
+   755→                  <Flame className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+   756→                </div>
+   757→                <div>
+   758→                  <p className="text-sm text-amber-900/70 dark:text-amber-200/70">
+   759→                    Welcome back, Admin
+   760→                  </p>
+   761→                  <h1 className="text-2xl font-bold tracking-tight text-amber-950 dark:text-amber-100 md:text-3xl">
+   762→                    RCS Canteen Dashboard
+   763→                  </h1>
+   764→                  <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+   765→                    <CalendarDays className="h-3.5 w-3.5" />
+   766→                    {formatDateLong()}
+   767→                  </p>
+   768→                </div>
+   769→              </div>
+   770→
+   771→              {/* Right: Quick action buttons */}
+   772→              <div className="flex flex-wrap gap-2">
+   773→                <Button
+   774→                  onClick={() => onNavigate?.("daily-entry")}
+   775→                  className="bg-amber-600 text-white shadow-sm hover:bg-amber-700"
+   776→                >
+   777→                  <ClipboardList className="h-4 w-4" />
+   778→                  Record Today&apos;s Meals
+   779→                </Button>
+   780→                <Button
+   781→                  variant="outline"
+   782→                  onClick={() => onNavigate?.("purchases")}
+   783→                  className="border-amber-300 bg-white/70 text-amber-900 hover:bg-amber-100 hover:text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/30"
+   784→                >
+   785→                  <PlusCircle className="h-4 w-4" />
+   786→                  New Purchase
+   787→                </Button>
+   788→              </div>
+   789→            </div>
+   790→
+   791→            {/* 7-Day Cost Trend Sparkline */}
+   792→            <div className="mt-6 grid grid-cols-1 gap-4 border-t border-amber-200/60 pt-6 md:grid-cols-3 dark:border-amber-900/30">
+   793→              <div className="flex flex-col justify-center gap-2">
+   794→                <p className="text-xs font-medium text-muted-foreground">
+   795→                  7-Day Cost Trend
+   796→                </p>
+   797→                <div className="flex items-baseline gap-2">
+   798→                  <span className="text-2xl font-bold tabular-nums text-amber-950 dark:text-amber-100">
+   799→                    {formatCurrencyShort(data.foodCost.week)}
+   800→                  </span>
+   801→                  <span className="text-xs text-muted-foreground">this week</span>
+   802→                </div>
+   803→                <TrendBadge
+   804→                  pct={weekVsAvgWeek}
+   805→                  lowerIsBetter={true}
+   806→                  label="vs avg week"
+   807→                />
+   808→              </div>
+   809→              <div className="md:col-span-2">
+   810→                <ChartContainer config={costTrendChartConfig} className="h-[100px] w-full">
+   811→                  <LineChart
+   812→                    data={data.costTrend.map((d) => ({
+   813→                      ...d,
+   814→                      label: new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", {
+   815→                        weekday: "short",
+   816→                      }),
+   817→                    }))}
+   818→                    margin={{ top: 5, right: 10, left: 10, bottom: 0 }}
+   819→                  >
+   820→                    <XAxis
+   821→                      dataKey="label"
+   822→                      tick={{ fontSize: 11 }}
+   823→                      stroke="var(--muted-foreground)"
+   824→                      axisLine={false}
+   825→                      tickLine={false}
+   826→                    />
+   827→                    <ChartTooltip
+   828→                      content={
+   829→                        <ChartTooltipContent
+   830→                          formatter={(value) => formatCurrency(Number(value))}
+   831→                          labelFormatter={(label) => {
+   832→                            const entry = data.costTrend.find(
+   833→                              (d) =>
+   834→                                new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short" }) === label
+   835→                            );
+   836→                            return entry
+   837→                              ? new Date(entry.date + "T00:00:00").toLocaleDateString("en-IN", {
+   838→                                  weekday: "long",
+   839→                                  day: "numeric",
+   840→                                  month: "short",
+   841→                                })
+   842→                              : label;
+   843→                          }}
+   844→                        />
+   845→                      }
+   846→                    />
+   847→                    <Line
+   848→                      type="monotone"
+   849→                      dataKey="cost"
+   850→                      stroke="#f59e0b"
+   851→                      strokeWidth={2.5}
+   852→                      dot={{ r: 3, fill: "#f59e0b", strokeWidth: 0 }}
+   853→                      activeDot={{ r: 5, fill: "#f97316", stroke: "#fff", strokeWidth: 2 }}
+   854→                    />
+   855→                  </LineChart>
+   856→                </ChartContainer>
+   857→              </div>
+   858→            </div>
+   859→          </CardContent>
+   860→        </Card>
+   861→      </motion.div>
+   862→
+   863→      {/* ─── 2. Quick Actions Widget ─────────────────────────────────────── */}
+   864→      <motion.div variants={itemVariants}>
+   865→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+   866→          <button
+   867→            onClick={() => onNavigate?.("daily-entry")}
+   868→            className="group flex flex-col items-center gap-2 rounded-xl border border-amber-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-amber-400 hover:bg-amber-50 hover:shadow-md hover:-translate-y-0.5 dark:border-amber-900/40 dark:bg-amber-950/20 dark:hover:border-amber-700 dark:hover:bg-amber-900/30"
+   869→          >
+   870→            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 transition-colors group-hover:bg-amber-200 dark:bg-amber-900/40 dark:group-hover:bg-amber-800/50">
+   871→              <ClipboardList className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   872→            </div>
+   873→            <span className="text-xs font-medium text-amber-900 dark:text-amber-200">Record Meals</span>
+   874→          </button>
+   875→
+   876→          <button
+   877→            onClick={() => onNavigate?.("purchases")}
+   878→            className="group flex flex-col items-center gap-2 rounded-xl border border-orange-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-orange-400 hover:bg-orange-50 hover:shadow-md hover:-translate-y-0.5 dark:border-orange-900/40 dark:bg-orange-950/20 dark:hover:border-orange-700 dark:hover:bg-orange-900/30"
+   879→          >
+   880→            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 transition-colors group-hover:bg-orange-200 dark:bg-orange-900/40 dark:group-hover:bg-orange-800/50">
+   881→              <ShoppingCart className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   882→            </div>
+   883→            <span className="text-xs font-medium text-orange-900 dark:text-orange-200">New Purchase</span>
+   884→          </button>
+   885→
+   886→          <button
+   887→            onClick={() => onNavigate?.("stock")}
+   888→            className="group flex flex-col items-center gap-2 rounded-xl border border-emerald-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-emerald-400 hover:bg-emerald-50 hover:shadow-md hover:-translate-y-0.5 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30"
+   889→          >
+   890→            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 transition-colors group-hover:bg-emerald-200 dark:bg-emerald-900/40 dark:group-hover:bg-emerald-800/50">
+   891→              <Warehouse className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+   892→            </div>
+   893→            <span className="text-xs font-medium text-emerald-900 dark:text-emerald-200">Add Stock</span>
+   894→          </button>
+   895→
+   896→          <button
+   897→            onClick={() => onNavigate?.("meals")}
+   898→            className="group flex flex-col items-center gap-2 rounded-xl border border-rose-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-rose-400 hover:bg-rose-50 hover:shadow-md hover:-translate-y-0.5 dark:border-rose-900/40 dark:bg-rose-950/20 dark:hover:border-rose-700 dark:hover:bg-rose-900/30"
+   899→          >
+   900→            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 transition-colors group-hover:bg-rose-200 dark:bg-rose-900/40 dark:group-hover:bg-rose-800/50">
+   901→              <Soup className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+   902→            </div>
+   903→            <span className="text-xs font-medium text-rose-900 dark:text-rose-200">Manage Recipes</span>
+   904→          </button>
+   905→
+   906→          <button
+   907→            onClick={() => onNavigate?.("reports")}
+   908→            className="group flex flex-col items-center gap-2 rounded-xl border border-violet-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-violet-400 hover:bg-violet-50 hover:shadow-md hover:-translate-y-0.5 dark:border-violet-900/40 dark:bg-violet-950/20 dark:hover:border-violet-700 dark:hover:bg-violet-900/30"
+   909→          >
+   910→            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 transition-colors group-hover:bg-violet-200 dark:bg-violet-900/40 dark:group-hover:bg-violet-800/50">
+   911→              <BarChart3 className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+   912→            </div>
+   913→            <span className="text-xs font-medium text-violet-900 dark:text-violet-200">View Reports</span>
+   914→          </button>
+   915→
+   916→          <button
+   917→            onClick={() => onNavigate?.("expenses")}
+   918→            className="group flex flex-col items-center gap-2 rounded-xl border border-amber-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-amber-400 hover:bg-amber-50 hover:shadow-md hover:-translate-y-0.5 dark:border-amber-900/40 dark:bg-amber-950/20 dark:hover:border-amber-700 dark:hover:bg-amber-900/30"
+   919→          >
+   920→            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 transition-colors group-hover:bg-amber-200 dark:bg-amber-900/40 dark:group-hover:bg-amber-800/50">
+   921→              <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   922→            </div>
+   923→            <span className="text-xs font-medium text-amber-900 dark:text-amber-200">Log Expense</span>
+   924→          </button>
+   925→        </div>
+   926→      </motion.div>
+   927→
+   928→      {/* ─── 3. Top Metric Cards (4) ────────────────────────────────────── */}
+   929→      <motion.div
+   930→        variants={containerVariants}
+   931→        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+   932→      >
+   933→        <motion.div variants={itemVariants} className="h-full">
+   934→          <MetricCard
+   935→            title="Today's Food Cost"
+   936→            value={formatCurrency(data.foodCost.today)}
+   937→            icon={<IndianRupee className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
+   938→            iconBgClass="bg-amber-100 dark:bg-amber-900/30"
+   939→            trend={<TrendBadge pct={todayVsAvgDay} label="vs avg day (week)" />}
+   940→            subValue={
+   941→              <p className="text-xs text-muted-foreground">
+   942→                From today&apos;s purchases
+   943→              </p>
+   944→            }
+   945→          />
+   946→        </motion.div>
+   947→
+   948→        <motion.div variants={itemVariants} className="h-full">
+   949→          <MetricCard
+   950→            title="This Week's Food Cost"
+   951→            value={formatCurrency(data.foodCost.week)}
+   952→            icon={<ShoppingCart className="h-4 w-4 text-orange-600 dark:text-orange-400" />}
+   953→            iconBgClass="bg-orange-100 dark:bg-orange-900/30"
+   954→            trend={<TrendBadge pct={weekVsAvgWeek} label="vs avg week (month)" />}
+   955→            subValue={
+   956→              <p className="text-xs text-muted-foreground">
+   957→                Last 7 days purchases
+   958→              </p>
+   959→            }
+   960→          />
+   961→        </motion.div>
+   962→
+   963→        <motion.div variants={itemVariants} className="h-full">
+   964→          <MetricCard
+   965→            title="This Month's Food Cost"
+   966→            value={formatCurrency(data.foodCost.month)}
+   967→            icon={<Receipt className="h-4 w-4 text-amber-600 dark:text-amber-400" />}
+   968→            iconBgClass="bg-amber-100 dark:bg-amber-900/30"
+   969→            trend={
+   970→              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+   971→                <Activity className="h-3 w-3" />
+   972→                <span>Month-to-date total</span>
+   973→              </div>
+   974→            }
+   975→            subValue={
+   976→              <p className="text-xs text-muted-foreground">
+   977→                {formatCurrency(data.foodCost.month / 30)} / day avg
+   978→              </p>
+   979→            }
+   980→          />
+   981→        </motion.div>
+   982→
+   983→        <motion.div variants={itemVariants} className="h-full">
+   984→          <MetricCard
+   985→            title="Cost Per Employee"
+   986→            value={formatCurrency(costPerEmployee)}
+   987→            icon={<Users className="h-4 w-4 text-orange-600 dark:text-orange-400" />}
+   988→            iconBgClass="bg-orange-100 dark:bg-orange-900/30"
+   989→            trend={
+   990→              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+   991→                <Users className="h-3 w-3" />
+   992→                <span>For {formatNumber(EMPLOYEE_COUNT)} employees</span>
+   993→              </div>
+   994→            }
+   995→            subValue={
+   996→              <p className="text-xs text-muted-foreground">
+   997→                Daily:{" "}
+   998→                <span className="font-semibold text-amber-800 dark:text-amber-300">
+   999→                  {formatCurrency(dailyCostPerEmployee)}
+  1000→                </span>{" "}
+  1001→                / employee
+  1002→              </p>
+  1003→            }
+  1004→          />
+  1005→        </motion.div>
+  1006→      </motion.div>
+  1007→
+  1008→      {/* ─── 4. Monthly Comparison (prominent) ─────────────────────────────────── */}
+  1009→      <motion.div variants={itemVariants}>
+  1010→        <Card className="shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 border-amber-200/60 bg-gradient-to-br from-amber-50/50 via-orange-50/30 to-amber-100/20 dark:border-amber-900/40 dark:from-amber-950/20 dark:via-orange-950/10 dark:to-amber-900/10">
+  1011→          <CardHeader>
+  1012→            <CardTitle className="flex items-center gap-2 text-lg">
+  1013→              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1014→                <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1015→              </div>
+  1016→              Monthly Comparison
+  1017→            </CardTitle>
+  1018→            <CardDescription>
+  1019→              Current month vs previous month key metrics
+  1020→            </CardDescription>
+  1021→          </CardHeader>
+  1022→          <CardContent>
+  1023→            {!currentMonthReport && !prevMonthReport ? (
+  1024→              <div className="flex flex-col items-center justify-center py-8 text-center">
+  1025→                <Calendar className="mb-2 h-10 w-10 text-muted-foreground/40" />
+  1026→                <p className="text-sm font-medium text-muted-foreground">
+  1027→                  Loading comparison data…
+  1028→                </p>
+  1029→              </div>
+  1030→            ) : (
+  1031→              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+  1032→                {(() => {
+  1033→                  const cur = currentMonthReport;
+  1034→                  const prev = prevMonthReport;
+  1035→
+  1036→                  const metrics: Array<{
+  1037→                    label: string;
+  1038→                    current: number;
+  1039→                    previous: number;
+  1040→                    format: (v: number) => string;
+  1041→                    lowerIsBetter: boolean;
+  1042→                    icon: React.ReactNode;
+  1043→                    iconBg: string;
+  1044→                  }> = [
+  1045→                    {
+  1046→                      label: "Food Cost",
+  1047→                      current: cur?.foodCost?.total ?? 0,
+  1048→                      previous: prev?.foodCost?.total ?? 0,
+  1049→                      format: formatCurrency,
+  1050→                      lowerIsBetter: true,
+  1051→                      icon: <IndianRupee className="h-4 w-4 text-amber-600 dark:text-amber-400" />,
+  1052→                      iconBg: "bg-amber-100 dark:bg-amber-900/30",
+  1053→                    },
+  1054→                    {
+  1055→                      label: "Total Meals Served",
+  1056→                      current: cur?.meals?.total ?? 0,
+  1057→                      previous: prev?.meals?.total ?? 0,
+  1058→                      format: formatNumber,
+  1059→                      lowerIsBetter: false,
+  1060→                      icon: <UtensilsCrossed className="h-4 w-4 text-orange-600 dark:text-orange-400" />,
+  1061→                      iconBg: "bg-orange-100 dark:bg-orange-900/30",
+  1062→                    },
+  1063→                    {
+  1064→                      label: "Cost Per Meal",
+  1065→                      current: cur?.foodCost?.costPerMeal ?? 0,
+  1066→                      previous: prev?.foodCost?.costPerMeal ?? 0,
+  1067→                      format: formatCurrency,
+  1068→                      lowerIsBetter: true,
+  1069→                      icon: <Receipt className="h-4 w-4 text-rose-600 dark:text-rose-400" />,
+  1070→                      iconBg: "bg-rose-100 dark:bg-rose-900/30",
+  1071→                    },
+  1072→                    {
+  1073→                      label: "Operating Cost",
+  1074→                      current: cur?.totalOperatingCost ?? 0,
+  1075→                      previous: prev?.totalOperatingCost ?? 0,
+  1076→                      format: formatCurrency,
+  1077→                      lowerIsBetter: true,
+  1078→                      icon: <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
+  1079→                      iconBg: "bg-emerald-100 dark:bg-emerald-900/30",
+  1080→                    },
+  1081→                  ];
+  1082→
+  1083→                  return metrics.map((m) => {
+  1084→                    const changePct =
+  1085→                      m.previous > 0
+  1086→                        ? ((m.current - m.previous) / m.previous) * 100
+  1087→                        : null;
+  1088→                    const isUp = changePct !== null && changePct > 0;
+  1089→                    const isFlat = changePct !== null && Math.abs(changePct) < 0.5;
+  1090→                    const goodDirection = m.lowerIsBetter ? !isUp : isUp;
+  1091→                    const isGood = isFlat || (changePct !== null && goodDirection);
+  1092→                    const colorClass =
+  1093→                      changePct === null || isFlat
+  1094→                        ? "text-muted-foreground"
+  1095→                        : goodDirection
+  1096→                          ? "text-emerald-600 dark:text-emerald-400"
+  1097→                          : "text-rose-600 dark:text-rose-400";
+  1098→                    const bgClass =
+  1099→                      changePct === null || isFlat
+  1100→                        ? "bg-muted/50"
+  1101→                        : goodDirection
+  1102→                          ? "bg-emerald-50 dark:bg-emerald-950/20"
+  1103→                          : "bg-rose-50 dark:bg-rose-950/20";
+  1104→
+  1105→                    return (
+  1106→                      <div
+  1107→                        key={m.label}
+  1108→                        className={`rounded-xl border p-4 transition-colors ${bgClass}`}
+  1109→                      >
+  1110→                        <div className="flex items-center justify-between">
+  1111→                          <div className="flex items-center gap-2">
+  1112→                            <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${m.iconBg}`}>
+  1113→                              {m.icon}
+  1114→                            </div>
+  1115→                            <span className="text-sm font-medium">{m.label}</span>
+  1116→                          </div>
+  1117→                          {changePct !== null && !isFlat && (
+  1118→                            <span
+  1119→                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ${colorClass} ${isGood ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-rose-100 dark:bg-rose-900/30"}`}
+  1120→                            >
+  1121→                              {isUp ? (
+  1122→                                <ArrowUp className="h-3 w-3" />
+  1123→                              ) : (
+  1124→                                <ArrowDown className="h-3 w-3" />
+  1125→                              )}
+  1126→                              {isUp ? "+" : ""}
+  1127→                              {changePct.toFixed(1)}%
+  1128→                            </span>
+  1129→                          )}
+  1130→                          {isFlat && (
+  1131→                            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
+  1132→                              <Minus className="h-3 w-3" />
+  1133→                              0.0%
+  1134→                            </span>
+  1135→                          )}
+  1136→                          {changePct === null && (
+  1137→                            <span className="text-xs text-muted-foreground">—</span>
+  1138→                          )}
+  1139→                        </div>
+  1140→                        <div className="mt-3 grid grid-cols-2 gap-3">
+  1141→                          <div>
+  1142→                            <p className="text-[11px] font-medium text-muted-foreground">
+  1143→                              Current Month
+  1144→                            </p>
+  1145→                            <p className="text-lg font-bold tabular-nums">
+  1146→                              {m.format(m.current)}
+  1147→                            </p>
+  1148→                          </div>
+  1149→                          <div>
+  1150→                            <p className="text-[11px] font-medium text-muted-foreground">
+  1151→                              Previous Month
+  1152→                            </p>
+  1153→                            <p className="text-lg font-bold tabular-nums text-muted-foreground">
+  1154→                              {m.format(m.previous)}
+  1155→                            </p>
+  1156→                          </div>
+  1157→                        </div>
+  1158→                        {m.previous > 0 && (
+  1159→                          <div className="mt-3">
+  1160→                            <Progress
+  1161→                              value={Math.min(100, (m.current / m.previous) * 100)}
+  1162→                              className={`h-1.5 ${isGood ? "[&>div]:bg-emerald-500" : "[&>div]:bg-rose-500"}`}
+  1163→                            />
+  1164→                          </div>
+  1165→                        )}
+  1166→                      </div>
+  1167→                    );
+  1168→                  });
+  1169→                })()}
+  1170→              </div>
+  1171→            )}
+  1172→          </CardContent>
+  1173→        </Card>
+  1174→      </motion.div>
+  1175→
+  1176→      {/* ─── 5. Meals Summary + Stock Health Gauge ──────────────────────── */}
+  1177→      <motion.div
+  1178→        variants={containerVariants}
+  1179→        className="grid grid-cols-1 gap-4 md:grid-cols-2"
+  1180→      >
+  1181→        {/* Total Meals Served */}
+  1182→        <motion.div variants={itemVariants} className="h-full">
+  1183→          <Card className="h-full shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+  1184→            <CardHeader>
+  1185→              <CardTitle className="flex items-center gap-2 text-base">
+  1186→                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1187→                  <UtensilsCrossed className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1188→                </div>
+  1189→                Total Meals Served
+  1190→              </CardTitle>
+  1191→              <CardDescription>Breakdown by time period</CardDescription>
+  1192→            </CardHeader>
+  1193→            <CardContent>
+  1194→              <div className="grid grid-cols-3 gap-3">
+  1195→                <div className="flex flex-col items-center gap-1 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 p-4 dark:from-amber-950/30 dark:to-orange-950/20">
+  1196→                  <span className="text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-400">
+  1197→                    {formatNumber(data.meals.today)}
+  1198→                  </span>
+  1199→                  <span className="text-xs text-muted-foreground">Today</span>
+  1200→                </div>
+  1201→                <div className="flex flex-col items-center gap-1 rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 p-4 dark:from-orange-950/30 dark:to-amber-950/20">
+  1202→                  <span className="text-2xl font-bold tabular-nums text-orange-700 dark:text-orange-400">
+  1203→                    {formatNumber(weekMeals)}
+  1204→                  </span>
+  1205→                  <span className="text-xs text-muted-foreground">
+  1206→                    This Week
+  1207→                  </span>
+  1208→                </div>
+  1209→                <div className="flex flex-col items-center gap-1 rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 p-4 dark:from-amber-950/30 dark:to-orange-950/20">
+  1210→                  <span className="text-2xl font-bold tabular-nums text-amber-700 dark:text-amber-400">
+  1211→                    {formatNumber(data.meals.month)}
+  1212→                  </span>
+  1213→                  <span className="text-xs text-muted-foreground">
+  1214→                    This Month
+  1215→                  </span>
+  1216→                </div>
+  1217→              </div>
+  1218→              <div className="mt-4 space-y-3 border-t pt-4">
+  1219→                <div>
+  1220→                  <div className="mb-1 flex items-center justify-between text-sm">
+  1221→                    <span className="text-muted-foreground">
+  1222→                      Today vs Month avg / day
+  1223→                    </span>
+  1224→                    <span className="font-semibold tabular-nums">
+  1225→                      {data.meals.month > 0
+  1226→                        ? `${formatNumber(
+  1227→                            Math.round(data.meals.today - data.meals.month / 30)
+  1228→                          )} meals`
+  1229→                        : "—"}
+  1230→                    </span>
+  1231→                  </div>
+  1232→                  <Progress
+  1233→                    value={
+  1234→                      data.meals.month > 0
+  1235→                        ? Math.min(
+  1236→                            100,
+  1237→                            (data.meals.today / (data.meals.month / 30)) * 100
+  1238→                          )
+  1239→                        : 0
+  1240→                    }
+  1241→                    className="h-2 [&>div]:bg-amber-500"
+  1242→                  />
+  1243→                </div>
+  1244→              </div>
+  1245→            </CardContent>
+  1246→          </Card>
+  1247→        </motion.div>
+  1248→
+  1249→        {/* Budget Overview Card */}
+  1250→        <motion.div variants={itemVariants} className="h-full">
+  1251→          <Card className="h-full shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 border-amber-200/60 dark:border-amber-900/40">
+  1252→            <CardHeader>
+  1253→              <div className="flex items-center justify-between">
+  1254→                <div>
+  1255→                  <CardTitle className="flex items-center gap-2 text-base">
+  1256→                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1257→                      <Target className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1258→                    </div>
+  1259→                    Budget Status
+  1260→                  </CardTitle>
+  1261→                  <CardDescription>
+  1262→                    {currentBudget
+  1263→                      ? `Monthly budget utilization — ${new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" })}`
+  1264→                      : "No budget set for this month"}
+  1265→                  </CardDescription>
+  1266→                </div>
+  1267→                {onNavigate && (
+  1268→                  <Button
+  1269→                    variant="outline"
+  1270→                    size="sm"
+  1271→                    onClick={() => onNavigate("settings")}
+  1272→                    className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+  1273→                  >
+  1274→                    Manage
+  1275→                    <ArrowRight className="h-3.5 w-3.5" />
+  1276→                  </Button>
+  1277→                )}
+  1278→              </div>
+  1279→            </CardHeader>
+  1280→            <CardContent>
+  1281→              {currentBudget ? (
+  1282→                <div className="space-y-4">
+  1283→                  <BudgetStatus
+  1284→                    label="Food Budget"
+  1285→                    spent={data.foodCost.month}
+  1286→                    budget={currentBudget.foodBudget}
+  1287→                    alertThreshold={currentBudget.alertThreshold}
+  1288→                    compact
+  1289→                  />
+  1290→                  <BudgetStatus
+  1291→                    label="Operating Budget"
+  1292→                    spent={data.totalOperatingCost}
+  1293→                    budget={currentBudget.operatingBudget}
+  1294→                    alertThreshold={currentBudget.alertThreshold}
+  1295→                    compact
+  1296→                  />
+  1297→                  {currentBudget.totalBudget > 0 && (
+  1298→                    <BudgetStatus
+  1299→                      label="Total Budget"
+  1300→                      spent={data.totalOperatingCost}
+  1301→                      budget={currentBudget.totalBudget}
+  1302→                      alertThreshold={currentBudget.alertThreshold}
+  1303→                      compact
+  1304→                    />
+  1305→                  )}
+  1306→                </div>
+  1307→              ) : (
+  1308→                <div className="flex flex-col items-center justify-center py-8 text-center">
+  1309→                  <Target className="mb-2 h-10 w-10 text-amber-400" />
+  1310→                  <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+  1311→                    No Budget Set
+  1312→                  </p>
+  1313→                  <p className="text-xs text-muted-foreground mt-1">
+  1314→                    Set up a monthly budget in Settings to track your spending
+  1315→                  </p>
+  1316→                  {onNavigate && (
+  1317→                    <Button
+  1318→                      variant="outline"
+  1319→                      size="sm"
+  1320→                      onClick={() => onNavigate("settings")}
+  1321→                      className="mt-3 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+  1322→                    >
+  1323→                      Set Budget
+  1324→                      <ArrowRight className="h-3.5 w-3.5" />
+  1325→                    </Button>
+  1326→                  )}
+  1327→                </div>
+  1328→              )}
+  1329→            </CardContent>
+  1330→          </Card>
+  1331→        </motion.div>
+  1332→      </motion.div>
+  1333→
+  1334→      {/* ─── Stock Health Gauge ──────────────────────────────────────────── */}
+  1335→      <motion.div
+  1336→        variants={containerVariants}
+  1337→        className="grid grid-cols-1 gap-4 md:grid-cols-2"
+  1338→      >
+  1339→        {/* Stock Health Gauge */}
+  1340→        <motion.div variants={itemVariants} className="h-full">
+  1341→          <Card className="h-full shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+  1342→            <CardHeader>
+  1343→              <CardTitle className="flex items-center gap-2 text-base">
+  1344→                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+  1345→                  <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+  1346→                </div>
+  1347→                Stock Health
+  1348→              </CardTitle>
+  1349→              <CardDescription>
+  1350→                Ingredients at or above par level
+  1351→              </CardDescription>
+  1352→            </CardHeader>
+  1353→            <CardContent>
+  1354→              <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-around">
+  1355→                <CircularGauge percent={stockHealthPct} />
+  1356→                <div className="space-y-3 text-center sm:text-left">
+  1357→                  <div>
+  1358→                    <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+  1359→                      {aboveParCount}
+  1360→                      <span className="text-base text-muted-foreground">
+  1361→                        {" "}
+  1362→                        / {totalIngredientCount}
+  1363→                      </span>
+  1364→                    </p>
+  1365→                    <p className="text-xs text-muted-foreground">
+  1366→                      Ingredients above par
+  1367→                    </p>
+  1368→                  </div>
+  1369→                  <div className="flex items-center gap-2 rounded-lg bg-rose-50 px-3 py-2 dark:bg-rose-950/20">
+  1370→                    <AlertTriangle className="h-4 w-4 text-rose-500" />
+  1371→                    <div>
+  1372→                      <p className="text-sm font-semibold tabular-nums text-rose-600 dark:text-rose-400">
+  1373→                        {data.lowStockAlerts.length}
+  1374→                      </p>
+  1375→                      <p className="text-[11px] text-muted-foreground">
+  1376→                        Below minimum
+  1377→                      </p>
+  1378→                    </div>
+  1379→                  </div>
+  1380→                  <Button
+  1381→                    variant="outline"
+  1382→                    size="sm"
+  1383→                    onClick={() => onNavigate?.("stock")}
+  1384→                    className="w-full border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+  1385→                  >
+  1386→                    Manage Stock
+  1387→                    <ArrowRight className="h-3.5 w-3.5" />
+  1388→                  </Button>
+  1389→                </div>
+  1390→              </div>
+  1391→            </CardContent>
+  1392→          </Card>
+  1393→        </motion.div>
+  1394→      </motion.div>
+  1395→
+  1396→      {/* ─── 4. Low Stock Alerts + Today's Meals ────────────────────────── */}
+  1397→      <motion.div
+  1398→        variants={containerVariants}
+  1399→        className="grid grid-cols-1 gap-4 md:grid-cols-2"
+  1400→      >
+  1401→        {/* Low Stock Alerts */}
+  1402→        <motion.div variants={itemVariants} className="h-full">
+  1403→          <Card className="flex h-full flex-col shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+  1404→            <CardHeader>
+  1405→              <CardTitle className="flex items-center gap-2 text-base">
+  1406→                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-100 dark:bg-rose-900/30">
+  1407→                  <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+  1408→                </div>
+  1409→                Low Stock Alerts
+  1410→                {data.lowStockAlerts.length > 0 && (
+  1411→                  <Badge variant="destructive" className="ml-1">
+  1412→                    {data.lowStockAlerts.length}
+  1413→                  </Badge>
+  1414→                )}
+  1415→              </CardTitle>
+  1416→              <CardDescription>
+  1417→                Ingredients below minimum stock level
+  1418→              </CardDescription>
+  1419→            </CardHeader>
+  1420→            <CardContent className="flex flex-1 flex-col">
+  1421→              {data.lowStockAlerts.length === 0 ? (
+  1422→                <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+  1423→                  <Package className="mb-2 h-10 w-10 text-emerald-500" />
+  1424→                  <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">
+  1425→                    All Stock Levels OK
+  1426→                  </p>
+  1427→                  <p className="text-xs text-muted-foreground">
+  1428→                    No ingredients are below minimum stock
+  1429→                  </p>
+  1430→                </div>
+  1431→              ) : (
+  1432→                <>
+  1433→                  <div className="max-h-80 flex-1 space-y-3 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20">
+  1434→                    {data.lowStockAlerts.map((item) => {
+  1435→                      const stockPercent = Math.round(
+  1436→                        (item.currentStock / item.minStock) * 100
+  1437→                      );
+  1438→                      const isCritical = item.currentStock === 0;
+  1439→                      const isWarning = stockPercent < 50;
+  1440→
+  1441→                      return (
+  1442→                        <div
+  1443→                          key={item.id}
+  1444→                          className="rounded-lg border p-3 transition-colors hover:bg-muted/30"
+  1445→                        >
+  1446→                          <div className="flex items-center gap-3">
+  1447→                            <div
+  1448→                              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+  1449→                                isCritical
+  1450→                                  ? "bg-rose-100 dark:bg-rose-900/30"
+  1451→                                  : isWarning
+  1452→                                    ? "bg-orange-100 dark:bg-orange-900/30"
+  1453→                                    : "bg-amber-100 dark:bg-amber-900/30"
+  1454→                              }`}
+  1455→                            >
+  1456→                              <Package
+  1457→                                className={`h-4 w-4 ${
+  1458→                                  isCritical
+  1459→                                    ? "text-rose-600 dark:text-rose-400"
+  1460→                                    : isWarning
+  1461→                                      ? "text-orange-600 dark:text-orange-400"
+  1462→                                      : "text-amber-600 dark:text-amber-400"
+  1463→                                }`}
+  1464→                              />
+  1465→                            </div>
+  1466→                            <div className="flex-1 min-w-0">
+  1467→                              <div className="flex items-center justify-between gap-2">
+  1468→                                <p className="truncate text-sm font-medium">
+  1469→                                  {item.name}
+  1470→                                </p>
+  1471→                                <Badge
+  1472→                                  variant={
+  1473→                                    isCritical ? "destructive" : "secondary"
+  1474→                                  }
+  1475→                                  className={`shrink-0 text-xs ${
+  1476→                                    isWarning && !isCritical
+  1477→                                      ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+  1478→                                      : ""
+  1479→                                  }`}
+  1480→                                >
+  1481→                                  {formatNumberDecimal(item.currentStock)} /{" "}
+  1482→                                  {formatNumberDecimal(item.minStock)}{" "}
+  1483→                                  {item.unit}
+  1484→                                </Badge>
+  1485→                              </div>
+  1486→                              <div className="mt-1.5 flex items-center gap-2">
+  1487→                                <Progress
+  1488→                                  value={Math.min(stockPercent, 100)}
+  1489→                                  className={`h-1.5 flex-1 ${
+  1490→                                    isCritical
+  1491→                                      ? "[&>div]:bg-rose-500"
+  1492→                                      : isWarning
+  1493→                                        ? "[&>div]:bg-orange-500"
+  1494→                                        : "[&>div]:bg-amber-500"
+  1495→                                  }`}
+  1496→                                />
+  1497→                                <span className="shrink-0 text-xs font-semibold tabular-nums text-muted-foreground">
+  1498→                                  {stockPercent}%
+  1499→                                </span>
+  1500→                              </div>
+  1501→                              <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
+  1502→                                <span>Category: {item.category}</span>
+  1503→                                <span>
+  1504→                                  Par level:{" "}
+  1505→                                  {formatNumberDecimal(item.minStock)}{" "}
+  1506→                                  {item.unit}
+  1507→                                </span>
+  1508→                              </div>
+  1509→                            </div>
+  1510→                          </div>
+  1511→                        </div>
+  1512→                      );
+  1513→                    })}
+  1514→                  </div>
+  1515→                  <div className="mt-3 border-t pt-3">
+  1516→                    <Button
+  1517→                      variant="ghost"
+  1518→                      size="sm"
+  1519→                      onClick={() => onNavigate?.("stock")}
+  1520→                      className="w-full text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+  1521→                    >
+  1522→                      View All Stock
+  1523→                      <ArrowRight className="h-3.5 w-3.5" />
+  1524→                    </Button>
+  1525→                  </div>
+  1526→                </>
+  1527→              )}
+  1528→            </CardContent>
+  1529→          </Card>
+  1530→        </motion.div>
+  1531→
+  1532→        {/* Today's Meals Served */}
+  1533→        <motion.div variants={itemVariants} className="h-full">
+  1534→          <Card className="flex h-full flex-col shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+  1535→            <CardHeader>
+  1536→              <CardTitle className="flex items-center gap-2 text-base">
+  1537→                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1538→                  <UtensilsCrossed className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1539→                </div>
+  1540→                Today&apos;s Meals Served
+  1541→              </CardTitle>
+  1542→              <CardDescription>
+  1543→                Meal breakdown for today&apos;s service
+  1544→              </CardDescription>
+  1545→            </CardHeader>
+  1546→            <CardContent className="flex flex-1 flex-col">
+  1547→              {data.todayMeals.length === 0 ? (
+  1548→                <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+  1549→                  <UtensilsCrossed className="mb-2 h-10 w-10 text-muted-foreground/40" />
+  1550→                  <p className="text-sm font-medium text-muted-foreground">
+  1551→                    No Meals Recorded Today
+  1552→                  </p>
+  1553→                  <p className="text-xs text-muted-foreground">
+  1554→                    Add daily meal entries to see the breakdown
+  1555→                  </p>
+  1556→                  <Button
+  1557→                    variant="outline"
+  1558→                    size="sm"
+  1559→                    onClick={() => onNavigate?.("daily-entry")}
+  1560→                    className="mt-3 border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+  1561→                  >
+  1562→                    <ClipboardList className="h-3.5 w-3.5" />
+  1563→                    Record Now
+  1564→                  </Button>
+  1565→                </div>
+  1566→              ) : (
+  1567→                <>
+  1568→                  <div className="max-h-80 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20">
+  1569→                    <Table>
+  1570→                      <TableHeader>
+  1571→                        <TableRow>
+  1572→                          <TableHead>Meal Type</TableHead>
+  1573→                          <TableHead>Recipe</TableHead>
+  1574→                          <TableHead className="text-right">Meals</TableHead>
+  1575→                        </TableRow>
+  1576→                      </TableHeader>
+  1577→                      <TableBody>
+  1578→                        {data.todayMeals.map((meal) => (
+  1579→                          <TableRow key={meal.id} className="hover:bg-muted/50 transition-colors">
+  1580→                            <TableCell>
+  1581→                              <Badge
+  1582→                                variant="secondary"
+  1583→                                className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+  1584→                              >
+  1585→                                {mealTypeLabel(meal.mealType)}
+  1586→                              </Badge>
+  1587→                            </TableCell>
+  1588→                            <TableCell className="font-medium">
+  1589→                              {meal.recipe.name}
+  1590→                            </TableCell>
+  1591→                            <TableCell className="text-right font-semibold tabular-nums">
+  1592→                              {formatNumber(meal.mealsServed)}
+  1593→                            </TableCell>
+  1594→                          </TableRow>
+  1595→                        ))}
+  1596→                      </TableBody>
+  1597→                    </Table>
+  1598→                  </div>
+  1599→                  <div className="mt-3 flex items-center justify-between rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 p-3 dark:from-amber-950/30 dark:to-orange-950/20">
+  1600→                    <span className="text-sm font-medium">Total Today</span>
+  1601→                    <span className="text-lg font-bold tabular-nums text-amber-700 dark:text-amber-400">
+  1602→                      {formatNumber(data.meals.today)}
+  1603→                    </span>
+  1604→                  </div>
+  1605→                </>
+  1606→              )}
+  1607→            </CardContent>
+  1608→          </Card>
+  1609→        </motion.div>
+  1610→      </motion.div>
+  1611→
+  1612→      {/* ─── 5. Top Consuming Ingredients + Expense Breakdown ───────────── */}
+  1613→      <motion.div
+  1614→        variants={containerVariants}
+  1615→        className="grid grid-cols-1 gap-4 md:grid-cols-2"
+  1616→      >
+  1617→        {/* Top Consuming Ingredients */}
+  1618→        <motion.div variants={itemVariants} className="h-full">
+  1619→          <Card className="flex h-full flex-col shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+  1620→            <CardHeader>
+  1621→              <CardTitle className="flex items-center gap-2 text-base">
+  1622→                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1623→                  <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1624→                </div>
+  1625→                Top Consuming Ingredients
+  1626→              </CardTitle>
+  1627→              <CardDescription>
+  1628→                Most used ingredients this month — colored by category
+  1629→              </CardDescription>
+  1630→            </CardHeader>
+  1631→            <CardContent className="flex-1">
+  1632→              {consumptionChartData.length === 0 ? (
+  1633→                <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+  1634→                  <Package className="mb-2 h-10 w-10 text-muted-foreground/40" />
+  1635→                  <p className="text-sm font-medium text-muted-foreground">
+  1636→                    No Consumption Data
+  1637→                  </p>
+  1638→                  <p className="text-xs text-muted-foreground">
+  1639→                    Record daily meals to see ingredient consumption
+  1640→                  </p>
+  1641→                </div>
+  1642→              ) : (
+  1643→                <ChartContainer
+  1644→                  config={consumptionChartConfig}
+  1645→                  className="min-h-[320px] w-full"
+  1646→                >
+  1647→                  <BarChart
+  1648→                    data={consumptionChartData}
+  1649→                    layout="vertical"
+  1650→                    margin={{ top: 5, right: 50, left: 10, bottom: 5 }}
+  1651→                    barCategoryGap={8}
+  1652→                  >
+  1653→                    <CartesianGrid
+  1654→                      strokeDasharray="3 3"
+  1655→                      horizontal={false}
+  1656→                      stroke="var(--border)"
+  1657→                    />
+  1658→                    <XAxis
+  1659→                      type="number"
+  1660→                      tick={{ fontSize: 12 }}
+  1661→                      stroke="var(--muted-foreground)"
+  1662→                    />
+  1663→                    <YAxis
+  1664→                      type="category"
+  1665→                      dataKey="name"
+  1666→                      width={90}
+  1667→                      tick={{ fontSize: 12 }}
+  1668→                      stroke="var(--muted-foreground)"
+  1669→                    />
+  1670→                    <ChartTooltip
+  1671→                      content={
+  1672→                        <ChartTooltipContent
+  1673→                          formatter={(value, _name, item) => (
+  1674→                            <div className="flex flex-col gap-0.5">
+  1675→                              <span className="font-medium">
+  1676→                                {item.payload.fullName}
+  1677→                              </span>
+  1678→                              <span>
+  1679→                                {formatNumberDecimal(Number(value))}{" "}
+  1680→                                {item.payload.unit}
+  1681→                              </span>
+  1682→                              <span className="text-amber-600 dark:text-amber-400">
+  1683→                                Cost: {formatCurrency(item.payload.totalCost)}
+  1684→                              </span>
+  1685→                              <span className="text-xs text-muted-foreground">
+  1686→                                Category: {item.payload.category}
+  1687→                              </span>
+  1688→                            </div>
+  1689→                          )}
+  1690→                        />
+  1691→                      }
+  1692→                    />
+  1693→                    <Bar
+  1694→                      dataKey="totalQuantity"
+  1695→                      radius={[0, 6, 6, 0]}
+  1696→                      minPointSize={4}
+  1697→                      barSize={22}
+  1698→                    >
+  1699→                      {consumptionChartData.map((entry, index) => (
+  1700→                        <Cell
+  1701→                          key={`cell-${index}`}
+  1702→                          fill={entry.color}
+  1703→                        />
+  1704→                      ))}
+  1705→                      <LabelList
+  1706→                        dataKey="totalQuantity"
+  1707→                        position="right"
+  1708→                        formatter={(value: number) =>
+  1709→                          formatNumberDecimal(value)
+  1710→                        }
+  1711→                        style={{
+  1712→                          fontSize: 11,
+  1713→                          fontWeight: 600,
+  1714→                          fill: "var(--foreground)",
+  1715→                        }}
+  1716→                      />
+  1717→                    </Bar>
+  1718→                  </BarChart>
+  1719→                </ChartContainer>
+  1720→              )}
+  1721→            </CardContent>
+  1722→          </Card>
+  1723→        </motion.div>
+  1724→
+  1725→        {/* Expense Breakdown — donut chart with percentage labels */}
+  1726→        <motion.div variants={itemVariants} className="h-full">
+  1727→          <Card className="flex h-full flex-col shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+  1728→            <CardHeader>
+  1729→              <CardTitle className="flex items-center gap-2 text-base">
+  1730→                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+  1731→                  <Receipt className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+  1732→                </div>
+  1733→                Expense Breakdown
+  1734→              </CardTitle>
+  1735→              <CardDescription>
+  1736→                Monthly expenses by category — Total:{" "}
+  1737→                <span className="font-semibold tabular-nums">
+  1738→                  {formatCurrency(data.expenses.month)}
+  1739→                </span>
+  1740→              </CardDescription>
+  1741→            </CardHeader>
+  1742→            <CardContent className="flex flex-1 flex-col">
+  1743→              {expenseChartData.length === 0 ? (
+  1744→                <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+  1745→                  <Receipt className="mb-2 h-10 w-10 text-muted-foreground/40" />
+  1746→                  <p className="text-sm font-medium text-muted-foreground">
+  1747→                    No Expenses This Month
+  1748→                  </p>
+  1749→                  <p className="text-xs text-muted-foreground">
+  1750→                    Add expenses to see the breakdown
+  1751→                  </p>
+  1752→                </div>
+  1753→              ) : (
+  1754→                <>
+  1755→                  <ChartContainer
+  1756→                    config={expenseChartConfig}
+  1757→                    className="mx-auto min-h-[240px] w-full max-w-[320px]"
+  1758→                  >
+  1759→                    <PieChart>
+  1760→                      <Pie
+  1761→                        data={expenseChartData}
+  1762→                        dataKey="amount"
+  1763→                        nameKey="name"
+  1764→                        innerRadius={60}
+  1765→                        outerRadius={95}
+  1766→                        paddingAngle={2}
+  1767→                        label={renderPiePercentLabel}
+  1768→                        labelLine={false}
+  1769→                      >
+  1770→                        {expenseChartData.map((entry, idx) => (
+  1771→                          <Cell key={`exp-${idx}`} fill={entry.color} />
+  1772→                        ))}
+  1773→                      </Pie>
+  1774→                      <ChartTooltip
+  1775→                        content={
+  1776→                          <ChartTooltipContent
+  1777→                            formatter={(value, _name, item) => (
+  1778→                              <div className="flex flex-col gap-0.5">
+  1779→                                <span className="font-medium">
+  1780→                                  {item.payload.name}
+  1781→                                </span>
+  1782→                                <span>
+  1783→                                  {formatCurrency(Number(value))}
+  1784→                                </span>
+  1785→                                <span className="text-xs text-muted-foreground">
+  1786→                                  {data.expenses.month > 0
+  1787→                                    ? `${(
+  1788→                                        (Number(value) /
+  1789→                                          data.expenses.month) *
+  1790→                                        100
+  1791→                                      ).toFixed(1)}% of total`
+  1792→                                    : ""}
+  1793→                                </span>
+  1794→                              </div>
+  1795→                            )}
+  1796→                          />
+  1797→                        }
+  1798→                      />
+  1799→                    </PieChart>
+  1800→                  </ChartContainer>
+  1801→
+  1802→                  {/* Expense legend list with percentages */}
+  1803→                  <div className="mt-4 space-y-2 border-t pt-3">
+  1804→                    {expenseChartData.map((item) => {
+  1805→                      const pct =
+  1806→                        data.expenses.month > 0
+  1807→                          ? (item.amount / data.expenses.month) * 100
+  1808→                          : 0;
+  1809→                      return (
+  1810→                        <div
+  1811→                          key={item.name}
+  1812→                          className="flex items-center justify-between py-1"
+  1813→                        >
+  1814→                          <div className="flex items-center gap-2">
+  1815→                            <div
+  1816→                              className="h-2.5 w-2.5 rounded-full"
+  1817→                              style={{ backgroundColor: item.color }}
+  1818→                            />
+  1819→                            <span className="text-sm">{item.name}</span>
+  1820→                          </div>
+  1821→                          <div className="flex items-center gap-3">
+  1822→                            <span className="text-xs tabular-nums text-muted-foreground">
+  1823→                              {pct.toFixed(0)}%
+  1824→                            </span>
+  1825→                            <span className="text-sm font-semibold tabular-nums">
+  1826→                              {formatCurrency(item.amount)}
+  1827→                            </span>
+  1828→                          </div>
+  1829→                        </div>
+  1830→                      );
+  1831→                    })}
+  1832→                  </div>
+  1833→                </>
+  1834→              )}
+  1835→            </CardContent>
+  1836→          </Card>
+  1837→        </motion.div>
+  1838→      </motion.div>
+  1839→    </motion.div>
+  1840→  );
+  1841→}
+  1842→
