@@ -1,0 +1,1349 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback, useMemo } from "react";
+     4→import {
+     5→  Card,
+     6→  CardContent,
+     7→  CardDescription,
+     8→  CardHeader,
+     9→  CardTitle,
+    10→} from "@/components/ui/card";
+    11→import {
+    12→  Table,
+    13→  TableBody,
+    14→  TableCell,
+    15→  TableHead,
+    16→  TableHeader,
+    17→  TableRow,
+    18→} from "@/components/ui/table";
+    19→import {
+    20→  Dialog,
+    21→  DialogContent,
+    22→  DialogDescription,
+    23→  DialogFooter,
+    24→  DialogHeader,
+    25→  DialogTitle,
+    26→} from "@/components/ui/dialog";
+    27→import {
+    28→  AlertDialog,
+    29→  AlertDialogAction,
+    30→  AlertDialogCancel,
+    31→  AlertDialogContent,
+    32→  AlertDialogDescription,
+    33→  AlertDialogFooter,
+    34→  AlertDialogHeader,
+    35→  AlertDialogTitle,
+    36→} from "@/components/ui/alert-dialog";
+    37→import {
+    38→  Select,
+    39→  SelectContent,
+    40→  SelectItem,
+    41→  SelectTrigger,
+    42→  SelectValue,
+    43→} from "@/components/ui/select";
+    44→import {
+    45→  Sheet,
+    46→  SheetContent,
+    47→  SheetDescription,
+    48→  SheetHeader,
+    49→  SheetTitle,
+    50→} from "@/components/ui/sheet";
+    51→import { Input } from "@/components/ui/input";
+    52→import { Button } from "@/components/ui/button";
+    53→import { Badge } from "@/components/ui/badge";
+    54→import { Label } from "@/components/ui/label";
+    55→import { Textarea } from "@/components/ui/textarea";
+    56→import { Separator } from "@/components/ui/separator";
+    57→import { Skeleton } from "@/components/ui/skeleton";
+    58→import {
+    59→  Truck,
+    60→  Plus,
+    61→  Search,
+    62→  Trash2,
+    63→  Pencil,
+    64→  Eye,
+    65→  Loader2,
+    66→  Phone,
+    67→  Mail,
+    68→  MapPin,
+    69→  Building2,
+    70→  User,
+    71→  FileText,
+    72→  IndianRupee,
+    73→  Package,
+    74→  ShoppingCart,
+    75→  Download,
+    76→  ChevronUp,
+    77→  ChevronDown,
+    78→  PackageSearch,
+    79→  AlertCircle,
+    80→} from "lucide-react";
+    81→import { downloadCSV } from "@/lib/export-utils";
+    82→import { useToast } from "@/hooks/use-toast";
+    83→
+    84→// ─── Types ───────────────────────────────────────────────────────────────────
+    85→
+    86→interface Supplier {
+    87→  id: string;
+    88→  name: string;
+    89→  contactPerson: string | null;
+    90→  phone: string | null;
+    91→  email: string | null;
+    92→  address: string | null;
+    93→  gstin: string | null;
+    94→  category: string | null;
+    95→  notes: string | null;
+    96→  createdAt: string;
+    97→  updatedAt: string;
+    98→  ingredientCount: number;
+    99→  purchaseCount: number;
+   100→  totalPurchaseValue: number;
+   101→}
+   102→
+   103→interface SupplierDetail extends Supplier {
+   104→  ingredients: Array<{
+   105→    id: string;
+   106→    name: string;
+   107→    unit: string;
+   108→    category: string;
+   109→    currentStock: number;
+   110→    minStock: number;
+   111→    avgCost: number;
+   112→  }>;
+   113→  purchases: Array<{
+   114→    id: string;
+   115→    date: string;
+   116→    invoiceNo: string | null;
+   117→    totalAmount: number;
+   118→    notes: string | null;
+   119→  }>;
+   120→}
+   121→
+   122→interface SupplierFormValues {
+   123→  name: string;
+   124→  contactPerson: string;
+   125→  phone: string;
+   126→  email: string;
+   127→  address: string;
+   128→  gstin: string;
+   129→  category: string;
+   130→  notes: string;
+   131→}
+   132→
+   133→type SortField = "name" | "category" | "ingredientCount" | "totalPurchaseValue" | "createdAt";
+   134→type SortDir = "asc" | "desc";
+   135→
+   136→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   137→
+   138→function formatCurrency(amount: number): string {
+   139→  return new Intl.NumberFormat("en-IN", {
+   140→    style: "currency",
+   141→    currency: "INR",
+   142→    minimumFractionDigits: 2,
+   143→    maximumFractionDigits: 2,
+   144→  }).format(amount);
+   145→}
+   146→
+   147→function formatCurrencyShort(amount: number): string {
+   148→  if (amount >= 10000000) return `₹${(amount / 10000000).toFixed(2)}Cr`;
+   149→  if (amount >= 100000) return `₹${(amount / 100000).toFixed(2)}L`;
+   150→  if (amount >= 1000) return `₹${(amount / 1000).toFixed(1)}k`;
+   151→  return formatCurrency(amount);
+   152→}
+   153→
+   154→function formatDate(dateStr: string): string {
+   155→  const d = new Date(dateStr);
+   156→  const day = String(d.getDate()).padStart(2, "0");
+   157→  const month = String(d.getMonth() + 1).padStart(2, "0");
+   158→  const year = d.getFullYear();
+   159→  return `${day}/${month}/${year}`;
+   160→}
+   161→
+   162→const EMPTY_FORM: SupplierFormValues = {
+   163→  name: "",
+   164→  contactPerson: "",
+   165→  phone: "",
+   166→  email: "",
+   167→  address: "",
+   168→  gstin: "",
+   169→  category: "",
+   170→  notes: "",
+   171→};
+   172→
+   173→// Category color map for badges
+   174→const CATEGORY_COLORS: Record<string, string> = {
+   175→  Grains: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+   176→  Vegetables: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+   177→  Pulses: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+   178→  Oil: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+   179→  Spices: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+   180→  Dairy: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+   181→  Meat: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300",
+   182→  Beverages: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+   183→  Mixed: "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300",
+   184→};
+   185→
+   186→function getCategoryBadgeClass(category: string | null): string {
+   187→  if (!category) return "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300";
+   188→  return CATEGORY_COLORS[category] || "bg-slate-100 text-slate-800 dark:bg-slate-900/40 dark:text-slate-300";
+   189→}
+   190→
+   191→// ─── Component ───────────────────────────────────────────────────────────────
+   192→
+   193→export function SuppliersView() {
+   194→  const { toast } = useToast();
+   195→
+   196→  // ── State ────────────────────────────────────────────────────────────────
+   197→  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+   198→  const [loading, setLoading] = useState(true);
+   199→  const [submitting, setSubmitting] = useState(false);
+   200→  const [deleting, setDeleting] = useState(false);
+   201→
+   202→  // Filters
+   203→  const [search, setSearch] = useState("");
+   204→  const [categoryFilter, setCategoryFilter] = useState("All");
+   205→
+   206→  // Sorting
+   207→  const [sortField, setSortField] = useState<SortField>("name");
+   208→  const [sortDir, setSortDir] = useState<SortDir>("asc");
+   209→
+   210→  // Dialogs
+   211→  const [formOpen, setFormOpen] = useState(false);
+   212→  const [detailOpen, setDetailOpen] = useState(false);
+   213→  const [deleteOpen, setDeleteOpen] = useState(false);
+   214→  const [editingId, setEditingId] = useState<string | null>(null);
+   215→  const [selectedDetail, setSelectedDetail] = useState<SupplierDetail | null>(null);
+   216→  const [deleteId, setDeleteId] = useState<string | null>(null);
+   217→  const [detailLoading, setDetailLoading] = useState(false);
+   218→
+   219→  // Form state
+   220→  const [form, setForm] = useState<SupplierFormValues>(EMPTY_FORM);
+   221→  const [formErrors, setFormErrors] = useState<Partial<Record<keyof SupplierFormValues, string>>>({});
+   222→
+   223→  // ── Derived list of categories present in data ──────────────────────────
+   224→  const categories = useMemo(() => {
+   225→    const set = new Set<string>();
+   226→    suppliers.forEach((s) => {
+   227→      if (s.category) set.add(s.category);
+   228→    });
+   229→    return Array.from(set).sort();
+   230→  }, [suppliers]);
+   231→
+   232→  // ── Fetch suppliers ─────────────────────────────────────────────────────
+   233→  const fetchSuppliers = useCallback(async () => {
+   234→    setLoading(true);
+   235→    try {
+   236→      const params = new URLSearchParams();
+   237→      if (search) params.set("search", search);
+   238→      if (categoryFilter && categoryFilter !== "All") params.set("category", categoryFilter);
+   239→
+   240→      const res = await fetch(`/api/suppliers?${params.toString()}`);
+   241→      if (res.ok) {
+   242→        const data = await res.json();
+   243→        setSuppliers(Array.isArray(data) ? data : []);
+   244→      } else {
+   245→        toast({
+   246→          title: "Error",
+   247→          description: "Failed to fetch suppliers",
+   248→          variant: "destructive",
+   249→        });
+   250→      }
+   251→    } catch (err) {
+   252→      console.error("Error fetching suppliers:", err);
+   253→      toast({
+   254→        title: "Error",
+   255→        description: "Failed to fetch suppliers",
+   256→        variant: "destructive",
+   257→      });
+   258→    } finally {
+   259→      setLoading(false);
+   260→    }
+   261→  }, [search, categoryFilter, toast]);
+   262→
+   263→  useEffect(() => {
+   264→    fetchSuppliers();
+   265→  }, [fetchSuppliers]);
+   266→
+   267→  // ── Sorting ──────────────────────────────────────────────────────────────
+   268→  const sortedSuppliers = useMemo(() => {
+   269→    const arr = [...suppliers];
+   270→    arr.sort((a, b) => {
+   271→      let cmp = 0;
+   272→      switch (sortField) {
+   273→        case "name":
+   274→          cmp = a.name.localeCompare(b.name);
+   275→          break;
+   276→        case "category":
+   277→          cmp = (a.category || "").localeCompare(b.category || "");
+   278→          break;
+   279→        case "ingredientCount":
+   280→          cmp = a.ingredientCount - b.ingredientCount;
+   281→          break;
+   282→        case "totalPurchaseValue":
+   283→          cmp = a.totalPurchaseValue - b.totalPurchaseValue;
+   284→          break;
+   285→        case "createdAt":
+   286→          cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+   287→          break;
+   288→      }
+   289→      return sortDir === "asc" ? cmp : -cmp;
+   290→    });
+   291→    return arr;
+   292→  }, [suppliers, sortField, sortDir]);
+   293→
+   294→  const handleSort = (field: SortField) => {
+   295→    if (sortField === field) {
+   296→      setSortDir(sortDir === "asc" ? "desc" : "asc");
+   297→    } else {
+   298→      setSortField(field);
+   299→      setSortDir("asc");
+   300→    }
+   301→  };
+   302→
+   303→  const SortIcon = ({ field }: { field: SortField }) => {
+   304→    if (sortField !== field) return null;
+   305→    return sortDir === "asc" ? (
+   306→      <ChevronUp className="ml-1 inline h-3 w-3" />
+   307→    ) : (
+   308→      <ChevronDown className="ml-1 inline h-3 w-3" />
+   309→    );
+   310→  };
+   311→
+   312→  // ── Summary stats ───────────────────────────────────────────────────────
+   313→  const summary = useMemo(() => {
+   314→    const total = suppliers.length;
+   315→    const totalPurchaseValue = suppliers.reduce(
+   316→      (sum, s) => sum + s.totalPurchaseValue,
+   317→      0
+   318→    );
+   319→    // Active = supplier with at least 1 ingredient OR 1 purchase
+   320→    const active = suppliers.filter(
+   321→      (s) => s.ingredientCount > 0 || s.purchaseCount > 0
+   322→    ).length;
+   323→    return { total, totalPurchaseValue, active };
+   324→  }, [suppliers]);
+   325→
+   326→  // ── Form actions ────────────────────────────────────────────────────────
+   327→  const openAddForm = () => {
+   328→    setForm(EMPTY_FORM);
+   329→    setFormErrors({});
+   330→    setEditingId(null);
+   331→    setFormOpen(true);
+   332→  };
+   333→
+   334→  const openEditForm = (supplier: Supplier) => {
+   335→    setForm({
+   336→      name: supplier.name,
+   337→      contactPerson: supplier.contactPerson || "",
+   338→      phone: supplier.phone || "",
+   339→      email: supplier.email || "",
+   340→      address: supplier.address || "",
+   341→      gstin: supplier.gstin || "",
+   342→      category: supplier.category || "",
+   343→      notes: supplier.notes || "",
+   344→    });
+   345→    setFormErrors({});
+   346→    setEditingId(supplier.id);
+   347→    setFormOpen(true);
+   348→  };
+   349→
+   350→  const validateForm = (): boolean => {
+   351→    const errs: Partial<Record<keyof SupplierFormValues, string>> = {};
+   352→    if (!form.name.trim()) errs.name = "Supplier name is required";
+   353→    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+   354→      errs.email = "Invalid email format";
+   355→    }
+   356→    if (form.gstin && form.gstin.trim().length !== 15) {
+   357→      errs.gstin = "GSTIN must be 15 characters";
+   358→    }
+   359→    setFormErrors(errs);
+   360→    return Object.keys(errs).length === 0;
+   361→  };
+   362→
+   363→  const handleSubmit = async () => {
+   364→    if (!validateForm()) return;
+   365→    setSubmitting(true);
+   366→    try {
+   367→      const payload = {
+   368→        name: form.name.trim(),
+   369→        contactPerson: form.contactPerson.trim() || null,
+   370→        phone: form.phone.trim() || null,
+   371→        email: form.email.trim() || null,
+   372→        address: form.address.trim() || null,
+   373→        gstin: form.gstin.trim().toUpperCase() || null,
+   374→        category: form.category.trim() || null,
+   375→        notes: form.notes.trim() || null,
+   376→      };
+   377→
+   378→      const url = editingId
+   379→        ? `/api/suppliers/${editingId}`
+   380→        : `/api/suppliers`;
+   381→      const method = editingId ? "PUT" : "POST";
+   382→
+   383→      const res = await fetch(url, {
+   384→        method,
+   385→        headers: { "Content-Type": "application/json" },
+   386→        body: JSON.stringify(payload),
+   387→      });
+   388→
+   389→      if (res.ok) {
+   390→        toast({
+   391→          title: editingId ? "Supplier updated" : "Supplier created",
+   392→          description: `${payload.name} has been ${editingId ? "updated" : "added"} successfully.`,
+   393→        });
+   394→        setFormOpen(false);
+   395→        await fetchSuppliers();
+   396→      } else {
+   397→        const data = await res.json();
+   398→        toast({
+   399→          title: "Failed",
+   400→          description: data.error || "Operation failed",
+   401→          variant: "destructive",
+   402→        });
+   403→      }
+   404→    } catch (err) {
+   405→      console.error("Error submitting supplier:", err);
+   406→      toast({
+   407→        title: "Error",
+   408→        description: "Failed to save supplier",
+   409→        variant: "destructive",
+   410→      });
+   411→    } finally {
+   412→      setSubmitting(false);
+   413→    }
+   414→  };
+   415→
+   416→  // ── Detail view ──────────────────────────────────────────────────────────
+   417→  const handleViewDetail = async (supplier: Supplier) => {
+   418→    setDetailLoading(true);
+   419→    setDetailOpen(true);
+   420→    try {
+   421→      const res = await fetch(`/api/suppliers/${supplier.id}`);
+   422→      if (res.ok) {
+   423→        const data = await res.json();
+   424→        setSelectedDetail(data);
+   425→      } else {
+   426→        toast({
+   427→          title: "Error",
+   428→          description: "Failed to load supplier details",
+   429→          variant: "destructive",
+   430→        });
+   431→      }
+   432→    } catch (err) {
+   433→      console.error("Error fetching supplier detail:", err);
+   434→    } finally {
+   435→      setDetailLoading(false);
+   436→    }
+   437→  };
+   438→
+   439→  // ── Delete ──────────────────────────────────────────────────────────────
+   440→  const confirmDelete = (id: string) => {
+   441→    setDeleteId(id);
+   442→    setDeleteOpen(true);
+   443→  };
+   444→
+   445→  const handleDelete = async () => {
+   446→    if (!deleteId) return;
+   447→    setDeleting(true);
+   448→    try {
+   449→      const res = await fetch(`/api/suppliers/${deleteId}`, {
+   450→        method: "DELETE",
+   451→      });
+   452→      if (res.ok) {
+   453→        toast({
+   454→          title: "Supplier deleted",
+   455→          description: "The supplier has been removed. Linked items were detached.",
+   456→        });
+   457→        setDeleteOpen(false);
+   458→        setDeleteId(null);
+   459→        await fetchSuppliers();
+   460→      } else {
+   461→        const data = await res.json();
+   462→        toast({
+   463→          title: "Failed",
+   464→          description: data.error || "Failed to delete supplier",
+   465→          variant: "destructive",
+   466→        });
+   467→      }
+   468→    } catch (err) {
+   469→      console.error("Error deleting supplier:", err);
+   470→      toast({
+   471→        title: "Error",
+   472→        description: "Failed to delete supplier",
+   473→        variant: "destructive",
+   474→      });
+   475→    } finally {
+   476→      setDeleting(false);
+   477→    }
+   478→  };
+   479→
+   480→  // ── CSV export ──────────────────────────────────────────────────────────
+   481→  const handleExport = () => {
+   482→    if (sortedSuppliers.length === 0) {
+   483→      toast({
+   484→        title: "Nothing to export",
+   485→        description: "There are no suppliers to export.",
+   486→        variant: "destructive",
+   487→      });
+   488→      return;
+   489→    }
+   490→    const rows = sortedSuppliers.map((s) => ({
+   491→      Name: s.name,
+   492→      "Contact Person": s.contactPerson || "",
+   493→      Phone: s.phone || "",
+   494→      Email: s.email || "",
+   495→      Address: s.address || "",
+   496→      GSTIN: s.gstin || "",
+   497→      Category: s.category || "",
+   498→      "Ingredient Count": String(s.ingredientCount),
+   499→      "Purchase Count": String(s.purchaseCount),
+   500→      "Total Purchase Value": String(s.totalPurchaseValue),
+   501→      "Created At": formatDate(s.createdAt),
+   502→    }));
+   503→    const today = new Date().toISOString().split("T")[0];
+   504→    downloadCSV(`suppliers-${today}.csv`, rows);
+   505→    toast({
+   506→      title: "Export successful",
+   507→      description: `${rows.length} suppliers exported to CSV.`,
+   508→    });
+   509→  };
+   510→
+   511→  // ── Render ───────────────────────────────────────────────────────────────
+   512→
+   513→  return (
+   514→    <div className="space-y-6">
+   515→      {/* Header */}
+   516→      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   517→        <div className="flex items-center gap-3">
+   518→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   519→            <Truck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   520→          </div>
+   521→          <div>
+   522→            <h1 className="text-2xl font-bold tracking-tight">Suppliers</h1>
+   523→            <p className="text-sm text-muted-foreground">
+   524→              Manage vendor master data, contact details, and track supplier relationships
+   525→            </p>
+   526→          </div>
+   527→        </div>
+   528→        <div className="flex items-center gap-2">
+   529→          <Button
+   530→            variant="outline"
+   531→            onClick={handleExport}
+   532→            disabled={loading || suppliers.length === 0}
+   533→            className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/20"
+   534→          >
+   535→            <Download className="h-4 w-4" />
+   536→            <span className="hidden sm:inline">Export CSV</span>
+   537→          </Button>
+   538→          <Button
+   539→            onClick={openAddForm}
+   540→            className="bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500"
+   541→          >
+   542→            <Plus className="h-4 w-4" />
+   543→            <span className="hidden sm:inline">Add Supplier</span>
+   544→            <span className="sm:hidden">Add</span>
+   545→          </Button>
+   546→        </div>
+   547→      </div>
+   548→
+   549→      {/* Summary Cards */}
+   550→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   551→        <Card className="border-amber-200/60 dark:border-amber-800/30">
+   552→          <CardContent className="flex items-center gap-4 p-4">
+   553→            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   554→              <Building2 className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+   555→            </div>
+   556→            <div className="min-w-0">
+   557→              <p className="text-2xl font-bold">{summary.total}</p>
+   558→              <p className="text-xs text-muted-foreground">Total Suppliers</p>
+   559→            </div>
+   560→          </CardContent>
+   561→        </Card>
+   562→
+   563→        <Card className="border-amber-200/60 dark:border-amber-800/30">
+   564→          <CardContent className="flex items-center gap-4 p-4">
+   565→            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+   566→              <IndianRupee className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+   567→            </div>
+   568→            <div className="min-w-0">
+   569→              <p className="text-2xl font-bold">{formatCurrencyShort(summary.totalPurchaseValue)}</p>
+   570→              <p className="text-xs text-muted-foreground">Total Purchase Value</p>
+   571→            </div>
+   572→          </CardContent>
+   573→        </Card>
+   574→
+   575→        <Card className="border-amber-200/60 dark:border-amber-800/30">
+   576→          <CardContent className="flex items-center gap-4 p-4">
+   577→            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
+   578→              <Package className="h-6 w-6 text-green-600 dark:text-green-400" />
+   579→            </div>
+   580→            <div className="min-w-0">
+   581→              <p className="text-2xl font-bold">{summary.active}</p>
+   582→              <p className="text-xs text-muted-foreground">Active Suppliers</p>
+   583→            </div>
+   584→          </CardContent>
+   585→        </Card>
+   586→      </div>
+   587→
+   588→      {/* Filters */}
+   589→      <Card className="border-amber-200/60 dark:border-amber-800/30">
+   590→        <CardContent className="p-4">
+   591→          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+   592→            <div className="relative flex-1">
+   593→              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   594→              <Input
+   595→                placeholder="Search suppliers by name..."
+   596→                value={search}
+   597→                onChange={(e) => setSearch(e.target.value)}
+   598→                className="pl-9"
+   599→              />
+   600→            </div>
+   601→            <div className="flex items-center gap-2">
+   602→              <Label className="text-xs text-muted-foreground whitespace-nowrap">Category:</Label>
+   603→              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   604→                <SelectTrigger className="w-[180px]">
+   605→                  <SelectValue placeholder="All Categories" />
+   606→                </SelectTrigger>
+   607→                <SelectContent>
+   608→                  <SelectItem value="All">All Categories</SelectItem>
+   609→                  {categories.map((cat) => (
+   610→                    <SelectItem key={cat} value={cat}>
+   611→                      {cat}
+   612→                    </SelectItem>
+   613→                  ))}
+   614→                </SelectContent>
+   615→              </Select>
+   616→            </div>
+   617→          </div>
+   618→        </CardContent>
+   619→      </Card>
+   620→
+   621→      {/* Table / Loading / Empty States */}
+   622→      <Card className="border-amber-200/60 dark:border-amber-800/30">
+   623→        <CardHeader className="pb-3">
+   624→          <CardTitle className="flex items-center gap-2 text-base">
+   625→            <Truck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   626→            Supplier Directory
+   627→          </CardTitle>
+   628→          <CardDescription>
+   629→            {loading
+   630→              ? "Loading suppliers..."
+   631→              : `${sortedSuppliers.length} supplier${sortedSuppliers.length === 1 ? "" : "s"} found`}
+   632→          </CardDescription>
+   633→        </CardHeader>
+   634→        <CardContent className="p-0">
+   635→          {loading ? (
+   636→            <div className="space-y-2 p-4">
+   637→              {Array.from({ length: 6 }).map((_, i) => (
+   638→                <Skeleton key={i} className="h-12 w-full" />
+   639→              ))}
+   640→            </div>
+   641→          ) : sortedSuppliers.length === 0 ? (
+   642→            <EmptyState
+   643→              hasSearch={!!search || categoryFilter !== "All"}
+   644→              onClear={() => {
+   645→                setSearch("");
+   646→                setCategoryFilter("All");
+   647→              }}
+   648→              onAdd={openAddForm}
+   649→            />
+   650→          ) : (
+   651→            <>
+   652→              {/* Desktop Table */}
+   653→              <div className="hidden overflow-x-auto md:block">
+   654→                <Table>
+   655→                  <TableHeader>
+   656→                    <TableRow className="hover:bg-transparent">
+   657→                      <TableHead>
+   658→                        <button
+   659→                          type="button"
+   660→                          onClick={() => handleSort("name")}
+   661→                          className="inline-flex items-center font-medium hover:text-foreground"
+   662→                        >
+   663→                          Name <SortIcon field="name" />
+   664→                        </button>
+   665→                      </TableHead>
+   666→                      <TableHead>Contact</TableHead>
+   667→                      <TableHead>
+   668→                        <button
+   669→                          type="button"
+   670→                          onClick={() => handleSort("category")}
+   671→                          className="inline-flex items-center font-medium hover:text-foreground"
+   672→                        >
+   673→                          Category <SortIcon field="category" />
+   674→                        </button>
+   675→                      </TableHead>
+   676→                      <TableHead>GSTIN</TableHead>
+   677→                      <TableHead className="text-right">
+   678→                        <button
+   679→                          type="button"
+   680→                          onClick={() => handleSort("ingredientCount")}
+   681→                          className="inline-flex items-center font-medium hover:text-foreground"
+   682→                        >
+   683→                          Ingredients <SortIcon field="ingredientCount" />
+   684→                        </button>
+   685→                      </TableHead>
+   686→                      <TableHead className="text-right">
+   687→                        <button
+   688→                          type="button"
+   689→                          onClick={() => handleSort("totalPurchaseValue")}
+   690→                          className="inline-flex items-center font-medium hover:text-foreground"
+   691→                        >
+   692→                          Purchase Value <SortIcon field="totalPurchaseValue" />
+   693→                        </button>
+   694→                      </TableHead>
+   695→                      <TableHead className="text-right">Actions</TableHead>
+   696→                    </TableRow>
+   697→                  </TableHeader>
+   698→                  <TableBody>
+   699→                    {sortedSuppliers.map((supplier) => (
+   700→                      <TableRow
+   701→                        key={supplier.id}
+   702→                        className="cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-900/10"
+   703→                        onClick={() => handleViewDetail(supplier)}
+   704→                      >
+   705→                        <TableCell>
+   706→                          <div className="flex items-center gap-2">
+   707→                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+   708→                              <Building2 className="h-4 w-4" />
+   709→                            </div>
+   710→                            <div className="min-w-0">
+   711→                              <p className="truncate font-medium">{supplier.name}</p>
+   712→                              {supplier.contactPerson && (
+   713→                                <p className="truncate text-xs text-muted-foreground">
+   714→                                  {supplier.contactPerson}
+   715→                                </p>
+   716→                              )}
+   717→                            </div>
+   718→                          </div>
+   719→                        </TableCell>
+   720→                        <TableCell>
+   721→                          <div className="space-y-0.5 text-xs">
+   722→                            {supplier.phone && (
+   723→                              <div className="flex items-center gap-1 text-muted-foreground">
+   724→                                <Phone className="h-3 w-3" />
+   725→                                <span className="font-mono">{supplier.phone}</span>
+   726→                              </div>
+   727→                            )}
+   728→                            {supplier.email && (
+   729→                              <div className="flex items-center gap-1 text-muted-foreground">
+   730→                                <Mail className="h-3 w-3" />
+   731→                                <span className="truncate">{supplier.email}</span>
+   732→                              </div>
+   733→                            )}
+   734→                            {!supplier.phone && !supplier.email && (
+   735→                              <span className="text-muted-foreground">—</span>
+   736→                            )}
+   737→                          </div>
+   738→                        </TableCell>
+   739→                        <TableCell>
+   740→                          {supplier.category ? (
+   741→                            <Badge className={getCategoryBadgeClass(supplier.category)} variant="secondary">
+   742→                              {supplier.category}
+   743→                            </Badge>
+   744→                          ) : (
+   745→                            <span className="text-muted-foreground">—</span>
+   746→                          )}
+   747→                        </TableCell>
+   748→                        <TableCell className="font-mono text-xs">
+   749→                          {supplier.gstin || <span className="text-muted-foreground">—</span>}
+   750→                        </TableCell>
+   751→                        <TableCell className="text-right">
+   752→                          <Badge variant="outline" className="font-mono">
+   753→                            {supplier.ingredientCount}
+   754→                          </Badge>
+   755→                        </TableCell>
+   756→                        <TableCell className="text-right font-mono text-sm">
+   757→                          {supplier.totalPurchaseValue > 0 ? (
+   758→                            formatCurrency(supplier.totalPurchaseValue)
+   759→                          ) : (
+   760→                            <span className="text-muted-foreground">—</span>
+   761→                          )}
+   762→                        </TableCell>
+   763→                        <TableCell className="text-right">
+   764→                          <div
+   765→                            className="flex items-center justify-end gap-1"
+   766→                            onClick={(e) => e.stopPropagation()}
+   767→                          >
+   768→                            <Button
+   769→                              variant="ghost"
+   770→                              size="icon"
+   771→                              className="h-8 w-8"
+   772→                              onClick={() => openEditForm(supplier)}
+   773→                              aria-label="Edit supplier"
+   774→                            >
+   775→                              <Pencil className="h-4 w-4" />
+   776→                            </Button>
+   777→                            <Button
+   778→                              variant="ghost"
+   779→                              size="icon"
+   780→                              className="h-8 w-8 text-red-600 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-900/20"
+   781→                              onClick={() => confirmDelete(supplier.id)}
+   782→                              aria-label="Delete supplier"
+   783→                            >
+   784→                              <Trash2 className="h-4 w-4" />
+   785→                            </Button>
+   786→                          </div>
+   787→                        </TableCell>
+   788→                      </TableRow>
+   789→                    ))}
+   790→                  </TableBody>
+   791→                </Table>
+   792→              </div>
+   793→
+   794→              {/* Mobile Cards */}
+   795→              <div className="space-y-3 p-4 md:hidden">
+   796→                {sortedSuppliers.map((supplier) => (
+   797→                  <Card
+   798→                    key={supplier.id}
+   799→                    className="cursor-pointer border-amber-200/60 dark:border-amber-800/30"
+   800→                    onClick={() => handleViewDetail(supplier)}
+   801→                  >
+   802→                    <CardContent className="p-4">
+   803→                      <div className="flex items-start justify-between gap-3">
+   804→                        <div className="flex items-start gap-2 min-w-0 flex-1">
+   805→                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+   806→                            <Building2 className="h-4 w-4" />
+   807→                          </div>
+   808→                          <div className="min-w-0">
+   809→                            <p className="truncate font-medium">{supplier.name}</p>
+   810→                            {supplier.contactPerson && (
+   811→                              <p className="truncate text-xs text-muted-foreground">
+   812→                                {supplier.contactPerson}
+   813→                              </p>
+   814→                            )}
+   815→                          </div>
+   816→                        </div>
+   817→                        {supplier.category && (
+   818→                          <Badge className={getCategoryBadgeClass(supplier.category)} variant="secondary">
+   819→                            {supplier.category}
+   820→                          </Badge>
+   821→                        )}
+   822→                      </div>
+   823→                      <Separator className="my-3" />
+   824→                      <div className="grid grid-cols-2 gap-2 text-xs">
+   825→                        <div>
+   826→                          <p className="text-muted-foreground">Phone</p>
+   827→                          <p className="font-mono truncate">{supplier.phone || "—"}</p>
+   828→                        </div>
+   829→                        <div>
+   830→                          <p className="text-muted-foreground">GSTIN</p>
+   831→                          <p className="font-mono truncate">{supplier.gstin || "—"}</p>
+   832→                        </div>
+   833→                        <div>
+   834→                          <p className="text-muted-foreground">Ingredients</p>
+   835→                          <p className="font-mono">{supplier.ingredientCount}</p>
+   836→                        </div>
+   837→                        <div>
+   838→                          <p className="text-muted-foreground">Purchase Value</p>
+   839→                          <p className="font-mono">
+   840→                            {supplier.totalPurchaseValue > 0
+   841→                              ? formatCurrencyShort(supplier.totalPurchaseValue)
+   842→                              : "—"}
+   843→                          </p>
+   844→                        </div>
+   845→                      </div>
+   846→                      <div className="mt-3 flex justify-end gap-2">
+   847→                        <Button
+   848→                          variant="outline"
+   849→                          size="sm"
+   850→                          onClick={(e) => {
+   851→                            e.stopPropagation();
+   852→                            openEditForm(supplier);
+   853→                          }}
+   854→                        >
+   855→                          <Pencil className="h-3.5 w-3.5" />
+   856→                          Edit
+   857→                        </Button>
+   858→                        <Button
+   859→                          variant="outline"
+   860→                          size="sm"
+   861→                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+   862→                          onClick={(e) => {
+   863→                            e.stopPropagation();
+   864→                            confirmDelete(supplier.id);
+   865→                          }}
+   866→                        >
+   867→                          <Trash2 className="h-3.5 w-3.5" />
+   868→                          Delete
+   869→                        </Button>
+   870→                      </div>
+   871→                    </CardContent>
+   872→                  </Card>
+   873→                ))}
+   874→              </div>
+   875→            </>
+   876→          )}
+   877→        </CardContent>
+   878→      </Card>
+   879→
+   880→      {/* Add/Edit Dialog */}
+   881→      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+   882→        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   883→          <DialogHeader>
+   884→            <DialogTitle className="flex items-center gap-2">
+   885→              <Truck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   886→              {editingId ? "Edit Supplier" : "Add New Supplier"}
+   887→            </DialogTitle>
+   888→            <DialogDescription>
+   889→              {editingId
+   890→                ? "Update supplier contact and category details."
+   891→                : "Create a new supplier record with contact information."}
+   892→            </DialogDescription>
+   893→          </DialogHeader>
+   894→
+   895→          <div className="grid gap-4 py-2">
+   896→            {/* Name */}
+   897→            <div className="grid gap-2">
+   898→              <Label htmlFor="name">
+   899→                    Name <span className="text-red-500">*</span>
+   900→              </Label>
+   901→              <Input
+   902→                id="name"
+   903→                value={form.name}
+   904→                onChange={(e) => setForm({ ...form, name: e.target.value })}
+   905→                placeholder="e.g. Rajesh Grains & Co."
+   906→                className={formErrors.name ? "border-red-500" : ""}
+   907→              />
+   908→              {formErrors.name && (
+   909→                <p className="text-xs text-red-500">{formErrors.name}</p>
+   910→              )}
+   911→            </div>
+   912→
+   913→            {/* Contact Person + Phone */}
+   914→            <div className="grid gap-4 sm:grid-cols-2">
+   915→              <div className="grid gap-2">
+   916→                <Label htmlFor="contactPerson" className="flex items-center gap-1">
+   917→                  <User className="h-3.5 w-3.5" /> Contact Person
+   918→                </Label>
+   919→                <Input
+   920→                  id="contactPerson"
+   921→                  value={form.contactPerson}
+   922→                  onChange={(e) => setForm({ ...form, contactPerson: e.target.value })}
+   923→                  placeholder="e.g. Rajesh Patel"
+   924→                />
+   925→              </div>
+   926→              <div className="grid gap-2">
+   927→                <Label htmlFor="phone" className="flex items-center gap-1">
+   928→                  <Phone className="h-3.5 w-3.5" /> Phone
+   929→                </Label>
+   930→                <Input
+   931→                  id="phone"
+   932→                  value={form.phone}
+   933→                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
+   934→                  placeholder="e.g. 9876543210"
+   935→                />
+   936→              </div>
+   937→            </div>
+   938→
+   939→            {/* Email + GSTIN */}
+   940→            <div className="grid gap-4 sm:grid-cols-2">
+   941→              <div className="grid gap-2">
+   942→                <Label htmlFor="email" className="flex items-center gap-1">
+   943→                  <Mail className="h-3.5 w-3.5" /> Email
+   944→                </Label>
+   945→                <Input
+   946→                  id="email"
+   947→                  type="email"
+   948→                  value={form.email}
+   949→                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+   950→                  placeholder="e.g. rajesh@grains.com"
+   951→                  className={formErrors.email ? "border-red-500" : ""}
+   952→                />
+   953→                {formErrors.email && (
+   954→                  <p className="text-xs text-red-500">{formErrors.email}</p>
+   955→                )}
+   956→              </div>
+   957→              <div className="grid gap-2">
+   958→                <Label htmlFor="gstin" className="flex items-center gap-1">
+   959→                  <FileText className="h-3.5 w-3.5" /> GSTIN
+   960→                </Label>
+   961→                <Input
+   962→                  id="gstin"
+   963→                  value={form.gstin}
+   964→                  onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
+   965→                  placeholder="15-character GST number"
+   966→                  maxLength={15}
+   967→                  className={`font-mono ${formErrors.gstin ? "border-red-500" : ""}`}
+   968→                />
+   969→                {formErrors.gstin && (
+   970→                  <p className="text-xs text-red-500">{formErrors.gstin}</p>
+   971→                )}
+   972→              </div>
+   973→            </div>
+   974→
+   975→            {/* Category */}
+   976→            <div className="grid gap-2">
+   977→              <Label htmlFor="category" className="flex items-center gap-1">
+   978→                <Package className="h-3.5 w-3.5" /> Category
+   979→              </Label>
+   980→              <Input
+   981→                id="category"
+   982→                value={form.category}
+   983→                onChange={(e) => setForm({ ...form, category: e.target.value })}
+   984→                placeholder="e.g. Grains, Vegetables, Dairy, Meat, Spices..."
+   985→                list="supplier-categories"
+   986→              />
+   987→              <datalist id="supplier-categories">
+   988→                <option value="Grains" />
+   989→                <option value="Vegetables" />
+   990→                <option value="Pulses" />
+   991→                <option value="Oil" />
+   992→                <option value="Spices" />
+   993→                <option value="Dairy" />
+   994→                <option value="Meat" />
+   995→                <option value="Beverages" />
+   996→                <option value="Mixed" />
+   997→              </datalist>
+   998→              <p className="text-xs text-muted-foreground">
+   999→                What does this supplier primarily provide?
+  1000→              </p>
+  1001→            </div>
+  1002→
+  1003→            {/* Address */}
+  1004→            <div className="grid gap-2">
+  1005→              <Label htmlFor="address" className="flex items-center gap-1">
+  1006→                <MapPin className="h-3.5 w-3.5" /> Address
+  1007→              </Label>
+  1008→              <Textarea
+  1009→                id="address"
+  1010→                value={form.address}
+  1011→                onChange={(e) => setForm({ ...form, address: e.target.value })}
+  1012→                placeholder="Shop address, area, city, PIN code"
+  1013→                rows={2}
+  1014→              />
+  1015→            </div>
+  1016→
+  1017→            {/* Notes */}
+  1018→            <div className="grid gap-2">
+  1019→              <Label htmlFor="notes">Notes</Label>
+  1020→              <Textarea
+  1021→                id="notes"
+  1022→                value={form.notes}
+  1023→                onChange={(e) => setForm({ ...form, notes: e.target.value })}
+  1024→                placeholder="Delivery schedule, payment terms, or any other notes..."
+  1025→                rows={3}
+  1026→              />
+  1027→            </div>
+  1028→          </div>
+  1029→
+  1030→          <DialogFooter>
+  1031→            <Button variant="outline" onClick={() => setFormOpen(false)} disabled={submitting}>
+  1032→              Cancel
+  1033→            </Button>
+  1034→            <Button
+  1035→              onClick={handleSubmit}
+  1036→              disabled={submitting}
+  1037→              className="bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500"
+  1038→            >
+  1039→              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+  1040→              {editingId ? "Save Changes" : "Create Supplier"}
+  1041→            </Button>
+  1042→          </DialogFooter>
+  1043→        </DialogContent>
+  1044→      </Dialog>
+  1045→
+  1046→      {/* Detail Sheet */}
+  1047→      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+  1048→        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+  1049→          <SheetHeader>
+  1050→            <SheetTitle className="flex items-center gap-2">
+  1051→              <Truck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1052→              Supplier Details
+  1053→            </SheetTitle>
+  1054→            <SheetDescription>
+  1055→              Contact information, linked ingredients, and purchase history
+  1056→            </SheetDescription>
+  1057→          </SheetHeader>
+  1058→
+  1059→          {detailLoading ? (
+  1060→            <div className="space-y-3 p-4">
+  1061→              <Skeleton className="h-20 w-full" />
+  1062→              <Skeleton className="h-32 w-full" />
+  1063→              <Skeleton className="h-32 w-full" />
+  1064→            </div>
+  1065→          ) : selectedDetail ? (
+  1066→            <div className="space-y-4 px-4 pb-6">
+  1067→              {/* Header */}
+  1068→              <div className="flex items-start gap-3">
+  1069→                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+  1070→                  <Building2 className="h-6 w-6" />
+  1071→                </div>
+  1072→                <div className="min-w-0 flex-1">
+  1073→                  <h3 className="text-lg font-semibold">{selectedDetail.name}</h3>
+  1074→                  {selectedDetail.category && (
+  1075→                    <Badge className={`mt-1 ${getCategoryBadgeClass(selectedDetail.category)}`} variant="secondary">
+  1076→                      {selectedDetail.category}
+  1077→                    </Badge>
+  1078→                  )}
+  1079→                </div>
+  1080→              </div>
+  1081→
+  1082→              {/* Contact info */}
+  1083→              <Card className="border-amber-200/40 dark:border-amber-800/20">
+  1084→                <CardContent className="space-y-2 p-4 text-sm">
+  1085→                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+  1086→                    Contact Information
+  1087→                  </p>
+  1088→                  {selectedDetail.contactPerson && (
+  1089→                    <div className="flex items-center gap-2">
+  1090→                      <User className="h-4 w-4 text-muted-foreground" />
+  1091→                      <span>{selectedDetail.contactPerson}</span>
+  1092→                    </div>
+  1093→                  )}
+  1094→                  {selectedDetail.phone && (
+  1095→                    <div className="flex items-center gap-2">
+  1096→                      <Phone className="h-4 w-4 text-muted-foreground" />
+  1097→                      <a href={`tel:${selectedDetail.phone}`} className="font-mono hover:underline">
+  1098→                        {selectedDetail.phone}
+  1099→                      </a>
+  1100→                    </div>
+  1101→                  )}
+  1102→                  {selectedDetail.email && (
+  1103→                    <div className="flex items-center gap-2">
+  1104→                      <Mail className="h-4 w-4 text-muted-foreground" />
+  1105→                      <a href={`mailto:${selectedDetail.email}`} className="truncate hover:underline">
+  1106→                        {selectedDetail.email}
+  1107→                      </a>
+  1108→                    </div>
+  1109→                  )}
+  1110→                  {selectedDetail.address && (
+  1111→                    <div className="flex items-start gap-2">
+  1112→                      <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
+  1113→                      <span className="whitespace-pre-wrap">{selectedDetail.address}</span>
+  1114→                    </div>
+  1115→                  )}
+  1116→                  {selectedDetail.gstin && (
+  1117→                    <div className="flex items-center gap-2">
+  1118→                      <FileText className="h-4 w-4 text-muted-foreground" />
+  1119→                      <span className="font-mono">{selectedDetail.gstin}</span>
+  1120→                    </div>
+  1121→                  )}
+  1122→                  {!selectedDetail.contactPerson &&
+  1123→                    !selectedDetail.phone &&
+  1124→                    !selectedDetail.email &&
+  1125→                    !selectedDetail.address &&
+  1126→                    !selectedDetail.gstin && (
+  1127→                      <p className="text-muted-foreground italic text-xs">
+  1128→                        No contact information provided
+  1129→                      </p>
+  1130→                    )}
+  1131→                </CardContent>
+  1132→              </Card>
+  1133→
+  1134→              {/* Stats */}
+  1135→              <div className="grid grid-cols-3 gap-3">
+  1136→                <Card className="border-amber-200/40 dark:border-amber-800/20">
+  1137→                  <CardContent className="p-3 text-center">
+  1138→                    <Package className="mx-auto h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1139→                    <p className="mt-1 text-xl font-bold">{selectedDetail.ingredientCount}</p>
+  1140→                    <p className="text-xs text-muted-foreground">Ingredients</p>
+  1141→                  </CardContent>
+  1142→                </Card>
+  1143→                <Card className="border-amber-200/40 dark:border-amber-800/20">
+  1144→                  <CardContent className="p-3 text-center">
+  1145→                    <ShoppingCart className="mx-auto h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1146→                    <p className="mt-1 text-xl font-bold">{selectedDetail.purchaseCount}</p>
+  1147→                    <p className="text-xs text-muted-foreground">Purchases</p>
+  1148→                  </CardContent>
+  1149→                </Card>
+  1150→                <Card className="border-amber-200/40 dark:border-amber-800/20">
+  1151→                  <CardContent className="p-3 text-center">
+  1152→                    <IndianRupee className="mx-auto h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+  1153→                    <p className="mt-1 text-base font-bold">
+  1154→                      {formatCurrencyShort(selectedDetail.totalPurchaseValue)}
+  1155→                    </p>
+  1156→                    <p className="text-xs text-muted-foreground">Value</p>
+  1157→                  </CardContent>
+  1158→                </Card>
+  1159→              </div>
+  1160→
+  1161→              {/* Notes */}
+  1162→              {selectedDetail.notes && (
+  1163→                <Card className="border-amber-200/40 dark:border-amber-800/20">
+  1164→                  <CardContent className="p-4">
+  1165→                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+  1166→                      Notes
+  1167→                    </p>
+  1168→                    <p className="mt-1 text-sm whitespace-pre-wrap">{selectedDetail.notes}</p>
+  1169→                  </CardContent>
+  1170→                </Card>
+  1171→              )}
+  1172→
+  1173→              {/* Linked Ingredients */}
+  1174→              <div>
+  1175→                <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
+  1176→                  <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1177→                  Linked Ingredients ({selectedDetail.ingredients.length})
+  1178→                </p>
+  1179→                {selectedDetail.ingredients.length === 0 ? (
+  1180→                  <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+  1181→                    No ingredients linked to this supplier
+  1182→                  </p>
+  1183→                ) : (
+  1184→                  <div className="max-h-60 space-y-1 overflow-y-auto rounded-md border p-2">
+  1185→                    {selectedDetail.ingredients.map((ing) => (
+  1186→                      <div
+  1187→                        key={ing.id}
+  1188→                        className="flex items-center justify-between rounded px-2 py-1.5 text-sm hover:bg-muted/50"
+  1189→                      >
+  1190→                        <div className="min-w-0">
+  1191→                          <p className="truncate font-medium">{ing.name}</p>
+  1192→                          <p className="text-xs text-muted-foreground">
+  1193→                            {ing.category} · {ing.currentStock} {ing.unit} in stock
+  1194→                          </p>
+  1195→                        </div>
+  1196→                        <span className="font-mono text-xs text-muted-foreground">
+  1197→                          {formatCurrency(ing.avgCost)}/{ing.unit}
+  1198→                        </span>
+  1199→                      </div>
+  1200→                    ))}
+  1201→                  </div>
+  1202→                )}
+  1203→              </div>
+  1204→
+  1205→              {/* Recent Purchases */}
+  1206→              <div>
+  1207→                <p className="mb-2 flex items-center gap-2 text-sm font-semibold">
+  1208→                  <ShoppingCart className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1209→                  Recent Purchases ({selectedDetail.purchaseCount})
+  1210→                </p>
+  1211→                {selectedDetail.purchases.length === 0 ? (
+  1212→                  <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+  1213→                    No purchases recorded from this supplier
+  1214→                  </p>
+  1215→                ) : (
+  1216→                  <div className="max-h-60 space-y-1 overflow-y-auto rounded-md border p-2">
+  1217→                    {selectedDetail.purchases.slice(0, 20).map((p) => (
+  1218→                      <div
+  1219→                        key={p.id}
+  1220→                        className="flex items-center justify-between rounded px-2 py-1.5 text-sm hover:bg-muted/50"
+  1221→                      >
+  1222→                        <div className="min-w-0">
+  1223→                          <p className="truncate font-medium">
+  1224→                            {p.invoiceNo || `Purchase ${formatDate(p.date)}`}
+  1225→                          </p>
+  1226→                          <p className="text-xs text-muted-foreground">{formatDate(p.date)}</p>
+  1227→                        </div>
+  1228→                        <span className="font-mono text-xs">
+  1229→                          {formatCurrency(p.totalAmount)}
+  1230→                        </span>
+  1231→                      </div>
+  1232→                    ))}
+  1233→                  </div>
+  1234→                )}
+  1235→              </div>
+  1236→
+  1237→              <Separator />
+  1238→
+  1239→              <div className="flex gap-2">
+  1240→                <Button
+  1241→                  variant="outline"
+  1242→                  className="flex-1"
+  1243→                  onClick={() => {
+  1244→                    setDetailOpen(false);
+  1245→                    openEditForm(selectedDetail);
+  1246→                  }}
+  1247→                >
+  1248→                  <Pencil className="h-4 w-4" />
+  1249→                  Edit
+  1250→                </Button>
+  1251→                <Button
+  1252→                  variant="outline"
+  1253→                  className="flex-1 text-red-600 hover:bg-red-50 hover:text-red-700"
+  1254→                  onClick={() => {
+  1255→                    setDetailOpen(false);
+  1256→                    confirmDelete(selectedDetail.id);
+  1257→                  }}
+  1258→                >
+  1259→                  <Trash2 className="h-4 w-4" />
+  1260→                  Delete
+  1261→                </Button>
+  1262→              </div>
+  1263→            </div>
+  1264→          ) : (
+  1265→            <div className="p-8 text-center text-sm text-muted-foreground">
+  1266→              Failed to load supplier details.
+  1267→            </div>
+  1268→          )}
+  1269→        </SheetContent>
+  1270→      </Sheet>
+  1271→
+  1272→      {/* Delete Confirmation */}
+  1273→      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+  1274→        <AlertDialogContent>
+  1275→          <AlertDialogHeader>
+  1276→            <AlertDialogTitle className="flex items-center gap-2">
+  1277→              <AlertCircle className="h-5 w-5 text-red-600" />
+  1278→              Delete Supplier?
+  1279→            </AlertDialogTitle>
+  1280→            <AlertDialogDescription>
+  1281→              This will permanently remove the supplier from the directory. Any
+  1282→              ingredients and purchases linked to this supplier will have their
+  1283→              supplier reference cleared (the records themselves will not be deleted).
+  1284→              This action cannot be undone.
+  1285→            </AlertDialogDescription>
+  1286→          </AlertDialogHeader>
+  1287→          <AlertDialogFooter>
+  1288→            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+  1289→            <AlertDialogAction
+  1290→              onClick={handleDelete}
+  1291→              disabled={deleting}
+  1292→              className="bg-red-600 text-white hover:bg-red-700"
+  1293→            >
+  1294→              {deleting && <Loader2 className="h-4 w-4 animate-spin" />}
+  1295→              Delete Supplier
+  1296→            </AlertDialogAction>
+  1297→          </AlertDialogFooter>
+  1298→        </AlertDialogContent>
+  1299→      </AlertDialog>
+  1300→    </div>
+  1301→  );
+  1302→}
+  1303→
+  1304→// ─── Empty State ────────────────────────────────────────────────────────────
+  1305→
+  1306→function EmptyState({
+  1307→  hasSearch,
+  1308→  onClear,
+  1309→  onAdd,
+  1310→}: {
+  1311→  hasSearch: boolean;
+  1312→  onClear: () => void;
+  1313→  onAdd: () => void;
+  1314→}) {
+  1315→  return (
+  1316→    <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+  1317→      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+  1318→        {hasSearch ? (
+  1319→          <PackageSearch className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+  1320→        ) : (
+  1321→          <Truck className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+  1322→        )}
+  1323→      </div>
+  1324→      <h3 className="mt-4 text-lg font-semibold">
+  1325→        {hasSearch ? "No suppliers found" : "No suppliers yet"}
+  1326→      </h3>
+  1327→      <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+  1328→        {hasSearch
+  1329→          ? "Try adjusting your search terms or category filter to find what you're looking for."
+  1330→          : "Get started by adding your first supplier to manage vendor contacts and track purchases."}
+  1331→      </p>
+  1332→      <div className="mt-4 flex gap-2">
+  1333→        {hasSearch && (
+  1334→          <Button variant="outline" onClick={onClear}>
+  1335→            Clear Filters
+  1336→          </Button>
+  1337→        )}
+  1338→        <Button
+  1339→          onClick={onAdd}
+  1340→          className="bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-600 dark:hover:bg-amber-500"
+  1341→        >
+  1342→          <Plus className="h-4 w-4" />
+  1343→          Add Supplier
+  1344→        </Button>
+  1345→      </div>
+  1346→    </div>
+  1347→  );
+  1348→}
+  1349→

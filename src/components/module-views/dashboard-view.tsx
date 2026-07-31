@@ -34,7 +34,6 @@ import {
   Package,
   UtensilsCrossed,
   IndianRupee,
-  Utensils,
   ShoppingCart,
   Flame,
   Receipt,
@@ -48,6 +47,11 @@ import {
   Calendar,
   ArrowUp,
   ArrowDown,
+  BarChart3,
+  Warehouse,
+  Soup,
+  FileText,
+  Target,
 } from "lucide-react";
 import {
   BarChart,
@@ -60,9 +64,12 @@ import {
   LabelList,
   PieChart,
   Pie,
+  LineChart,
+  Line,
 } from "recharts";
 import { motion, type Variants } from "framer-motion";
 import type { ViewId } from "@/components/app-sidebar";
+import { BudgetStatus } from "@/components/budget-status";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -144,6 +151,7 @@ interface DashboardData {
     breakdown: Array<{ category: string; amount: number }>;
   };
   totalOperatingCost: number;
+  costTrend: Array<{ date: string; cost: number }>;
 }
 
 interface IngredientListItem {
@@ -159,6 +167,17 @@ interface CostReportData {
   foodCost: { total: number; costPerMeal: number };
   meals: { total: number };
   totalOperatingCost: number;
+}
+
+interface BudgetRecord {
+  id: string;
+  month: string;
+  foodBudget: number;
+  operatingBudget: number;
+  totalBudget: number;
+  alertThreshold: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface DashboardViewProps {
@@ -248,6 +267,10 @@ const expenseChartConfig: ChartConfig = {
   amount: { label: "Amount (₹)", color: "#f97316" },
 };
 
+const costTrendChartConfig: ChartConfig = {
+  cost: { label: "Food Cost (₹)", color: "#f59e0b" },
+};
+
 // ─── Reusable: Trend Badge ──────────────────────────────────────────────────
 
 interface TrendBadgeProps {
@@ -263,7 +286,7 @@ function TrendBadge({ pct, lowerIsBetter = true, label }: TrendBadgeProps) {
   if (pct === null || !isFinite(pct)) {
     return (
       <div className="flex items-center gap-1 text-xs text-muted-foreground">
-        <Minus className="h-3 w-3" />
+        <Minus className="h-3.5 w-3.5" />
         <span>{label}</span>
       </div>
     );
@@ -280,9 +303,9 @@ function TrendBadge({ pct, lowerIsBetter = true, label }: TrendBadgeProps) {
   const Icon = isFlat ? Minus : isUp ? TrendingUp : TrendingDown;
 
   return (
-    <div className="flex items-center gap-1 text-xs">
-      <Icon className={`h-3.5 w-3.5 ${colorClass}`} />
-      <span className={`font-semibold tabular-nums ${colorClass}`}>
+    <div className="flex items-center gap-1.5 text-xs">
+      <Icon className={`h-4 w-4 ${colorClass}`} />
+      <span className={`font-bold tabular-nums ${colorClass}`}>
         {isFlat ? "0%" : `${isUp ? "+" : ""}${pct.toFixed(1)}%`}
       </span>
       <span className="text-muted-foreground">{label}</span>
@@ -310,8 +333,12 @@ function MetricCard({
   subValue,
 }: MetricCardProps) {
   return (
-    <Card className="h-full overflow-hidden border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 dark:border-amber-900/40 dark:from-amber-950/30 dark:to-orange-950/20">
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+    <Card className="group relative h-full overflow-hidden border-amber-200/60 bg-gradient-to-br from-amber-50 to-orange-50 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 dark:border-amber-900/40 dark:from-amber-950/30 dark:to-orange-950/20">
+      {/* Gradient border effect on hover */}
+      <div className="pointer-events-none absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 group-hover:opacity-100" style={{ background: "linear-gradient(135deg, rgba(245,158,11,0.15), rgba(249,115,22,0.15))", padding: "1.5px" }}>
+        <div className="h-full w-full rounded-xl bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20" />
+      </div>
+      <CardHeader className="relative flex flex-row items-center justify-between pb-2">
         <CardDescription className="text-sm font-medium text-amber-900/80 dark:text-amber-200/80">
           {title}
         </CardDescription>
@@ -321,12 +348,16 @@ function MetricCard({
           {icon}
         </div>
       </CardHeader>
-      <CardContent className="flex flex-col gap-2">
+      <CardContent className="relative flex flex-col gap-2">
         <div className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100">
           {value}
         </div>
         {subValue}
-        {trend}
+        {trend && (
+          <div className="mt-0.5 inline-flex items-center gap-1.5 self-start rounded-full bg-amber-100/60 px-2.5 py-1 dark:bg-amber-900/30">
+            {trend}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -455,10 +486,9 @@ function BannerSkeleton() {
         <Skeleton className="mb-2 h-4 w-32" />
         <Skeleton className="mb-1 h-8 w-64" />
         <Skeleton className="mb-6 h-4 w-48" />
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 w-full" />
-          ))}
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-[100px] w-full md:col-span-2" />
         </div>
       </CardContent>
     </Card>
@@ -492,6 +522,9 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
   // Monthly comparison state
   const [currentMonthReport, setCurrentMonthReport] = useState<CostReportData | null>(null);
   const [prevMonthReport, setPrevMonthReport] = useState<CostReportData | null>(null);
+
+  // Budget state
+  const [currentBudget, setCurrentBudget] = useState<BudgetRecord | null>(null);
 
   useEffect(() => {
     async function fetchDashboard() {
@@ -567,12 +600,37 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
     fetchMonthlyComparison();
   }, []);
 
+  // Fetch current month's budget
+  useEffect(() => {
+    async function fetchBudget() {
+      try {
+        const res = await fetch("/api/budgets");
+        if (res.ok) {
+          const budgets = (await res.json()) as BudgetRecord[];
+          const currentMonth = new Date().toISOString().slice(0, 7);
+          const current = budgets.find((b) => b.month === currentMonth);
+          if (current) {
+            setCurrentBudget(current);
+          }
+        }
+      } catch (err) {
+        console.error("Budget fetch error:", err);
+      }
+    }
+    fetchBudget();
+  }, []);
+
   // ─── Loading State ──────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="space-y-6">
         <BannerSkeleton />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+          ))}
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <MetricCardSkeleton key={i} />
@@ -730,66 +788,144 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
               </div>
             </div>
 
-            {/* Today's summary mini-stats */}
-            <div className="mt-6 grid grid-cols-2 gap-3 border-t border-amber-200/60 pt-6 md:grid-cols-4 dark:border-amber-900/30">
-              <div className="flex items-center gap-3 rounded-xl bg-white/60 p-3 dark:bg-amber-950/20">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
-                  <IndianRupee className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            {/* 7-Day Cost Trend Sparkline */}
+            <div className="mt-6 grid grid-cols-1 gap-4 border-t border-amber-200/60 pt-6 md:grid-cols-3 dark:border-amber-900/30">
+              <div className="flex flex-col justify-center gap-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  7-Day Cost Trend
+                </p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl font-bold tabular-nums text-amber-950 dark:text-amber-100">
+                    {formatCurrencyShort(data.foodCost.week)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">this week</span>
                 </div>
-                <div>
-                  <p className="text-[11px] font-medium text-muted-foreground">
-                    Today&apos;s Food Cost
-                  </p>
-                  <p className="text-base font-bold tabular-nums text-amber-950 dark:text-amber-100">
-                    {formatCurrencyShort(data.foodCost.today)}
-                  </p>
-                </div>
+                <TrendBadge
+                  pct={weekVsAvgWeek}
+                  lowerIsBetter={true}
+                  label="vs avg week"
+                />
               </div>
-              <div className="flex items-center gap-3 rounded-xl bg-white/60 p-3 dark:bg-amber-950/20">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/40">
-                  <UtensilsCrossed className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium text-muted-foreground">
-                    Today&apos;s Meals
-                  </p>
-                  <p className="text-base font-bold tabular-nums text-amber-950 dark:text-amber-100">
-                    {formatNumber(data.meals.today)}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 rounded-xl bg-white/60 p-3 dark:bg-amber-950/20">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 dark:bg-rose-900/40">
-                  <Utensils className="h-4 w-4 text-rose-600 dark:text-rose-400" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium text-muted-foreground">
-                    Cost / Meal
-                  </p>
-                  <p className="text-base font-bold tabular-nums text-amber-950 dark:text-amber-100">
-                    {formatCurrencyShort(data.costPerMeal)}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 rounded-xl bg-white/60 p-3 dark:bg-amber-950/20">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
-                  <Users className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-[11px] font-medium text-muted-foreground">
-                    Monthly / Employee
-                  </p>
-                  <p className="text-base font-bold tabular-nums text-amber-950 dark:text-amber-100">
-                    {formatCurrencyShort(costPerEmployee)}
-                  </p>
-                </div>
+              <div className="md:col-span-2">
+                <ChartContainer config={costTrendChartConfig} className="h-[100px] w-full">
+                  <LineChart
+                    data={data.costTrend.map((d) => ({
+                      ...d,
+                      label: new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", {
+                        weekday: "short",
+                      }),
+                    }))}
+                    margin={{ top: 5, right: 10, left: 10, bottom: 0 }}
+                  >
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 11 }}
+                      stroke="var(--muted-foreground)"
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          formatter={(value) => formatCurrency(Number(value))}
+                          labelFormatter={(label) => {
+                            const entry = data.costTrend.find(
+                              (d) =>
+                                new Date(d.date + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short" }) === label
+                            );
+                            return entry
+                              ? new Date(entry.date + "T00:00:00").toLocaleDateString("en-IN", {
+                                  weekday: "long",
+                                  day: "numeric",
+                                  month: "short",
+                                })
+                              : label;
+                          }}
+                        />
+                      }
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="cost"
+                      stroke="#f59e0b"
+                      strokeWidth={2.5}
+                      dot={{ r: 3, fill: "#f59e0b", strokeWidth: 0 }}
+                      activeDot={{ r: 5, fill: "#f97316", stroke: "#fff", strokeWidth: 2 }}
+                    />
+                  </LineChart>
+                </ChartContainer>
               </div>
             </div>
           </CardContent>
         </Card>
       </motion.div>
 
-      {/* ─── 2. Top Metric Cards (4) ────────────────────────────────────── */}
+      {/* ─── 2. Quick Actions Widget ─────────────────────────────────────── */}
+      <motion.div variants={itemVariants}>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+          <button
+            onClick={() => onNavigate?.("daily-entry")}
+            className="group flex flex-col items-center gap-2 rounded-xl border border-amber-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-amber-400 hover:bg-amber-50 hover:shadow-md hover:-translate-y-0.5 dark:border-amber-900/40 dark:bg-amber-950/20 dark:hover:border-amber-700 dark:hover:bg-amber-900/30"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 transition-colors group-hover:bg-amber-200 dark:bg-amber-900/40 dark:group-hover:bg-amber-800/50">
+              <ClipboardList className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <span className="text-xs font-medium text-amber-900 dark:text-amber-200">Record Meals</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate?.("purchases")}
+            className="group flex flex-col items-center gap-2 rounded-xl border border-orange-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-orange-400 hover:bg-orange-50 hover:shadow-md hover:-translate-y-0.5 dark:border-orange-900/40 dark:bg-orange-950/20 dark:hover:border-orange-700 dark:hover:bg-orange-900/30"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-100 transition-colors group-hover:bg-orange-200 dark:bg-orange-900/40 dark:group-hover:bg-orange-800/50">
+              <ShoppingCart className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+            </div>
+            <span className="text-xs font-medium text-orange-900 dark:text-orange-200">New Purchase</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate?.("stock")}
+            className="group flex flex-col items-center gap-2 rounded-xl border border-emerald-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-emerald-400 hover:bg-emerald-50 hover:shadow-md hover:-translate-y-0.5 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 transition-colors group-hover:bg-emerald-200 dark:bg-emerald-900/40 dark:group-hover:bg-emerald-800/50">
+              <Warehouse className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <span className="text-xs font-medium text-emerald-900 dark:text-emerald-200">Add Stock</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate?.("meals")}
+            className="group flex flex-col items-center gap-2 rounded-xl border border-rose-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-rose-400 hover:bg-rose-50 hover:shadow-md hover:-translate-y-0.5 dark:border-rose-900/40 dark:bg-rose-950/20 dark:hover:border-rose-700 dark:hover:bg-rose-900/30"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-100 transition-colors group-hover:bg-rose-200 dark:bg-rose-900/40 dark:group-hover:bg-rose-800/50">
+              <Soup className="h-5 w-5 text-rose-600 dark:text-rose-400" />
+            </div>
+            <span className="text-xs font-medium text-rose-900 dark:text-rose-200">Manage Recipes</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate?.("reports")}
+            className="group flex flex-col items-center gap-2 rounded-xl border border-violet-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-violet-400 hover:bg-violet-50 hover:shadow-md hover:-translate-y-0.5 dark:border-violet-900/40 dark:bg-violet-950/20 dark:hover:border-violet-700 dark:hover:bg-violet-900/30"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 transition-colors group-hover:bg-violet-200 dark:bg-violet-900/40 dark:group-hover:bg-violet-800/50">
+              <BarChart3 className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+            </div>
+            <span className="text-xs font-medium text-violet-900 dark:text-violet-200">View Reports</span>
+          </button>
+
+          <button
+            onClick={() => onNavigate?.("expenses")}
+            className="group flex flex-col items-center gap-2 rounded-xl border border-amber-200/60 bg-white/80 p-4 shadow-sm transition-all duration-200 hover:border-amber-400 hover:bg-amber-50 hover:shadow-md hover:-translate-y-0.5 dark:border-amber-900/40 dark:bg-amber-950/20 dark:hover:border-amber-700 dark:hover:bg-amber-900/30"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100 transition-colors group-hover:bg-amber-200 dark:bg-amber-900/40 dark:group-hover:bg-amber-800/50">
+              <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </div>
+            <span className="text-xs font-medium text-amber-900 dark:text-amber-200">Log Expense</span>
+          </button>
+        </div>
+      </motion.div>
+
+      {/* ─── 3. Top Metric Cards (4) ────────────────────────────────────── */}
       <motion.div
         variants={containerVariants}
         className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
@@ -869,7 +1005,175 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
         </motion.div>
       </motion.div>
 
-      {/* ─── 3. Meals Summary + Stock Health Gauge ──────────────────────── */}
+      {/* ─── 4. Monthly Comparison (prominent) ─────────────────────────────────── */}
+      <motion.div variants={itemVariants}>
+        <Card className="shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 border-amber-200/60 bg-gradient-to-br from-amber-50/50 via-orange-50/30 to-amber-100/20 dark:border-amber-900/40 dark:from-amber-950/20 dark:via-orange-950/10 dark:to-amber-900/10">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              Monthly Comparison
+            </CardTitle>
+            <CardDescription>
+              Current month vs previous month key metrics
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {!currentMonthReport && !prevMonthReport ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Calendar className="mb-2 h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm font-medium text-muted-foreground">
+                  Loading comparison data…
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {(() => {
+                  const cur = currentMonthReport;
+                  const prev = prevMonthReport;
+
+                  const metrics: Array<{
+                    label: string;
+                    current: number;
+                    previous: number;
+                    format: (v: number) => string;
+                    lowerIsBetter: boolean;
+                    icon: React.ReactNode;
+                    iconBg: string;
+                  }> = [
+                    {
+                      label: "Food Cost",
+                      current: cur?.foodCost?.total ?? 0,
+                      previous: prev?.foodCost?.total ?? 0,
+                      format: formatCurrency,
+                      lowerIsBetter: true,
+                      icon: <IndianRupee className="h-4 w-4 text-amber-600 dark:text-amber-400" />,
+                      iconBg: "bg-amber-100 dark:bg-amber-900/30",
+                    },
+                    {
+                      label: "Total Meals Served",
+                      current: cur?.meals?.total ?? 0,
+                      previous: prev?.meals?.total ?? 0,
+                      format: formatNumber,
+                      lowerIsBetter: false,
+                      icon: <UtensilsCrossed className="h-4 w-4 text-orange-600 dark:text-orange-400" />,
+                      iconBg: "bg-orange-100 dark:bg-orange-900/30",
+                    },
+                    {
+                      label: "Cost Per Meal",
+                      current: cur?.foodCost?.costPerMeal ?? 0,
+                      previous: prev?.foodCost?.costPerMeal ?? 0,
+                      format: formatCurrency,
+                      lowerIsBetter: true,
+                      icon: <Receipt className="h-4 w-4 text-rose-600 dark:text-rose-400" />,
+                      iconBg: "bg-rose-100 dark:bg-rose-900/30",
+                    },
+                    {
+                      label: "Operating Cost",
+                      current: cur?.totalOperatingCost ?? 0,
+                      previous: prev?.totalOperatingCost ?? 0,
+                      format: formatCurrency,
+                      lowerIsBetter: true,
+                      icon: <Activity className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />,
+                      iconBg: "bg-emerald-100 dark:bg-emerald-900/30",
+                    },
+                  ];
+
+                  return metrics.map((m) => {
+                    const changePct =
+                      m.previous > 0
+                        ? ((m.current - m.previous) / m.previous) * 100
+                        : null;
+                    const isUp = changePct !== null && changePct > 0;
+                    const isFlat = changePct !== null && Math.abs(changePct) < 0.5;
+                    const goodDirection = m.lowerIsBetter ? !isUp : isUp;
+                    const isGood = isFlat || (changePct !== null && goodDirection);
+                    const colorClass =
+                      changePct === null || isFlat
+                        ? "text-muted-foreground"
+                        : goodDirection
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : "text-rose-600 dark:text-rose-400";
+                    const bgClass =
+                      changePct === null || isFlat
+                        ? "bg-muted/50"
+                        : goodDirection
+                          ? "bg-emerald-50 dark:bg-emerald-950/20"
+                          : "bg-rose-50 dark:bg-rose-950/20";
+
+                    return (
+                      <div
+                        key={m.label}
+                        className={`rounded-xl border p-4 transition-colors ${bgClass}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${m.iconBg}`}>
+                              {m.icon}
+                            </div>
+                            <span className="text-sm font-medium">{m.label}</span>
+                          </div>
+                          {changePct !== null && !isFlat && (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ${colorClass} ${isGood ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-rose-100 dark:bg-rose-900/30"}`}
+                            >
+                              {isUp ? (
+                                <ArrowUp className="h-3 w-3" />
+                              ) : (
+                                <ArrowDown className="h-3 w-3" />
+                              )}
+                              {isUp ? "+" : ""}
+                              {changePct.toFixed(1)}%
+                            </span>
+                          )}
+                          {isFlat && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-semibold tabular-nums text-muted-foreground">
+                              <Minus className="h-3 w-3" />
+                              0.0%
+                            </span>
+                          )}
+                          {changePct === null && (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-[11px] font-medium text-muted-foreground">
+                              Current Month
+                            </p>
+                            <p className="text-lg font-bold tabular-nums">
+                              {m.format(m.current)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-medium text-muted-foreground">
+                              Previous Month
+                            </p>
+                            <p className="text-lg font-bold tabular-nums text-muted-foreground">
+                              {m.format(m.previous)}
+                            </p>
+                          </div>
+                        </div>
+                        {m.previous > 0 && (
+                          <div className="mt-3">
+                            <Progress
+                              value={Math.min(100, (m.current / m.previous) * 100)}
+                              className={`h-1.5 ${isGood ? "[&>div]:bg-emerald-500" : "[&>div]:bg-rose-500"}`}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* ─── 5. Meals Summary + Stock Health Gauge ──────────────────────── */}
       <motion.div
         variants={containerVariants}
         className="grid grid-cols-1 gap-4 md:grid-cols-2"
@@ -942,6 +1246,96 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
           </Card>
         </motion.div>
 
+        {/* Budget Overview Card */}
+        <motion.div variants={itemVariants} className="h-full">
+          <Card className="h-full shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 border-amber-200/60 dark:border-amber-900/40">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                      <Target className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    Budget Status
+                  </CardTitle>
+                  <CardDescription>
+                    {currentBudget
+                      ? `Monthly budget utilization — ${new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" })}`
+                      : "No budget set for this month"}
+                  </CardDescription>
+                </div>
+                {onNavigate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onNavigate("settings")}
+                    className="border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                  >
+                    Manage
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {currentBudget ? (
+                <div className="space-y-4">
+                  <BudgetStatus
+                    label="Food Budget"
+                    spent={data.foodCost.month}
+                    budget={currentBudget.foodBudget}
+                    alertThreshold={currentBudget.alertThreshold}
+                    compact
+                  />
+                  <BudgetStatus
+                    label="Operating Budget"
+                    spent={data.totalOperatingCost}
+                    budget={currentBudget.operatingBudget}
+                    alertThreshold={currentBudget.alertThreshold}
+                    compact
+                  />
+                  {currentBudget.totalBudget > 0 && (
+                    <BudgetStatus
+                      label="Total Budget"
+                      spent={data.totalOperatingCost}
+                      budget={currentBudget.totalBudget}
+                      alertThreshold={currentBudget.alertThreshold}
+                      compact
+                    />
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <Target className="mb-2 h-10 w-10 text-amber-400" />
+                  <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                    No Budget Set
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Set up a monthly budget in Settings to track your spending
+                  </p>
+                  {onNavigate && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onNavigate("settings")}
+                      className="mt-3 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                    >
+                      Set Budget
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      </motion.div>
+
+      {/* ─── Stock Health Gauge ──────────────────────────────────────────── */}
+      <motion.div
+        variants={containerVariants}
+        className="grid grid-cols-1 gap-4 md:grid-cols-2"
+      >
         {/* Stock Health Gauge */}
         <motion.div variants={itemVariants} className="h-full">
           <Card className="h-full shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
@@ -1182,7 +1576,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
                       </TableHeader>
                       <TableBody>
                         {data.todayMeals.map((meal) => (
-                          <TableRow key={meal.id}>
+                          <TableRow key={meal.id} className="hover:bg-muted/50 transition-colors">
                             <TableCell>
                               <Badge
                                 variant="secondary"
@@ -1441,142 +1835,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
             </CardContent>
           </Card>
         </motion.div>
-      </motion.div>
-
-      {/* ─── 6. Monthly Comparison ─────────────────────────────────────────── */}
-      <motion.div variants={itemVariants}>
-        <Card className="shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
-                <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              </div>
-              Monthly Comparison
-            </CardTitle>
-            <CardDescription>
-              Current month vs previous month key metrics
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!currentMonthReport && !prevMonthReport ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <Calendar className="mb-2 h-10 w-10 text-muted-foreground/40" />
-                <p className="text-sm font-medium text-muted-foreground">
-                  Loading comparison data…
-                </p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[180px]">Metric</TableHead>
-                      <TableHead className="text-right">Current Month</TableHead>
-                      <TableHead className="text-right">Previous Month</TableHead>
-                      <TableHead className="text-right">Change</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(() => {
-                      const cur = currentMonthReport;
-                      const prev = prevMonthReport;
-
-                      const metrics: Array<{
-                        label: string;
-                        current: number;
-                        previous: number;
-                        format: (v: number) => string;
-                        lowerIsBetter: boolean;
-                      }> = [
-                        {
-                          label: "Food Cost",
-                          current: cur?.foodCost?.total ?? 0,
-                          previous: prev?.foodCost?.total ?? 0,
-                          format: formatCurrency,
-                          lowerIsBetter: true,
-                        },
-                        {
-                          label: "Total Meals Served",
-                          current: cur?.meals?.total ?? 0,
-                          previous: prev?.meals?.total ?? 0,
-                          format: formatNumber,
-                          lowerIsBetter: false,
-                        },
-                        {
-                          label: "Cost Per Meal",
-                          current: cur?.foodCost?.costPerMeal ?? 0,
-                          previous: prev?.foodCost?.costPerMeal ?? 0,
-                          format: formatCurrency,
-                          lowerIsBetter: true,
-                        },
-                        {
-                          label: "Operating Cost",
-                          current: cur?.totalOperatingCost ?? 0,
-                          previous: prev?.totalOperatingCost ?? 0,
-                          format: formatCurrency,
-                          lowerIsBetter: true,
-                        },
-                      ];
-
-                      return metrics.map((m, idx) => {
-                        const changePct =
-                          m.previous > 0
-                            ? ((m.current - m.previous) / m.previous) * 100
-                            : null;
-                        const isUp = changePct !== null && changePct > 0;
-                        const isFlat = changePct !== null && Math.abs(changePct) < 0.5;
-                        const goodDirection = m.lowerIsBetter ? !isUp : isUp;
-                        const colorClass =
-                          changePct === null || isFlat
-                            ? "text-muted-foreground"
-                            : goodDirection
-                              ? "text-emerald-600 dark:text-emerald-400"
-                              : "text-rose-600 dark:text-rose-400";
-
-                        return (
-                          <TableRow
-                            key={m.label}
-                            className={idx % 2 === 1 ? "bg-muted/30" : ""}
-                          >
-                            <TableCell className="font-medium">
-                              {m.label}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {m.format(m.current)}
-                            </TableCell>
-                            <TableCell className="text-right tabular-nums">
-                              {m.format(m.previous)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {changePct === null ? (
-                                <span className="text-muted-foreground">—</span>
-                              ) : (
-                                <span
-                                  className={`inline-flex items-center gap-1 font-semibold tabular-nums ${colorClass}`}
-                                >
-                                  {isFlat ? (
-                                    <Minus className="h-3.5 w-3.5" />
-                                  ) : isUp ? (
-                                    <ArrowUp className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <ArrowDown className="h-3.5 w-3.5" />
-                                  )}
-                                  {isFlat
-                                    ? "0.0%"
-                                    : `${isUp ? "+" : ""}${changePct.toFixed(1)}%`}
-                                </span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      });
-                    })()}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </motion.div>
     </motion.div>
   );

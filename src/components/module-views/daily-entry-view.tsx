@@ -1425,33 +1425,56 @@ export function DailyEntryView() {
                     Stock Impact Preview
                   </p>
                 </div>
-                <div className="space-y-1.5 max-h-44 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-300">
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-amber-300">
                   {liveDeductionPreview.map((item, idx) => {
                     const insufficient = item.after < 0;
                     const low = item.after >= 0 && item.after < item.currentStock * 0.2;
+                    const maxStock = Math.max(item.currentStock, 1);
+                    const beforePct = Math.min(100, (item.currentStock / maxStock) * 100);
+                    const afterPct = Math.min(100, (Math.max(0, item.after) / maxStock) * 100);
                     return (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between gap-2 text-xs"
-                      >
-                        <span className="font-medium text-amber-900 dark:text-amber-200 truncate">
-                          {item.name}
-                        </span>
-                        <span
-                          className={`tabular-nums whitespace-nowrap font-medium ${
-                            insufficient
-                              ? 'text-red-600 dark:text-red-400'
-                              : low
-                                ? 'text-amber-700 dark:text-amber-400'
-                                : 'text-emerald-700 dark:text-emerald-400'
-                          }`}
-                        >
-                          {item.currentStock.toFixed(2)} →{' '}
-                          {Math.max(0, item.after).toFixed(2)} {item.unit}
-                          <span className="ml-1 text-amber-700/70 dark:text-amber-400/70">
-                            (−{item.consumed.toFixed(2)})
+                      <div key={idx} className="space-y-1">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="font-medium text-amber-900 dark:text-amber-200 truncate">
+                            {item.name}
                           </span>
-                        </span>
+                          <span
+                            className={`tabular-nums whitespace-nowrap font-medium ${
+                              insufficient
+                                ? 'text-red-600 dark:text-red-400'
+                                : low
+                                  ? 'text-amber-700 dark:text-amber-400'
+                                  : 'text-emerald-700 dark:text-emerald-400'
+                            }`}
+                          >
+                            {item.currentStock.toFixed(2)} →{' '}
+                            {Math.max(0, item.after).toFixed(2)} {item.unit}
+                            <span className="ml-1 text-amber-700/70 dark:text-amber-400/70">
+                              (−{item.consumed.toFixed(2)})
+                            </span>
+                          </span>
+                        </div>
+                        <div className="flex gap-1 h-1.5">
+                          <div className="flex-1 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-amber-400 transition-all duration-300"
+                              style={{ width: `${beforePct}%` }}
+                            />
+                          </div>
+                          <span className="text-[9px] text-muted-foreground">→</span>
+                          <div className="flex-1 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all duration-300 ${
+                                insufficient
+                                  ? 'bg-red-400'
+                                  : low
+                                    ? 'bg-amber-400'
+                                    : 'bg-emerald-400'
+                              }`}
+                              style={{ width: `${afterPct}%` }}
+                            />
+                          </div>
+                        </div>
                       </div>
                     );
                   })}

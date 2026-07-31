@@ -1,0 +1,2002 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback, useRef } from "react";
+     4→import {
+     5→  Card,
+     6→  CardContent,
+     7→  CardDescription,
+     8→  CardHeader,
+     9→  CardTitle,
+    10→} from "@/components/ui/card";
+    11→import {
+    12→  AlertDialog,
+    13→  AlertDialogAction,
+    14→  AlertDialogCancel,
+    15→  AlertDialogContent,
+    16→  AlertDialogDescription,
+    17→  AlertDialogFooter,
+    18→  AlertDialogHeader,
+    19→  AlertDialogTitle,
+    20→  AlertDialogTrigger,
+    21→} from "@/components/ui/alert-dialog";
+    22→import { Button } from "@/components/ui/button";
+    23→import { Badge } from "@/components/ui/badge";
+    24→import { Input } from "@/components/ui/input";
+    25→import { Label } from "@/components/ui/label";
+    26→import { Separator } from "@/components/ui/separator";
+    27→import { Progress } from "@/components/ui/progress";
+    28→import { useToast } from "@/hooks/use-toast";
+    29→import {
+    30→  Settings,
+    31→  Building2,
+    32→  MapPin,
+    33→  Users,
+    34→  FileText,
+    35→  Database,
+    36→  Trash2,
+    37→  RefreshCw,
+    38→  Loader2,
+    39→  Package,
+    40→  ChefHat,
+    41→  ShoppingCart,
+    42→  Receipt,
+    43→  Info,
+    44→  Code,
+    45→  Layers,
+    46→  CheckCircle2,
+    47→  AlertTriangle,
+    48→  Target,
+    49→  TrendingUp,
+    50→  IndianRupee,
+    51→  ArrowRight,
+    52→  ShieldAlert,
+    53→  Bell,
+    54→  Save,
+    55→  PackageOpen,
+    56→  Download,
+    57→  Upload,
+    58→  FileJson,
+    59→  FileUp,
+    60→  CalendarClock,
+    61→  HardDriveDownload,
+    62→  Truck,
+    63→} from "lucide-react";
+    64→import type { ViewId } from "@/components/app-sidebar";
+    65→
+    66→// ─── Types ───────────────────────────────────────────────────────────────────
+    67→
+    68→interface DataSummary {
+    69→  totalIngredients: number;
+    70→  totalRecipes: number;
+    71→  totalPurchases: number;
+    72→  totalExpenses: number;
+    73→  totalSuppliers: number;
+    74→}
+    75→
+    76→interface CanteenInfo {
+    77→  name: string;
+    78→  location: string;
+    79→  employeeCount: number;
+    80→  contractType: string;
+    81→}
+    82→
+    83→interface BudgetData {
+    84→  monthlyFoodBudget: number;
+    85→  monthlyOperatingBudget: number;
+    86→}
+    87→
+    88→interface AlertSettings {
+    89→  foodThreshold: number;
+    90→  operatingThreshold: number;
+    91→}
+    92→
+    93→interface BudgetRecord {
+    94→  id: string;
+    95→  month: string;
+    96→  foodBudget: number;
+    97→  operatingBudget: number;
+    98→  totalBudget: number;
+    99→  alertThreshold: number;
+   100→  createdAt: string;
+   101→  updatedAt: string;
+   102→}
+   103→
+   104→interface DashboardData {
+   105→  foodCost: { today: number; week: number; month: number };
+   106→  meals: { today: number; month: number };
+   107→  costPerMeal: number;
+   108→  totalOperatingCost: number;
+   109→  expenses: { month: number; breakdown: Array<{ category: string; amount: number }> };
+   110→}
+   111→
+   112→interface CostReportData {
+   113→  foodCost: { total: number; costPerMeal: number };
+   114→  expenses: { total: number };
+   115→  totalOperatingCost: number;
+   116→}
+   117→
+   118→// ─── Backup / Restore Types ───────────────────────────────────────────────────
+   119→
+   120→interface BackupCounts {
+   121→  ingredients: number;
+   122→  recipes: number;
+   123→  recipeIngredients?: number;
+   124→  stockMovements: number;
+   125→  dailyMeals: number;
+   126→  purchases: number;
+   127→  purchaseItems?: number;
+   128→  expenses: number;
+   129→  total: number;
+   130→}
+   131→
+   132→interface BackupMetadata {
+   133→  version: string;
+   134→  exportDate: string;
+   135→  app: string;
+   136→  counts: BackupCounts;
+   137→}
+   138→
+   139→interface BackupFile {
+   140→  metadata: BackupMetadata;
+   141→  data: Record<string, unknown>;
+   142→}
+   143→
+   144→// ─── Constants ───────────────────────────────────────────────────────────────
+   145→
+   146→const CANTEEN_INFO_KEY = "rcs-canteen-info";
+   147→const BUDGET_KEY = "rcs-canteen-budget";
+   148→const ALERTS_KEY = "rcs-canteen-alerts";
+   149→const LAST_BACKUP_KEY = "rcs-canteen-last-backup";
+   150→
+   151→const DEFAULT_CANTEEN_INFO: CanteenInfo = {
+   152→  name: "RCS Canteen",
+   153→  location: "Dahej",
+   154→  employeeCount: 600,
+   155→  contractType: "Industrial",
+   156→};
+   157→
+   158→const DEFAULT_BUDGET: BudgetData = {
+   159→  monthlyFoodBudget: 500000,
+   160→  monthlyOperatingBudget: 750000,
+   161→};
+   162→
+   163→const DEFAULT_ALERTS: AlertSettings = {
+   164→  foodThreshold: 80,
+   165→  operatingThreshold: 80,
+   166→};
+   167→
+   168→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   169→
+   170→function formatINR(value: number): string {
+   171→  const formatted = new Intl.NumberFormat("en-IN", {
+   172→    minimumFractionDigits: 2,
+   173→    maximumFractionDigits: 2,
+   174→  }).format(value || 0);
+   175→  return `₹${formatted}`;
+   176→}
+   177→
+   178→function formatINRShort(value: number): string {
+   179→  if (value >= 100000) return `₹${(value / 100000).toFixed(2)}L`;
+   180→  if (value >= 1000) return `₹${(value / 1000).toFixed(1)}k`;
+   181→  return formatINR(value);
+   182→}
+   183→
+   184→function getBudgetColor(pct: number): string {
+   185→  if (pct > 100) return "#ef4444"; // red-500
+   186→  if (pct >= 80) return "#f59e0b"; // amber-500
+   187→  return "#10b981"; // emerald-500
+   188→}
+   189→
+   190→function getBudgetColorClass(pct: number): string {
+   191→  if (pct > 100) return "text-red-500";
+   192→  if (pct >= 80) return "text-amber-500";
+   193→  return "text-emerald-500";
+   194→}
+   195→
+   196→function getProgressClass(pct: number): string {
+   197→  if (pct > 100) return "[&>div]:bg-red-500";
+   198→  if (pct >= 80) return "[&>div]:bg-amber-500";
+   199→  return "[&>div]:bg-emerald-500";
+   200→}
+   201→
+   202→// ─── Backup / Restore Helpers ─────────────────────────────────────────────────
+   203→
+   204→function formatBytes(bytes: number): string {
+   205→  if (bytes === 0) return "0 B";
+   206→  const units = ["B", "KB", "MB", "GB"];
+   207→  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+   208→  const v = bytes / Math.pow(1024, i);
+   209→  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+   210→}
+   211→
+   212→function formatRelativeDate(iso: string | null): string {
+   213→  if (!iso) return "Never";
+   214→  try {
+   215→    const date = new Date(iso);
+   216→    const now = new Date();
+   217→    const diffMs = now.getTime() - date.getTime();
+   218→    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+   219→    if (diffDays === 0) {
+   220→      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+   221→      if (diffHours === 0) {
+   222→        const diffMins = Math.floor(diffMs / (1000 * 60));
+   223→        return diffMins <= 1 ? "Just now" : `${diffMins} minutes ago`;
+   224→      }
+   225→      return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+   226→    }
+   227→    if (diffDays === 1) return "Yesterday";
+   228→    if (diffDays < 7) return `${diffDays} days ago`;
+   229→    return date.toLocaleDateString("en-IN", {
+   230→      year: "numeric",
+   231→      month: "short",
+   232→      day: "numeric",
+   233→    });
+   234→  } catch {
+   235→    return "Unknown";
+   236→  }
+   237→}
+   238→
+   239→function isStaleBackup(iso: string | null, days = 7): boolean {
+   240→  if (!iso) return true;
+   241→  try {
+   242→    const date = new Date(iso);
+   243→    const diffMs = Date.now() - date.getTime();
+   244→    return diffMs > days * 24 * 60 * 60 * 1000;
+   245→  } catch {
+   246→    return true;
+   247→  }
+   248→}
+   249→
+   250→function validateBackupFile(parsed: unknown): {
+   251→  valid: boolean;
+   252→  error?: string;
+   253→  file?: BackupFile;
+   254→} {
+   255→  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+   256→    return { valid: false, error: "Invalid format: expected a JSON object." };
+   257→  }
+   258→  const obj = parsed as Record<string, unknown>;
+   259→  const metadata = obj.metadata as Record<string, unknown> | undefined;
+   260→  const data = obj.data as Record<string, unknown> | undefined;
+   261→  if (!metadata || typeof metadata !== "object") {
+   262→    return { valid: false, error: 'Missing "metadata" object.' };
+   263→  }
+   264→  if (!data || typeof data !== "object") {
+   265→    return { valid: false, error: 'Missing "data" object.' };
+   266→  }
+   267→  // At least one collection must be an array
+   268→  const collections = ["ingredients", "recipes", "stockMovements", "dailyMeals", "purchases", "expenses"];
+   269→  const hasAny = collections.some((k) => Array.isArray((data as Record<string, unknown>)[k]));
+   270→  if (!hasAny) {
+   271→    return { valid: false, error: "Backup contains no recognizable data collections." };
+   272→  }
+   273→  return {
+   274→    valid: true,
+   275→    file: {
+   276→      metadata: metadata as unknown as BackupMetadata,
+   277→      data,
+   278→    },
+   279→  };
+   280→}
+   281→
+   282→// ─── Circular Budget Gauge ───────────────────────────────────────────────────
+   283→
+   284→function BudgetGauge({ percent, label, spent, budget }: {
+   285→  percent: number;
+   286→  label: string;
+   287→  spent: number;
+   288→  budget: number;
+   289→}) {
+   290→  const size = 140;
+   291→  const stroke = 12;
+   292→  const radius = (size - stroke) / 2;
+   293→  const circumference = 2 * Math.PI * radius;
+   294→  const clamped = Math.max(0, Math.min(percent, 150)); // allow up to 150% for visual
+   295→  const dashOffset = circumference - (Math.min(clamped, 100) / 100) * circumference;
+   296→  const color = getBudgetColor(percent);
+   297→
+   298→  return (
+   299→    <div className="flex flex-col items-center gap-2">
+   300→      <div
+   301→        className="relative"
+   302→        style={{ width: size, height: size }}
+   303→        role="meter"
+   304→        aria-valuenow={Math.round(percent)}
+   305→        aria-valuemin={0}
+   306→        aria-valuemax={100}
+   307→        aria-label={`${label} budget utilization`}
+   308→      >
+   309→        <svg width={size} height={size} className="-rotate-90">
+   310→          <circle
+   311→            cx={size / 2}
+   312→            cy={size / 2}
+   313→            r={radius}
+   314→            fill="none"
+   315→            stroke="var(--muted)"
+   316→            strokeWidth={stroke}
+   317→          />
+   318→          <circle
+   319→            cx={size / 2}
+   320→            cy={size / 2}
+   321→            r={radius}
+   322→            fill="none"
+   323→            stroke={color}
+   324→            strokeWidth={stroke}
+   325→            strokeLinecap="round"
+   326→            strokeDasharray={circumference}
+   327→            strokeDashoffset={dashOffset}
+   328→            style={{
+   329→              transition: "stroke-dashoffset 0.8s ease, stroke 0.4s ease",
+   330→            }}
+   331→          />
+   332→        </svg>
+   333→        <div className="absolute inset-0 flex flex-col items-center justify-center">
+   334→          <span
+   335→            className="text-2xl font-bold tabular-nums"
+   336→            style={{ color }}
+   337→          >
+   338→            {Math.round(percent)}%
+   339→          </span>
+   340→          <span className="text-[10px] font-medium text-muted-foreground">
+   341→            Used
+   342→          </span>
+   343→        </div>
+   344→      </div>
+   345→      <div className="text-center">
+   346→        <p className="text-sm font-semibold">{label}</p>
+   347→        <p className="text-xs text-muted-foreground tabular-nums">
+   348→          {formatINRShort(spent)} / {formatINRShort(budget)}
+   349→        </p>
+   350→      </div>
+   351→    </div>
+   352→  );
+   353→}
+   354→
+   355→// ─── Component ───────────────────────────────────────────────────────────────
+   356→
+   357→interface SettingsViewProps {
+   358→  onNavigate?: (view: ViewId) => void;
+   359→}
+   360→
+   361→export function SettingsView({ onNavigate }: SettingsViewProps) {
+   362→  const [canteenInfo, setCanteenInfo] = useState<CanteenInfo>(DEFAULT_CANTEEN_INFO);
+   363→  const [dataSummary, setDataSummary] = useState<DataSummary>({
+   364→    totalIngredients: 0,
+   365→    totalRecipes: 0,
+   366→    totalPurchases: 0,
+   367→    totalExpenses: 0,
+   368→    totalSuppliers: 0,
+   369→  });
+   370→  const [isLoadingSummary, setIsLoadingSummary] = useState(true);
+   371→  const [isSeeding, setIsSeeding] = useState(false);
+   372→  const [seedSuccess, setSeedSuccess] = useState(false);
+   373→  const [clearSuccess, setClearSuccess] = useState(false);
+   374→
+   375→  // Budget & Alerts state
+   376→  const [budget, setBudget] = useState<BudgetData>(DEFAULT_BUDGET);
+   377→  const [alertSettings, setAlertSettings] = useState<AlertSettings>(DEFAULT_ALERTS);
+   378→  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+   379→  const [lowStockCount, setLowStockCount] = useState(0);
+   380→  const [isLoadingBudget, setIsLoadingBudget] = useState(true);
+   381→  const [budgetSaved, setBudgetSaved] = useState(false);
+   382→  const [alertsSaved, setAlertsSaved] = useState(false);
+   383→  const [costReport, setCostReport] = useState<CostReportData | null>(null);
+   384→
+   385→  // DB-backed budget state
+   386→  const [budgetHistory, setBudgetHistory] = useState<BudgetRecord[]>([]);
+   387→  const [currentMonthBudget, setCurrentMonthBudget] = useState<BudgetRecord | null>(null);
+   388→
+   389→  // Editable budget inputs
+   390→  const [foodBudgetInput, setFoodBudgetInput] = useState("");
+   391→  const [operatingBudgetInput, setOperatingBudgetInput] = useState("");
+   392→  const [totalBudgetInput, setTotalBudgetInput] = useState("");
+   393→  const [foodThresholdInput, setFoodThresholdInput] = useState("");
+   394→  const [operatingThresholdInput, setOperatingThresholdInput] = useState("");
+   395→  const [alertThresholdInput, setAlertThresholdInput] = useState("");
+   396→
+   397→  // Backup / Restore state
+   398→  const { toast } = useToast();
+   399→  const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
+   400→  const [isExporting, setIsExporting] = useState(false);
+   401→  const [lastExportInfo, setLastExportInfo] = useState<{
+   402→    size: number;
+   403→    counts: BackupCounts;
+   404→  } | null>(null);
+   405→
+   406→  // Import state
+   407→  const fileInputRef = useRef<HTMLInputElement>(null);
+   408→  const [pendingImport, setPendingImport] = useState<{
+   409→    fileName: string;
+   410→    fileSize: number;
+   411→    file: BackupFile;
+   412→  } | null>(null);
+   413→  const [importError, setImportError] = useState<string | null>(null);
+   414→  const [isImporting, setIsImporting] = useState(false);
+   415→  const [importProgress, setImportProgress] = useState(0);
+   416→  const [importSuccess, setImportSuccess] = useState<{
+   417→    counts: BackupCounts;
+   418→  } | null>(null);
+   419→  const [confirmOpen, setConfirmOpen] = useState(false);
+   420→
+   421→  // Load canteen info from localStorage
+   422→  useEffect(() => {
+   423→    try {
+   424→      const stored = localStorage.getItem(CANTEEN_INFO_KEY);
+   425→      if (stored) {
+   426→        setCanteenInfo(JSON.parse(stored));
+   427→      } else {
+   428→        localStorage.setItem(CANTEEN_INFO_KEY, JSON.stringify(DEFAULT_CANTEEN_INFO));
+   429→      }
+   430→    } catch {
+   431→      // Ignore localStorage errors
+   432→    }
+   433→  }, []);
+   434→
+   435→  // Load last backup date from localStorage
+   436→  useEffect(() => {
+   437→    try {
+   438→      const stored = localStorage.getItem(LAST_BACKUP_KEY);
+   439→      if (stored) {
+   440→        setLastBackupDate(stored);
+   441→      }
+   442→    } catch {
+   443→      // ignore
+   444→    }
+   445→  }, []);
+   446→
+   447→  // Load budget & alerts from localStorage (fallback) and DB
+   448→  useEffect(() => {
+   449→    try {
+   450→      const storedBudget = localStorage.getItem(BUDGET_KEY);
+   451→      if (storedBudget) {
+   452→        const parsed = JSON.parse(storedBudget) as BudgetData;
+   453→        setBudget(parsed);
+   454→        setFoodBudgetInput(String(parsed.monthlyFoodBudget));
+   455→        setOperatingBudgetInput(String(parsed.monthlyOperatingBudget));
+   456→        setTotalBudgetInput(String(parsed.monthlyOperatingBudget)); // Default total = operating
+   457→      } else {
+   458→        localStorage.setItem(BUDGET_KEY, JSON.stringify(DEFAULT_BUDGET));
+   459→        setFoodBudgetInput(String(DEFAULT_BUDGET.monthlyFoodBudget));
+   460→        setOperatingBudgetInput(String(DEFAULT_BUDGET.monthlyOperatingBudget));
+   461→        setTotalBudgetInput(String(DEFAULT_BUDGET.monthlyOperatingBudget));
+   462→      }
+   463→
+   464→      const storedAlerts = localStorage.getItem(ALERTS_KEY);
+   465→      if (storedAlerts) {
+   466→        const parsed = JSON.parse(storedAlerts) as AlertSettings;
+   467→        setAlertSettings(parsed);
+   468→        setFoodThresholdInput(String(parsed.foodThreshold));
+   469→        setOperatingThresholdInput(String(parsed.operatingThreshold));
+   470→        setAlertThresholdInput(String(parsed.foodThreshold));
+   471→      } else {
+   472→        localStorage.setItem(ALERTS_KEY, JSON.stringify(DEFAULT_ALERTS));
+   473→        setFoodThresholdInput(String(DEFAULT_ALERTS.foodThreshold));
+   474→        setOperatingThresholdInput(String(DEFAULT_ALERTS.operatingThreshold));
+   475→        setAlertThresholdInput(String(DEFAULT_ALERTS.foodThreshold));
+   476→      }
+   477→    } catch {
+   478→      // Ignore localStorage errors
+   479→    }
+   480→  }, []);
+   481→
+   482→  // Fetch dashboard data for budget tracking (including DB budgets)
+   483→  const fetchBudgetData = useCallback(async () => {
+   484→    setIsLoadingBudget(true);
+   485→    try {
+   486→      const [dashboardRes, lowStockRes, costRes, budgetsRes] = await Promise.all([
+   487→        fetch("/api/dashboard"),
+   488→        fetch("/api/ingredients?lowStock=true"),
+   489→        fetch("/api/reports/cost?period=month"),
+   490→        fetch("/api/budgets"),
+   491→      ]);
+   492→
+   493→      if (dashboardRes.ok) {
+   494→        const data = await dashboardRes.json();
+   495→        setDashboardData(data);
+   496→      }
+   497→
+   498→      if (lowStockRes.ok) {
+   499→        const lowStockItems = await lowStockRes.json();
+   500→        setLowStockCount(Array.isArray(lowStockItems) ? lowStockItems.length : 0);
+   501→      }
+   502→
+   503→      if (costRes.ok) {
+   504→        const data = await costRes.json();
+   505→        setCostReport(data);
+   506→      }
+   507→
+   508→      if (budgetsRes.ok) {
+   509→        const budgets = (await budgetsRes.json()) as BudgetRecord[];
+   510→        setBudgetHistory(budgets);
+   511→        // Find current month's budget
+   512→        const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+   513→        const currentBudget = budgets.find((b) => b.month === currentMonth);
+   514→        if (currentBudget) {
+   515→          setCurrentMonthBudget(currentBudget);
+   516→          // Override localStorage values with DB values
+   517→          setBudget({
+   518→            monthlyFoodBudget: currentBudget.foodBudget,
+   519→            monthlyOperatingBudget: currentBudget.operatingBudget,
+   520→          });
+   521→          setFoodBudgetInput(String(currentBudget.foodBudget));
+   522→          setOperatingBudgetInput(String(currentBudget.operatingBudget));
+   523→          setTotalBudgetInput(String(currentBudget.totalBudget));
+   524→          setAlertThresholdInput(String(currentBudget.alertThreshold));
+   525→          setAlertSettings({
+   526→            foodThreshold: currentBudget.alertThreshold,
+   527→            operatingThreshold: currentBudget.alertThreshold,
+   528→          });
+   529→          setFoodThresholdInput(String(currentBudget.alertThreshold));
+   530→          setOperatingThresholdInput(String(currentBudget.alertThreshold));
+   531→        }
+   532→      }
+   533→    } catch (error) {
+   534→      console.error("Error fetching budget data:", error);
+   535→    } finally {
+   536→      setIsLoadingBudget(false);
+   537→    }
+   538→  }, []);
+   539→
+   540→  useEffect(() => {
+   541→    fetchBudgetData();
+   542→  }, [fetchBudgetData]);
+   543→
+   544→  // Save budget (to DB + localStorage)
+   545→  const handleSaveBudget = async () => {
+   546→    const foodVal = parseFloat(foodBudgetInput) || DEFAULT_BUDGET.monthlyFoodBudget;
+   547→    const opVal = parseFloat(operatingBudgetInput) || DEFAULT_BUDGET.monthlyOperatingBudget;
+   548→    const totalVal = parseFloat(totalBudgetInput) || opVal;
+   549→    const newBudget: BudgetData = { monthlyFoodBudget: foodVal, monthlyOperatingBudget: opVal };
+   550→    setBudget(newBudget);
+   551→    localStorage.setItem(BUDGET_KEY, JSON.stringify(newBudget));
+   552→
+   553→    // Save to DB via API
+   554→    try {
+   555→      const currentMonth = new Date().toISOString().slice(0, 7);
+   556→      const alertTh = parseFloat(alertThresholdInput) || 80;
+   557→      const res = await fetch("/api/budgets", {
+   558→        method: "POST",
+   559→        headers: { "Content-Type": "application/json" },
+   560→        body: JSON.stringify({
+   561→          month: currentMonth,
+   562→          foodBudget: foodVal,
+   563→          operatingBudget: opVal,
+   564→          totalBudget: totalVal,
+   565→          alertThreshold: alertTh,
+   566→        }),
+   567→      });
+   568→      if (res.ok) {
+   569→        const saved = await res.json();
+   570→        setCurrentMonthBudget(saved);
+   571→        // Refresh budget history
+   572→        const budgetsRes = await fetch("/api/budgets");
+   573→        if (budgetsRes.ok) {
+   574→          setBudgetHistory((await budgetsRes.json()) as BudgetRecord[]);
+   575→        }
+   576→      }
+   577→    } catch (error) {
+   578→      console.error("Error saving budget to DB:", error);
+   579→    }
+   580→
+   581→    setBudgetSaved(true);
+   582→    setTimeout(() => setBudgetSaved(false), 3000);
+   583→  };
+   584→
+   585→  // Save alerts (to DB + localStorage)
+   586→  const handleSaveAlerts = async () => {
+   587→    const foodTh = parseFloat(foodThresholdInput) || DEFAULT_ALERTS.foodThreshold;
+   588→    const opTh = parseFloat(operatingThresholdInput) || DEFAULT_ALERTS.operatingThreshold;
+   589→    const newAlerts: AlertSettings = {
+   590→      foodThreshold: Math.min(100, Math.max(1, foodTh)),
+   591→      operatingThreshold: Math.min(100, Math.max(1, opTh)),
+   592→    };
+   593→    setAlertSettings(newAlerts);
+   594→    localStorage.setItem(ALERTS_KEY, JSON.stringify(newAlerts));
+   595→
+   596→    // Update DB budget record with alert threshold
+   597→    try {
+   598→      const currentMonth = new Date().toISOString().slice(0, 7);
+   599→      const alertTh = parseFloat(alertThresholdInput) || 80;
+   600→      await fetch("/api/budgets", {
+   601→        method: "POST",
+   602→        headers: { "Content-Type": "application/json" },
+   603→        body: JSON.stringify({
+   604→          month: currentMonth,
+   605→          foodBudget: budget.monthlyFoodBudget,
+   606→          operatingBudget: budget.monthlyOperatingBudget,
+   607→          totalBudget: currentMonthBudget?.totalBudget ?? budget.monthlyOperatingBudget,
+   608→          alertThreshold: alertTh,
+   609→        }),
+   610→      });
+   611→    } catch (error) {
+   612→      console.error("Error saving alert thresholds to DB:", error);
+   613→    }
+   614→
+   615→    setAlertsSaved(true);
+   616→    setTimeout(() => setAlertsSaved(false), 3000);
+   617→  };
+   618→
+   619→  // Fetch data summary from APIs
+   620→  const fetchDataSummary = useCallback(async () => {
+   621→    setIsLoadingSummary(true);
+   622→    try {
+   623→      const [ingredientsRes, recipesRes, purchasesRes, expensesRes, suppliersRes] =
+   624→        await Promise.all([
+   625→          fetch("/api/ingredients"),
+   626→          fetch("/api/recipes"),
+   627→          fetch("/api/purchases"),
+   628→          fetch("/api/expenses"),
+   629→          fetch("/api/suppliers"),
+   630→        ]);
+   631→
+   632→      const ingredients = await ingredientsRes.json();
+   633→      const recipes = await recipesRes.json();
+   634→      const purchases = await purchasesRes.json();
+   635→      const expenses = await expensesRes.json();
+   636→      const suppliers = await suppliersRes.json();
+   637→
+   638→      setDataSummary({
+   639→        totalIngredients: Array.isArray(ingredients) ? ingredients.length : 0,
+   640→        totalRecipes: Array.isArray(recipes) ? recipes.length : 0,
+   641→        totalPurchases: purchases?.total ?? 0,
+   642→        totalExpenses: expenses?.total ?? 0,
+   643→        totalSuppliers: Array.isArray(suppliers) ? suppliers.length : 0,
+   644→      });
+   645→    } catch (error) {
+   646→      console.error("Error fetching data summary:", error);
+   647→    } finally {
+   648→      setIsLoadingSummary(false);
+   649→    }
+   650→  }, []);
+   651→
+   652→  useEffect(() => {
+   653→    fetchDataSummary();
+   654→  }, [fetchDataSummary]);
+   655→
+   656→  // Seed sample data
+   657→  const handleSeedData = async () => {
+   658→    setIsSeeding(true);
+   659→    setSeedSuccess(false);
+   660→    try {
+   661→      const res = await fetch("/api/seed", { method: "POST" });
+   662→      if (res.ok) {
+   663→        setSeedSuccess(true);
+   664→        await fetchDataSummary();
+   665→        await fetchBudgetData();
+   666→        setTimeout(() => setSeedSuccess(false), 3000);
+   667→      }
+   668→    } catch (error) {
+   669→      console.error("Error seeding data:", error);
+   670→    } finally {
+   671→      setIsSeeding(false);
+   672→    }
+   673→  };
+   674→
+   675→  // Clear all data
+   676→  const handleClearData = async () => {
+   677→    try {
+   678→      const res = await fetch("/api/ingredients");
+   679→      if (res.ok) {
+   680→        const ingredients = await res.json();
+   681→        for (const ing of ingredients) {
+   682→          await fetch(`/api/ingredients/${ing.id}`, { method: "DELETE" });
+   683→        }
+   684→      }
+   685→      setClearSuccess(true);
+   686→      await fetchDataSummary();
+   687→      await fetchBudgetData();
+   688→      setTimeout(() => setClearSuccess(false), 3000);
+   689→    } catch (error) {
+   690→      console.error("Error clearing data:", error);
+   691→    }
+   692→  };
+   693→
+   694→  // ─── Backup: Export (GET /api/backup) ───────────────────────────────────────
+   695→  const handleExport = async () => {
+   696→    setIsExporting(true);
+   697→    setLastExportInfo(null);
+   698→    try {
+   699→      const res = await fetch("/api/backup");
+   700→      if (!res.ok) {
+   701→        const errBody = await res.json().catch(() => ({}));
+   702→        throw new Error(errBody?.error || `Export failed (${res.status})`);
+   703→      }
+   704→      const blob = await res.blob();
+   705→      const size = blob.size;
+   706→
+   707→      // Read counts from metadata for display
+   708→      let counts: BackupCounts | null = null;
+   709→      try {
+   710→        const text = await blob.text();
+   711→        const parsed = JSON.parse(text) as BackupFile;
+   712→        counts = parsed.metadata?.counts ?? null;
+   713→      } catch {
+   714→        // ignore parse error for display purposes
+   715→      }
+   716→
+   717→      // Re-create blob from text to ensure the download works even after .text()
+   718→      const downloadBlob = new Blob([await blob.arrayBuffer()], {
+   719→        type: "application/json",
+   720→      });
+   721→      const url = URL.createObjectURL(downloadBlob);
+   722→      const filename = `rcs-canteen-backup-${new Date().toISOString().split("T")[0]}.json`;
+   723→      const a = document.createElement("a");
+   724→      a.href = url;
+   725→      a.download = filename;
+   726→      document.body.appendChild(a);
+   727→      a.click();
+   728→      document.body.removeChild(a);
+   729→      URL.revokeObjectURL(url);
+   730→
+   731→      // Persist last backup date
+   732→      const nowIso = new Date().toISOString();
+   733→      try {
+   734→        localStorage.setItem(LAST_BACKUP_KEY, nowIso);
+   735→        setLastBackupDate(nowIso);
+   736→      } catch {
+   737→        // ignore
+   738→      }
+   739→
+   740→      if (counts) {
+   741→        setLastExportInfo({ size, counts });
+   742→      }
+   743→
+   744→      toast({
+   745→        title: "Backup exported",
+   746→        description: `Saved ${filename} (${formatBytes(size)}, ${counts?.total ?? 0} records).`,
+   747→      });
+   748→    } catch (error) {
+   749→      console.error("Export error:", error);
+   750→      toast({
+   751→        title: "Export failed",
+   752→        description: error instanceof Error ? error.message : "Unknown error",
+   753→        variant: "destructive",
+   754→      });
+   755→    } finally {
+   756→      setIsExporting(false);
+   757→    }
+   758→  };
+   759→
+   760→  // ─── Restore: File selection & validation ──────────────────────────────────
+   761→  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+   762→    setImportError(null);
+   763→    setImportSuccess(null);
+   764→    const file = e.target.files?.[0];
+   765→    if (!file) return;
+   766→
+   767→    // Reset input so the same file can be selected again later
+   768→    if (fileInputRef.current) fileInputRef.current.value = "";
+   769→
+   770→    if (file.size > 50 * 1024 * 1024) {
+   771→      setImportError("File is too large (max 50 MB).");
+   772→      toast({
+   773→        title: "File too large",
+   774→        description: "Backup files must be under 50 MB.",
+   775→        variant: "destructive",
+   776→      });
+   777→      return;
+   778→    }
+   779→
+   780→    try {
+   781→      const text = await file.text();
+   782→      const parsed = JSON.parse(text);
+   783→      const result = validateBackupFile(parsed);
+   784→      if (!result.valid || !result.file) {
+   785→        setImportError(result.error ?? "Invalid backup file.");
+   786→        toast({
+   787→          title: "Invalid backup file",
+   788→          description: result.error ?? "Could not read this file.",
+   789→          variant: "destructive",
+   790→        });
+   791→        return;
+   792→      }
+   793→      setPendingImport({
+   794→        fileName: file.name,
+   795→        fileSize: file.size,
+   796→        file: result.file,
+   797→      });
+   798→      setConfirmOpen(true);
+   799→    } catch {
+   800→      setImportError("Could not parse JSON file.");
+   801→      toast({
+   802→        title: "Invalid file",
+   803→        description: "The selected file is not valid JSON.",
+   804→        variant: "destructive",
+   805→      });
+   806→    }
+   807→  };
+   808→
+   809→  // ─── Restore: Confirm import (POST /api/backup) ────────────────────────────
+   810→  const handleConfirmImport = async () => {
+   811→    if (!pendingImport) return;
+   812→    setConfirmOpen(false);
+   813→    setIsImporting(true);
+   814→    setImportProgress(8);
+   815→    setImportError(null);
+   816→    setImportSuccess(null);
+   817→
+   818→    try {
+   819→      // Simulated progress feedback while request is in flight
+   820→      const progressInterval = setInterval(() => {
+   821→        setImportProgress((p) => (p < 90 ? p + Math.max(1, Math.floor((90 - p) / 5)) : p));
+   822→      }, 250);
+   823→
+   824→      const res = await fetch("/api/backup", {
+   825→        method: "POST",
+   826→        headers: { "Content-Type": "application/json" },
+   827→        body: JSON.stringify({
+   828→          metadata: pendingImport.file.metadata,
+   829→          data: pendingImport.file.data,
+   830→        }),
+   831→      });
+   832→
+   833→      clearInterval(progressInterval);
+   834→      setImportProgress(95);
+   835→
+   836→      const body = await res.json().catch(() => ({}));
+   837→      if (!res.ok) {
+   838→        throw new Error(body?.error || `Import failed (${res.status})`);
+   839→      }
+   840→
+   841→      setImportProgress(100);
+   842→      const counts = (body?.counts ?? pendingImport.file.metadata.counts) as BackupCounts;
+   843→      setImportSuccess({ counts });
+   844→
+   845→      // Refresh data summary + budget data after restore
+   846→      await Promise.all([fetchDataSummary(), fetchBudgetData()]);
+   847→
+   848→      toast({
+   849→        title: "Data restored successfully",
+   850→        description: `Imported ${counts?.total ?? 0} records from ${pendingImport.fileName}.`,
+   851→      });
+   852→
+   853→      setTimeout(() => {
+   854→        setIsImporting(false);
+   855→        setImportProgress(0);
+   856→        setPendingImport(null);
+   857→      }, 800);
+   858→    } catch (error) {
+   859→      console.error("Import error:", error);
+   860→      setIsImporting(false);
+   861→      setImportProgress(0);
+   862→      setImportError(error instanceof Error ? error.message : "Unknown error");
+   863→      toast({
+   864→        title: "Restore failed",
+   865→        description: error instanceof Error ? error.message : "Unknown error",
+   866→        variant: "destructive",
+   867→      });
+   868→    }
+   869→  };
+   870→
+   871→  const handleCancelImport = () => {
+   872→    setConfirmOpen(false);
+   873→    setPendingImport(null);
+   874→  };
+   875→
+   876→  // ─── Derived display values ────────────────────────────────────────────────
+   877→  const backupStale = isStaleBackup(lastBackupDate, 7);
+   878→  const totalRecords =
+   879→    dataSummary.totalIngredients +
+   880→    dataSummary.totalRecipes +
+   881→    dataSummary.totalPurchases +
+   882→    dataSummary.totalExpenses;
+   883→
+   884→  // Budget calculations
+   885→  const foodSpent = dashboardData?.foodCost?.month ?? 0;
+   886→  const operatingSpent = dashboardData?.totalOperatingCost ?? 0;
+   887→  const foodBudgetPct = budget.monthlyFoodBudget > 0 ? (foodSpent / budget.monthlyFoodBudget) * 100 : 0;
+   888→  const operatingBudgetPct = budget.monthlyOperatingBudget > 0 ? (operatingSpent / budget.monthlyOperatingBudget) * 100 : 0;
+   889→  const foodRemaining = budget.monthlyFoodBudget - foodSpent;
+   890→  const operatingRemaining = budget.monthlyOperatingBudget - operatingSpent;
+   891→
+   892→  // Alert thresholds triggered
+   893→  const foodAlertTriggered = foodBudgetPct >= alertSettings.foodThreshold;
+   894→  const operatingAlertTriggered = operatingBudgetPct >= alertSettings.operatingThreshold;
+   895→  const foodOverBudget = foodBudgetPct > 100;
+   896→  const operatingOverBudget = operatingBudgetPct > 100;
+   897→
+   898→  // Get current month name
+   899→  const currentMonth = new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" });
+   900→
+   901→  return (
+   902→    <div className="space-y-6">
+   903→      {/* Header */}
+   904→      <div className="flex items-center gap-3">
+   905→        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   906→          <Settings className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   907→        </div>
+   908→        <div>
+   909→          <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+   910→          <p className="text-muted-foreground">
+   911→            Manage canteen information, budget, alerts, and system preferences
+   912→          </p>
+   913→        </div>
+   914→      </div>
+   915→
+   916→      <div className="grid gap-6 md:grid-cols-2">
+   917→        {/* ─── Budget & Alerts Card ─────────────────────────────────────── */}
+   918→        <Card className="md:col-span-2 border-amber-200/60 dark:border-amber-800/30 overflow-hidden">
+   919→          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
+   920→            <CardHeader>
+   921→              <div className="flex items-center justify-between">
+   922→                <div>
+   923→                  <CardTitle className="flex items-center gap-2">
+   924→                    <Target className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   925→                    Budget & Alerts
+   926→                  </CardTitle>
+   927→                  <CardDescription>
+   928→                    Set monthly budgets, track spending, and configure alert thresholds
+   929→                  </CardDescription>
+   930→                </div>
+   931→                <Button
+   932→                  variant="outline"
+   933→                  size="sm"
+   934→                  onClick={fetchBudgetData}
+   935→                  disabled={isLoadingBudget}
+   936→                  className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/20"
+   937→                >
+   938→                  <RefreshCw className={`h-4 w-4 ${isLoadingBudget ? "animate-spin" : ""}`} />
+   939→                </Button>
+   940→              </div>
+   941→            </CardHeader>
+   942→          </div>
+   943→
+   944→          <CardContent className="space-y-6 pt-6">
+   945→            {/* ─── Visual Budget Summary (Circular Gauges) ──────────────── */}
+   946→            {isLoadingBudget ? (
+   947→              <div className="flex items-center justify-center gap-8 py-4">
+   948→                <div className="h-[140px] w-[140px] rounded-full bg-muted/50 animate-pulse" />
+   949→                <div className="h-[140px] w-[140px] rounded-full bg-muted/50 animate-pulse" />
+   950→              </div>
+   951→            ) : (
+   952→              <div className="rounded-xl border border-amber-200/60 dark:border-amber-800/30 bg-gradient-to-br from-amber-50/50 to-orange-50/50 dark:from-amber-900/10 dark:to-orange-900/10 p-6">
+   953→                <div className="flex items-center gap-2 mb-4">
+   954→                  <TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   955→                  <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+   956→                    Budget Utilization — {currentMonth}
+   957→                  </h3>
+   958→                </div>
+   959→                <div className="flex items-center justify-center gap-8 md:gap-16 flex-wrap">
+   960→                  <BudgetGauge
+   961→                    percent={foodBudgetPct}
+   962→                    label="Food Budget"
+   963→                    spent={foodSpent}
+   964→                    budget={budget.monthlyFoodBudget}
+   965→                  />
+   966→                  <BudgetGauge
+   967→                    percent={operatingBudgetPct}
+   968→                    label="Operating Budget"
+   969→                    spent={operatingSpent}
+   970→                    budget={budget.monthlyOperatingBudget}
+   971→                  />
+   972→                </div>
+   973→                {/* Over Budget Warnings */}
+   974→                {(foodOverBudget || operatingOverBudget) && (
+   975→                  <div className="mt-4 flex flex-col gap-2">
+   976→                    {foodOverBudget && (
+   977→                      <div className="flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 px-3 py-2">
+   978→                        <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+   979→                        <span className="text-sm font-medium text-red-700 dark:text-red-400">
+   980→                          Food budget exceeded by {formatINR(Math.abs(foodRemaining))}!
+   981→                        </span>
+   982→                      </div>
+   983→                    )}
+   984→                    {operatingOverBudget && (
+   985→                      <div className="flex items-center gap-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 px-3 py-2">
+   986→                        <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+   987→                        <span className="text-sm font-medium text-red-700 dark:text-red-400">
+   988→                          Operating budget exceeded by {formatINR(Math.abs(operatingRemaining))}!
+   989→                        </span>
+   990→                      </div>
+   991→                    )}
+   992→                  </div>
+   993→                )}
+   994→              </div>
+   995→            )}
+   996→
+   997→            {/* ─── Budget vs Actual Progress Bars ───────────────────────── */}
+   998→            {isLoadingBudget ? (
+   999→              <div className="space-y-4">
+  1000→                <div className="h-20 rounded-lg bg-muted/50 animate-pulse" />
+  1001→                <div className="h-20 rounded-lg bg-muted/50 animate-pulse" />
+  1002→              </div>
+  1003→            ) : (
+  1004→              <div className="space-y-4">
+  1005→                {/* Food Budget Progress */}
+  1006→                <div className="rounded-lg border p-4 space-y-3">
+  1007→                  <div className="flex items-center justify-between">
+  1008→                    <div className="flex items-center gap-2">
+  1009→                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1010→                        <IndianRupee className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1011→                      </div>
+  1012→                      <div>
+  1013→                        <p className="text-sm font-semibold">Food Budget</p>
+  1014→                        <p className="text-xs text-muted-foreground">Monthly food purchase costs</p>
+  1015→                      </div>
+  1016→                    </div>
+  1017→                    <div className="flex items-center gap-2">
+  1018→                      {foodOverBudget ? (
+  1019→                        <Badge variant="destructive" className="text-xs">
+  1020→                          Over Budget!
+  1021→                        </Badge>
+  1022→                      ) : foodAlertTriggered ? (
+  1023→                        <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+  1024→                          <Bell className="h-3 w-3 mr-1" />
+  1025→                          Alert
+  1026→                        </Badge>
+  1027→                      ) : (
+  1028→                        <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+  1029→                          <CheckCircle2 className="h-3 w-3 mr-1" />
+  1030→                          On Track
+  1031→                        </Badge>
+  1032→                      )}
+  1033→                    </div>
+  1034→                  </div>
+  1035→                  <Progress
+  1036→                    value={Math.min(foodBudgetPct, 100)}
+  1037→                    className={`h-3 ${getProgressClass(foodBudgetPct)}`}
+  1038→                  />
+  1039→                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+  1040→                    <span className="tabular-nums">
+  1041→                      <span className={getBudgetColorClass(foodBudgetPct)}>{Math.round(foodBudgetPct)}%</span>{" "}
+  1042→                      used — {formatINR(foodSpent)}
+  1043→                    </span>
+  1044→                    <span className="tabular-nums">
+  1045→                      {foodRemaining >= 0 ? (
+  1046→                        <span className="text-emerald-600 dark:text-emerald-400">{formatINR(foodRemaining)} remaining</span>
+  1047→                      ) : (
+  1048→                        <span className="text-red-600 dark:text-red-400">{formatINR(Math.abs(foodRemaining))} over</span>
+  1049→                      )}
+  1050→                    </span>
+  1051→                  </div>
+  1052→                </div>
+  1053→
+  1054→                {/* Operating Budget Progress */}
+  1055→                <div className="rounded-lg border p-4 space-y-3">
+  1056→                  <div className="flex items-center justify-between">
+  1057→                    <div className="flex items-center gap-2">
+  1058→                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-orange-100 dark:bg-orange-900/30">
+  1059→                        <TrendingUp className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+  1060→                      </div>
+  1061→                      <div>
+  1062→                        <p className="text-sm font-semibold">Operating Budget</p>
+  1063→                        <p className="text-xs text-muted-foreground">Food + operating expenses combined</p>
+  1064→                      </div>
+  1065→                    </div>
+  1066→                    <div className="flex items-center gap-2">
+  1067→                      {operatingOverBudget ? (
+  1068→                        <Badge variant="destructive" className="text-xs">
+  1069→                          Over Budget!
+  1070→                        </Badge>
+  1071→                      ) : operatingAlertTriggered ? (
+  1072→                        <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+  1073→                          <Bell className="h-3 w-3 mr-1" />
+  1074→                          Alert
+  1075→                        </Badge>
+  1076→                      ) : (
+  1077→                        <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+  1078→                          <CheckCircle2 className="h-3 w-3 mr-1" />
+  1079→                          On Track
+  1080→                        </Badge>
+  1081→                      )}
+  1082→                    </div>
+  1083→                  </div>
+  1084→                  <Progress
+  1085→                    value={Math.min(operatingBudgetPct, 100)}
+  1086→                    className={`h-3 ${getProgressClass(operatingBudgetPct)}`}
+  1087→                  />
+  1088→                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+  1089→                    <span className="tabular-nums">
+  1090→                      <span className={getBudgetColorClass(operatingBudgetPct)}>{Math.round(operatingBudgetPct)}%</span>{" "}
+  1091→                      used — {formatINR(operatingSpent)}
+  1092→                    </span>
+  1093→                    <span className="tabular-nums">
+  1094→                      {operatingRemaining >= 0 ? (
+  1095→                        <span className="text-emerald-600 dark:text-emerald-400">{formatINR(operatingRemaining)} remaining</span>
+  1096→                      ) : (
+  1097→                        <span className="text-red-600 dark:text-red-400">{formatINR(Math.abs(operatingRemaining))} over</span>
+  1098→                      )}
+  1099→                    </span>
+  1100→                  </div>
+  1101→                </div>
+  1102→              </div>
+  1103→            )}
+  1104→
+  1105→            <Separator />
+  1106→
+  1107→            {/* ─── Budget Setup ─────────────────────────────────────────── */}
+  1108→            <div className="space-y-4">
+  1109→              <div className="flex items-center gap-2">
+  1110→                <Target className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1111→                <h3 className="text-sm font-semibold">Monthly Budget Setup</h3>
+  1112→              </div>
+  1113→              <div className="grid gap-4 sm:grid-cols-3">
+  1114→                <div className="space-y-2">
+  1115→                  <Label htmlFor="foodBudget" className="text-xs text-muted-foreground">
+  1116→                    Food Budget (₹)
+  1117→                  </Label>
+  1118→                  <div className="relative">
+  1119→                    <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1120→                    <Input
+  1121→                      id="foodBudget"
+  1122→                      type="number"
+  1123→                      value={foodBudgetInput}
+  1124→                      onChange={(e) => setFoodBudgetInput(e.target.value)}
+  1125→                      placeholder="500000"
+  1126→                      className="pl-9 tabular-nums"
+  1127→                    />
+  1128→                  </div>
+  1129→                  <p className="text-xs text-muted-foreground">
+  1130→                    Current: {formatINR(budget.monthlyFoodBudget)}
+  1131→                  </p>
+  1132→                </div>
+  1133→                <div className="space-y-2">
+  1134→                  <Label htmlFor="operatingBudget" className="text-xs text-muted-foreground">
+  1135→                    Operating Budget (₹)
+  1136→                  </Label>
+  1137→                  <div className="relative">
+  1138→                    <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1139→                    <Input
+  1140→                      id="operatingBudget"
+  1141→                      type="number"
+  1142→                      value={operatingBudgetInput}
+  1143→                      onChange={(e) => setOperatingBudgetInput(e.target.value)}
+  1144→                      placeholder="750000"
+  1145→                      className="pl-9 tabular-nums"
+  1146→                    />
+  1147→                  </div>
+  1148→                  <p className="text-xs text-muted-foreground">
+  1149→                    Current: {formatINR(budget.monthlyOperatingBudget)}
+  1150→                  </p>
+  1151→                </div>
+  1152→                <div className="space-y-2">
+  1153→                  <Label htmlFor="totalBudget" className="text-xs text-muted-foreground">
+  1154→                    Total Budget (₹)
+  1155→                  </Label>
+  1156→                  <div className="relative">
+  1157→                    <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1158→                    <Input
+  1159→                      id="totalBudget"
+  1160→                      type="number"
+  1161→                      value={totalBudgetInput}
+  1162→                      onChange={(e) => setTotalBudgetInput(e.target.value)}
+  1163→                      placeholder="750000"
+  1164→                      className="pl-9 tabular-nums"
+  1165→                    />
+  1166→                  </div>
+  1167→                  <p className="text-xs text-muted-foreground">
+  1168→                    Current: {formatINR(currentMonthBudget?.totalBudget ?? budget.monthlyOperatingBudget)}
+  1169→                  </p>
+  1170→                </div>
+  1171→              </div>
+  1172→              <Button
+  1173→                onClick={handleSaveBudget}
+  1174→                className="bg-amber-600 hover:bg-amber-700 text-white"
+  1175→              >
+  1176→                {budgetSaved ? (
+  1177→                  <>
+  1178→                    <CheckCircle2 className="mr-2 h-4 w-4" />
+  1179→                    Budget Saved!
+  1180→                  </>
+  1181→                ) : (
+  1182→                  <>
+  1183→                    <Save className="mr-2 h-4 w-4" />
+  1184→                    Save Budget
+  1185→                  </>
+  1186→                )}
+  1187→              </Button>
+  1188→            </div>
+  1189→
+  1190→            <Separator />
+  1191→
+  1192→            {/* ─── Alert Thresholds ─────────────────────────────────────── */}
+  1193→            <div className="space-y-4">
+  1194→              <div className="flex items-center gap-2">
+  1195→                <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1196→                <h3 className="text-sm font-semibold">Alert Thresholds</h3>
+  1197→              </div>
+  1198→              <p className="text-xs text-muted-foreground">
+  1199→                Get notified when spending reaches a certain percentage of your budget.
+  1200→              </p>
+  1201→              <div className="grid gap-4 sm:grid-cols-3">
+  1202→                <div className="space-y-2">
+  1203→                  <Label htmlFor="foodThreshold" className="text-xs text-muted-foreground">
+  1204→                    Food Budget Alert (%)
+  1205→                  </Label>
+  1206→                  <div className="relative">
+  1207→                    <Bell className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1208→                    <Input
+  1209→                      id="foodThreshold"
+  1210→                      type="number"
+  1211→                      min={1}
+  1212→                      max={100}
+  1213→                      value={foodThresholdInput}
+  1214→                      onChange={(e) => setFoodThresholdInput(e.target.value)}
+  1215→                      placeholder="80"
+  1216→                      className="pl-9 tabular-nums"
+  1217→                    />
+  1218→                  </div>
+  1219→                  <div className="flex items-center gap-2">
+  1220→                    <p className="text-xs text-muted-foreground">
+  1221→                      Alert at {alertSettings.foodThreshold}% — Currently{" "}
+  1222→                      <span className={foodAlertTriggered ? "text-amber-600 dark:text-amber-400 font-medium" : "text-emerald-600 dark:text-emerald-400"}>
+  1223→                        {Math.round(foodBudgetPct)}%
+  1224→                      </span>
+  1225→                    </p>
+  1226→                    {foodAlertTriggered && (
+  1227→                      <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800 px-1.5 py-0">
+  1228→                        Triggered
+  1229→                      </Badge>
+  1230→                    )}
+  1231→                  </div>
+  1232→                </div>
+  1233→                <div className="space-y-2">
+  1234→                  <Label htmlFor="operatingThreshold" className="text-xs text-muted-foreground">
+  1235→                    Operating Budget Alert (%)
+  1236→                  </Label>
+  1237→                  <div className="relative">
+  1238→                    <Bell className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1239→                    <Input
+  1240→                      id="operatingThreshold"
+  1241→                      type="number"
+  1242→                      min={1}
+  1243→                      max={100}
+  1244→                      value={operatingThresholdInput}
+  1245→                      onChange={(e) => setOperatingThresholdInput(e.target.value)}
+  1246→                      placeholder="80"
+  1247→                      className="pl-9 tabular-nums"
+  1248→                    />
+  1249→                  </div>
+  1250→                  <div className="flex items-center gap-2">
+  1251→                    <p className="text-xs text-muted-foreground">
+  1252→                      Alert at {alertSettings.operatingThreshold}% — Currently{" "}
+  1253→                      <span className={operatingAlertTriggered ? "text-amber-600 dark:text-amber-400 font-medium" : "text-emerald-600 dark:text-emerald-400"}>
+  1254→                        {Math.round(operatingBudgetPct)}%
+  1255→                      </span>
+  1256→                    </p>
+  1257→                    {operatingAlertTriggered && (
+  1258→                      <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800 px-1.5 py-0">
+  1259→                        Triggered
+  1260→                      </Badge>
+  1261→                    )}
+  1262→                  </div>
+  1263→                </div>
+  1264→                <div className="space-y-2">
+  1265→                  <Label htmlFor="alertThreshold" className="text-xs text-muted-foreground">
+  1266→                    Default Alert Threshold (%)
+  1267→                  </Label>
+  1268→                  <div className="relative">
+  1269→                    <Bell className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1270→                    <Input
+  1271→                      id="alertThreshold"
+  1272→                      type="number"
+  1273→                      min={1}
+  1274→                      max={100}
+  1275→                      value={alertThresholdInput}
+  1276→                      onChange={(e) => setAlertThresholdInput(e.target.value)}
+  1277→                      placeholder="80"
+  1278→                      className="pl-9 tabular-nums"
+  1279→                    />
+  1280→                  </div>
+  1281→                  <p className="text-xs text-muted-foreground">
+  1282→                    Saved to DB for this month: {currentMonthBudget?.alertThreshold ?? 80}%
+  1283→                  </p>
+  1284→                </div>
+  1285→              </div>
+  1286→              <Button
+  1287→                onClick={handleSaveAlerts}
+  1288→                className="bg-amber-600 hover:bg-amber-700 text-white"
+  1289→              >
+  1290→                {alertsSaved ? (
+  1291→                  <>
+  1292→                    <CheckCircle2 className="mr-2 h-4 w-4" />
+  1293→                    Alerts Saved!
+  1294→                  </>
+  1295→                ) : (
+  1296→                  <>
+  1297→                    <Save className="mr-2 h-4 w-4" />
+  1298→                    Save Alert Thresholds
+  1299→                  </>
+  1300→                )}
+  1301→              </Button>
+  1302→            </div>
+  1303→
+  1304→            <Separator />
+  1305→
+  1306→            {/* ─── Low Stock Alerts & Quick Link ────────────────────────── */}
+  1307→            <div className="space-y-4">
+  1308→              <div className="flex items-center gap-2">
+  1309→                <PackageOpen className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1310→                <h3 className="text-sm font-semibold">Low Stock Alerts</h3>
+  1311→              </div>
+  1312→              <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
+  1313→                <div className="flex items-center gap-3">
+  1314→                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1315→                    <PackageOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1316→                  </div>
+  1317→                  <div>
+  1318→                    <p className="font-semibold tabular-nums">
+  1319→                      {isLoadingBudget ? "..." : lowStockCount}
+  1320→                    </p>
+  1321→                    <p className="text-xs text-muted-foreground">
+  1322→                      Ingredients below minimum stock level
+  1323→                    </p>
+  1324→                  </div>
+  1325→                </div>
+  1326→                {onNavigate && (
+  1327→                  <Button
+  1328→                    variant="outline"
+  1329→                    size="sm"
+  1330→                    onClick={() => onNavigate("stock")}
+  1331→                    className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/20"
+  1332→                  >
+  1333→                    View Stock
+  1334→                    <ArrowRight className="ml-1 h-4 w-4" />
+  1335→                  </Button>
+  1336→                )}
+  1337→              </div>
+  1338→            </div>
+  1339→
+  1340→            <Separator />
+  1341→
+  1342→            {/* ─── Budget History Table ─────────────────────────────────── */}
+  1343→            <div className="space-y-4">
+  1344→              <div className="flex items-center gap-2">
+  1345→                <TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1346→                <h3 className="text-sm font-semibold">Budget History — Current Month</h3>
+  1347→              </div>
+  1348→              {isLoadingBudget ? (
+  1349→                <div className="h-24 rounded-lg bg-muted/50 animate-pulse" />
+  1350→              ) : (
+  1351→                <div className="rounded-lg border overflow-hidden">
+  1352→                  <table className="w-full text-sm">
+  1353→                    <thead>
+  1354→                      <tr className="bg-muted/50 border-b">
+  1355→                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Category</th>
+  1356→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Budget</th>
+  1357→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Actual</th>
+  1358→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Variance</th>
+  1359→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Status</th>
+  1360→                      </tr>
+  1361→                    </thead>
+  1362→                    <tbody>
+  1363→                      <tr className="border-b last:border-0">
+  1364→                        <td className="px-4 py-2.5 font-medium">Food Cost</td>
+  1365→                        <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(budget.monthlyFoodBudget)}</td>
+  1366→                        <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(foodSpent)}</td>
+  1367→                        <td className={`px-4 py-2.5 text-right tabular-nums ${foodRemaining >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+  1368→                          {foodRemaining >= 0 ? "+" : ""}{formatINR(foodRemaining)}
+  1369→                        </td>
+  1370→                        <td className="px-4 py-2.5 text-right">
+  1371→                          {foodOverBudget ? (
+  1372→                            <Badge variant="destructive" className="text-xs">Over</Badge>
+  1373→                          ) : foodAlertTriggered ? (
+  1374→                            <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">Warning</Badge>
+  1375→                          ) : (
+  1376→                            <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">OK</Badge>
+  1377→                          )}
+  1378→                        </td>
+  1379→                      </tr>
+  1380→                      <tr className="border-b last:border-0">
+  1381→                        <td className="px-4 py-2.5 font-medium">Operating Cost</td>
+  1382→                        <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(budget.monthlyOperatingBudget)}</td>
+  1383→                        <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(operatingSpent)}</td>
+  1384→                        <td className={`px-4 py-2.5 text-right tabular-nums ${operatingRemaining >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+  1385→                          {operatingRemaining >= 0 ? "+" : ""}{formatINR(operatingRemaining)}
+  1386→                        </td>
+  1387→                        <td className="px-4 py-2.5 text-right">
+  1388→                          {operatingOverBudget ? (
+  1389→                            <Badge variant="destructive" className="text-xs">Over</Badge>
+  1390→                          ) : operatingAlertTriggered ? (
+  1391→                            <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">Warning</Badge>
+  1392→                          ) : (
+  1393→                            <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">OK</Badge>
+  1394→                          )}
+  1395→                        </td>
+  1396→                      </tr>
+  1397→                      {costReport && (
+  1398→                        <tr className="border-b last:border-0 bg-muted/20">
+  1399→                          <td className="px-4 py-2.5 font-medium">Expenses</td>
+  1400→                          <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">—</td>
+  1401→                          <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(costReport.expenses?.total ?? 0)}</td>
+  1402→                          <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">—</td>
+  1403→                          <td className="px-4 py-2.5 text-right">
+  1404→                            <Badge variant="outline" className="text-xs border-amber-200 dark:border-amber-800">Info</Badge>
+  1405→                          </td>
+  1406→                        </tr>
+  1407→                      )}
+  1408→                      {currentMonthBudget && currentMonthBudget.totalBudget > 0 && (
+  1409→                        <tr className="border-b last:border-0 bg-amber-50/50 dark:bg-amber-900/10">
+  1410→                          <td className="px-4 py-2.5 font-medium">Total Budget</td>
+  1411→                          <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(currentMonthBudget.totalBudget)}</td>
+  1412→                          <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(operatingSpent)}</td>
+  1413→                          <td className={`px-4 py-2.5 text-right tabular-nums ${(currentMonthBudget.totalBudget - operatingSpent) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+  1414→                            {(currentMonthBudget.totalBudget - operatingSpent) >= 0 ? "+" : ""}{formatINR(currentMonthBudget.totalBudget - operatingSpent)}
+  1415→                          </td>
+  1416→                          <td className="px-4 py-2.5 text-right">
+  1417→                            {operatingSpent > currentMonthBudget.totalBudget ? (
+  1418→                              <Badge variant="destructive" className="text-xs">Over</Badge>
+  1419→                            ) : (operatingSpent / currentMonthBudget.totalBudget) * 100 >= (currentMonthBudget.alertThreshold ?? 80) ? (
+  1420→                              <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">Warning</Badge>
+  1421→                            ) : (
+  1422→                              <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">OK</Badge>
+  1423→                            )}
+  1424→                          </td>
+  1425→                        </tr>
+  1426→                      )}
+  1427→                    </tbody>
+  1428→                  </table>
+  1429→                </div>
+  1430→              )}
+  1431→            </div>
+  1432→
+  1433→            <Separator />
+  1434→
+  1435→            {/* ─── Past Months Budget History ────────────────────────────── */}
+  1436→            {budgetHistory.length > 0 && (
+  1437→              <div className="space-y-4">
+  1438→                <div className="flex items-center gap-2">
+  1439→                  <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1440→                  <h3 className="text-sm font-semibold">Budget History — Past Months</h3>
+  1441→                </div>
+  1442→                <div className="rounded-lg border overflow-hidden">
+  1443→                  <table className="w-full text-sm">
+  1444→                    <thead>
+  1445→                      <tr className="bg-muted/50 border-b">
+  1446→                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Month</th>
+  1447→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Food Budget</th>
+  1448→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Operating Budget</th>
+  1449→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Total Budget</th>
+  1450→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Alert %</th>
+  1451→                      </tr>
+  1452→                    </thead>
+  1453→                    <tbody>
+  1454→                      {budgetHistory
+  1455→                        .filter((b) => b.month !== new Date().toISOString().slice(0, 7))
+  1456→                        .slice(0, 6)
+  1457→                        .map((b) => (
+  1458→                          <tr key={b.id} className="border-b last:border-0">
+  1459→                            <td className="px-4 py-2.5 font-medium">
+  1460→                              {new Date(b.month + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+  1461→                            </td>
+  1462→                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.foodBudget)}</td>
+  1463→                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.operatingBudget)}</td>
+  1464→                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.totalBudget)}</td>
+  1465→                            <td className="px-4 py-2.5 text-right">
+  1466→                              <Badge variant="outline" className="text-xs border-amber-200 dark:border-amber-800">
+  1467→                                {b.alertThreshold}%
+  1468→                              </Badge>
+  1469→                            </td>
+  1470→                          </tr>
+  1471→                        ))}
+  1472→                      {budgetHistory.filter((b) => b.month !== new Date().toISOString().slice(0, 7)).length === 0 && (
+  1473→                        <tr>
+  1474→                          <td colSpan={5} className="px-4 py-4 text-center text-muted-foreground text-sm">
+  1475→                            No past months&apos; budget data yet. Save a budget to start tracking.
+  1476→                          </td>
+  1477→                        </tr>
+  1478→                      )}
+  1479→                    </tbody>
+  1480→                  </table>
+  1481→                </div>
+  1482→              </div>
+  1483→            )}
+  1484→          </CardContent>
+  1485→        </Card>
+  1486→
+  1487→        {/* ─── Data Backup & Restore Card ─────────────────────────────────── */}
+  1488→        <Card className="md:col-span-2 border-amber-300/70 dark:border-amber-700/40 overflow-hidden">
+  1489→          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
+  1490→            <CardHeader>
+  1491→              <div className="flex items-start justify-between gap-3 flex-wrap">
+  1492→                <div>
+  1493→                  <CardTitle className="flex items-center gap-2">
+  1494→                    <HardDriveDownload className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1495→                    Data Backup &amp; Restore
+  1496→                  </CardTitle>
+  1497→                  <CardDescription>
+  1498→                    Export all canteen data to a JSON file or restore from a previous backup
+  1499→                  </CardDescription>
+  1500→                </div>
+  1501→                {/* Last backup + total records badges */}
+  1502→                <div className="flex items-center gap-2 flex-wrap">
+  1503→                  <Badge
+  1504→                    variant="outline"
+  1505→                    className="border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+  1506→                  >
+  1507→                    <CalendarClock className="h-3 w-3 mr-1" />
+  1508→                    Last backup: {formatRelativeDate(lastBackupDate)}
+  1509→                  </Badge>
+  1510→                  <Badge
+  1511→                    variant="outline"
+  1512→                    className="border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+  1513→                  >
+  1514→                    <Database className="h-3 w-3 mr-1" />
+  1515→                    {totalRecords} records
+  1516→                  </Badge>
+  1517→                </div>
+  1518→              </div>
+  1519→            </CardHeader>
+  1520→          </div>
+  1521→
+  1522→          <CardContent className="space-y-5 pt-6">
+  1523→            {/* ─── Auto-backup reminder banner ──────────────────────────── */}
+  1524→            {backupStale && (
+  1525→              <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-900/20 px-4 py-3">
+  1526→                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+  1527→                <div className="space-y-0.5">
+  1528→                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+  1529→                    {lastBackupDate
+  1530→                      ? "It's been more than 7 days since your last backup"
+  1531→                      : "No backup has been created yet"}
+  1532→                  </p>
+  1533→                  <p className="text-xs text-amber-700 dark:text-amber-400">
+  1534→                    Regular backups protect your data. Export a backup now to keep it safe.
+  1535→                  </p>
+  1536→                </div>
+  1537→              </div>
+  1538→            )}
+  1539→
+  1540→            {/* ─── Two-column layout: Export / Import ───────────────────── */}
+  1541→            <div className="grid gap-5 md:grid-cols-2">
+  1542→              {/* Export (Backup) */}
+  1543→              <div className="rounded-xl border border-amber-200/70 dark:border-amber-800/40 bg-gradient-to-br from-amber-50/40 to-orange-50/30 dark:from-amber-900/10 dark:to-orange-900/10 p-5 space-y-4">
+  1544→                <div className="flex items-center gap-3">
+  1545→                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1546→                    <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1547→                  </div>
+  1548→                  <div>
+  1549→                    <h3 className="text-sm font-semibold">Export Data (Backup)</h3>
+  1550→                    <p className="text-xs text-muted-foreground">
+  1551→                      Download all data as a JSON file
+  1552→                    </p>
+  1553→                  </div>
+  1554→                </div>
+  1555→
+  1556→                <p className="text-xs text-muted-foreground">
+  1557→                  Exports ingredients, recipes, stock movements, daily meals, purchases, and expenses
+  1558→                  with metadata (version, export date, record counts).
+  1559→                </p>
+  1560→
+  1561→                <Button
+  1562→                  onClick={handleExport}
+  1563→                  disabled={isExporting || isImporting}
+  1564→                  className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+  1565→                >
+  1566→                  {isExporting ? (
+  1567→                    <>
+  1568→                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1569→                      Exporting...
+  1570→                    </>
+  1571→                  ) : (
+  1572→                    <>
+  1573→                      <Download className="mr-2 h-4 w-4" />
+  1574→                      Download Backup
+  1575→                    </>
+  1576→                  )}
+  1577→                </Button>
+  1578→
+  1579→                {/* Last export summary */}
+  1580→                {lastExportInfo && (
+  1581→                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800/40 dark:bg-emerald-900/20 px-3 py-2 flex items-center gap-2">
+  1582→                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+  1583→                    <div className="text-xs">
+  1584→                      <p className="font-medium text-emerald-700 dark:text-emerald-300">
+  1585→                        Last export: {formatBytes(lastExportInfo.size)}
+  1586→                      </p>
+  1587→                      <p className="text-emerald-600/80 dark:text-emerald-400/80 tabular-nums">
+  1588→                        {lastExportInfo.counts.total} records •{" "}
+  1589→                        {lastExportInfo.counts.ingredients} ingredients •{" "}
+  1590→                        {lastExportInfo.counts.recipes} recipes •{" "}
+  1591→                        {lastExportInfo.counts.purchases} purchases •{" "}
+  1592→                        {lastExportInfo.counts.expenses} expenses
+  1593→                      </p>
+  1594→                    </div>
+  1595→                  </div>
+  1596→                )}
+  1597→              </div>
+  1598→
+  1599→              {/* Import (Restore) */}
+  1600→              <div className="rounded-xl border-2 border-amber-300/80 dark:border-amber-700/50 bg-gradient-to-br from-amber-50/30 to-orange-50/20 dark:from-amber-900/5 dark:to-orange-900/5 p-5 space-y-4">
+  1601→                <div className="flex items-center gap-3">
+  1602→                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1603→                    <Upload className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1604→                  </div>
+  1605→                  <div>
+  1606→                    <h3 className="text-sm font-semibold">Import Data (Restore)</h3>
+  1607→                    <p className="text-xs text-muted-foreground">
+  1608→                      Restore from a previously exported backup file
+  1609→                    </p>
+  1610→                  </div>
+  1611→                </div>
+  1612→
+  1613→                <div className="flex items-start gap-2 rounded-lg bg-amber-100/60 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/50 px-3 py-2">
+  1614→                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+  1615→                  <p className="text-xs text-amber-800 dark:text-amber-300">
+  1616→                    <span className="font-semibold">Warning:</span> Importing will{" "}
+  1617→                    <span className="font-bold">REPLACE ALL</span> current data with the contents
+  1618→                    of the selected file. This action cannot be undone.
+  1619→                  </p>
+  1620→                </div>
+  1621→
+  1622→                {/* Hidden file input triggered by button */}
+  1623→                <input
+  1624→                  ref={fileInputRef}
+  1625→                  type="file"
+  1626→                  accept=".json,application/json"
+  1627→                  onChange={handleFileSelected}
+  1628→                  className="hidden"
+  1629→                  aria-hidden="true"
+  1630→                />
+  1631→
+  1632→                <Button
+  1633→                  onClick={() => fileInputRef.current?.click()}
+  1634→                  disabled={isExporting || isImporting}
+  1635→                  variant="outline"
+  1636→                  className="w-full border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+  1637→                >
+  1638→                  <FileUp className="mr-2 h-4 w-4" />
+  1639→                  Select Backup File
+  1640→                </Button>
+  1641→
+  1642→                {/* Import progress */}
+  1643→                {isImporting && (
+  1644→                  <div className="space-y-2">
+  1645→                    <div className="flex items-center justify-between text-xs">
+  1646→                      <span className="text-muted-foreground flex items-center gap-1.5">
+  1647→                        <Loader2 className="h-3 w-3 animate-spin" />
+  1648→                        Restoring data...
+  1649→                      </span>
+  1650→                      <span className="font-medium tabular-nums">{importProgress}%</span>
+  1651→                    </div>
+  1652→                    <Progress value={importProgress} className="h-2 [&>div]:bg-amber-500" />
+  1653→                  </div>
+  1654→                )}
+  1655→
+  1656→                {/* Import error */}
+  1657→                {importError && !isImporting && (
+  1658→                  <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20 px-3 py-2">
+  1659→                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+  1660→                    <p className="text-xs text-red-700 dark:text-red-300">{importError}</p>
+  1661→                  </div>
+  1662→                )}
+  1663→
+  1664→                {/* Import success */}
+  1665→                {importSuccess && !isImporting && (
+  1666→                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800/40 dark:bg-emerald-900/20 px-3 py-2 flex items-start gap-2">
+  1667→                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+  1668→                    <div className="text-xs">
+  1669→                      <p className="font-medium text-emerald-700 dark:text-emerald-300">
+  1670→                        Restore complete — {importSuccess.counts.total} records imported
+  1671→                      </p>
+  1672→                      <p className="text-emerald-600/80 dark:text-emerald-400/80 tabular-nums">
+  1673→                        {importSuccess.counts.ingredients} ingredients •{" "}
+  1674→                        {importSuccess.counts.recipes} recipes •{" "}
+  1675→                        {importSuccess.counts.purchases} purchases •{" "}
+  1676→                        {importSuccess.counts.expenses} expenses
+  1677→                      </p>
+  1678→                    </div>
+  1679→                  </div>
+  1680→                )}
+  1681→              </div>
+  1682→            </div>
+  1683→
+  1684→            {/* ─── Restore Confirmation Dialog ──────────────────────────── */}
+  1685→            <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+  1686→              <AlertDialogContent>
+  1687→                <AlertDialogHeader>
+  1688→                  <AlertDialogTitle className="flex items-center gap-2">
+  1689→                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1690→                    Confirm Data Restore
+  1691→                  </AlertDialogTitle>
+  1692→                  <AlertDialogDescription asChild>
+  1693→                    <div className="space-y-3 text-sm">
+  1694→                      <p>
+  1695→                        You are about to restore data from{" "}
+  1696→                        <span className="font-semibold text-foreground">
+  1697→                          {pendingImport?.fileName}
+  1698→                        </span>{" "}
+  1699→                        ({pendingImport ? formatBytes(pendingImport.fileSize) : "—"}).
+  1700→                      </p>
+  1701→                      {pendingImport && (
+  1702→                        <div className="rounded-md border bg-muted/40 p-3 space-y-1.5">
+  1703→                          <p className="font-medium text-foreground text-xs uppercase tracking-wide">
+  1704→                            Records in backup
+  1705→                          </p>
+  1706→                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs tabular-nums">
+  1707→                            <span className="text-muted-foreground">Ingredients:</span>
+  1708→                            <span className="font-medium">{pendingImport.file.metadata.counts.ingredients}</span>
+  1709→                            <span className="text-muted-foreground">Recipes:</span>
+  1710→                            <span className="font-medium">{pendingImport.file.metadata.counts.recipes}</span>
+  1711→                            <span className="text-muted-foreground">Stock Movements:</span>
+  1712→                            <span className="font-medium">{pendingImport.file.metadata.counts.stockMovements}</span>
+  1713→                            <span className="text-muted-foreground">Daily Meals:</span>
+  1714→                            <span className="font-medium">{pendingImport.file.metadata.counts.dailyMeals}</span>
+  1715→                            <span className="text-muted-foreground">Purchases:</span>
+  1716→                            <span className="font-medium">{pendingImport.file.metadata.counts.purchases}</span>
+  1717→                            <span className="text-muted-foreground">Expenses:</span>
+  1718→                            <span className="font-medium">{pendingImport.file.metadata.counts.expenses}</span>
+  1719→                            <span className="text-muted-foreground font-semibold">Total:</span>
+  1720→                            <span className="font-bold">{pendingImport.file.metadata.counts.total}</span>
+  1721→                          </div>
+  1722→                        </div>
+  1723→                      )}
+  1724→                      <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-3 py-2">
+  1725→                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+  1726→                        <p className="text-amber-800 dark:text-amber-300">
+  1727→                          This will <span className="font-bold">permanently delete</span> all current
+  1728→                          data and replace it with the contents of this backup file. This action
+  1729→                          cannot be undone.
+  1730→                        </p>
+  1731→                      </div>
+  1732→                    </div>
+  1733→                  </AlertDialogDescription>
+  1734→                </AlertDialogHeader>
+  1735→                <AlertDialogFooter>
+  1736→                  <AlertDialogCancel onClick={handleCancelImport}>Cancel</AlertDialogCancel>
+  1737→                  <AlertDialogAction
+  1738→                    onClick={handleConfirmImport}
+  1739→                    className="bg-amber-600 hover:bg-amber-700 text-white"
+  1740→                  >
+  1741→                    <FileJson className="mr-2 h-4 w-4" />
+  1742→                    Yes, restore data
+  1743→                  </AlertDialogAction>
+  1744→                </AlertDialogFooter>
+  1745→              </AlertDialogContent>
+  1746→            </AlertDialog>
+  1747→
+  1748→            {/* ─── Info footer ──────────────────────────────────────────── */}
+  1749→            <div className="flex items-start gap-2 rounded-lg bg-muted/40 border px-3 py-2.5">
+  1750→              <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+  1751→              <p className="text-xs text-muted-foreground">
+  1752→                Backup files contain all canteen data including IDs and timestamps, allowing a
+  1753→                complete restore to the exact state at export time. Keep your backups in a safe
+  1754→                location — they may contain sensitive financial information.
+  1755→              </p>
+  1756→            </div>
+  1757→          </CardContent>
+  1758→        </Card>
+  1759→
+  1760→        {/* ─── Canteen Information Card ─────────────────────────────────── */}
+  1761→        <Card className="border-amber-200/60 dark:border-amber-800/30">
+  1762→          <CardHeader>
+  1763→            <CardTitle className="flex items-center gap-2">
+  1764→              <Building2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1765→              Canteen Information
+  1766→            </CardTitle>
+  1767→            <CardDescription>
+  1768→              Current canteen details and contract information
+  1769→            </CardDescription>
+  1770→          </CardHeader>
+  1771→          <CardContent>
+  1772→            <div className="space-y-4">
+  1773→              <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+  1774→                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1775→                  <Building2 className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1776→                </div>
+  1777→                <div>
+  1778→                  <p className="text-xs text-muted-foreground">Canteen Name</p>
+  1779→                  <p className="font-semibold">{canteenInfo.name}</p>
+  1780→                </div>
+  1781→              </div>
+  1782→
+  1783→              <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+  1784→                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1785→                  <MapPin className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1786→                </div>
+  1787→                <div>
+  1788→                  <p className="text-xs text-muted-foreground">Location</p>
+  1789→                  <p className="font-semibold">{canteenInfo.location}</p>
+  1790→                </div>
+  1791→              </div>
+  1792→
+  1793→              <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+  1794→                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1795→                  <Users className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1796→                </div>
+  1797→                <div>
+  1798→                  <p className="text-xs text-muted-foreground">Employee Count</p>
+  1799→                  <p className="font-semibold">{canteenInfo.employeeCount}</p>
+  1800→                </div>
+  1801→              </div>
+  1802→
+  1803→              <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+  1804→                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1805→                  <FileText className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1806→                </div>
+  1807→                <div>
+  1808→                  <p className="text-xs text-muted-foreground">Contract Type</p>
+  1809→                  <Badge
+  1810→                    variant="secondary"
+  1811→                    className="bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+  1812→                  >
+  1813→                    {canteenInfo.contractType}
+  1814→                  </Badge>
+  1815→                </div>
+  1816→              </div>
+  1817→            </div>
+  1818→          </CardContent>
+  1819→        </Card>
+  1820→
+  1821→        {/* ─── Quick Actions Card ───────────────────────────────────────── */}
+  1822→        <Card className="border-amber-200/60 dark:border-amber-800/30">
+  1823→          <CardHeader>
+  1824→            <CardTitle className="flex items-center gap-2">
+  1825→              <Database className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1826→              Quick Actions
+  1827→            </CardTitle>
+  1828→            <CardDescription>
+  1829→              Manage database content with sample data or clear existing records
+  1830→            </CardDescription>
+  1831→          </CardHeader>
+  1832→          <CardContent className="space-y-4">
+  1833→            {/* Seed Sample Data */}
+  1834→            <div className="rounded-lg border p-4 space-y-3">
+  1835→              <div className="flex items-start justify-between gap-3">
+  1836→                <div className="space-y-1">
+  1837→                  <p className="font-medium text-sm">Seed Sample Data</p>
+  1838→                  <p className="text-xs text-muted-foreground">
+  1839→                    Populate the database with sample ingredients, recipes, purchases, and expenses for testing
+  1840→                  </p>
+  1841→                </div>
+  1842→              </div>
+  1843→              <Button
+  1844→                onClick={handleSeedData}
+  1845→                disabled={isSeeding}
+  1846→                className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+  1847→              >
+  1848→                {isSeeding ? (
+  1849→                  <>
+  1850→                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1851→                    Seeding Database...
+  1852→                  </>
+  1853→                ) : seedSuccess ? (
+  1854→                  <>
+  1855→                    <CheckCircle2 className="mr-2 h-4 w-4" />
+  1856→                    Data Seeded Successfully!
+  1857→                  </>
+  1858→                ) : (
+  1859→                  <>
+  1860→                    <Database className="mr-2 h-4 w-4" />
+  1861→                    Seed Sample Data
+  1862→                  </>
+  1863→                )}
+  1864→              </Button>
+  1865→            </div>
+  1866→
+  1867→            {/* Clear All Data */}
+  1868→            <div className="rounded-lg border border-destructive/30 p-4 space-y-3">
+  1869→              <div className="flex items-start justify-between gap-3">
+  1870→                <div className="space-y-1">
+  1871→                  <p className="font-medium text-sm text-destructive">Clear All Data</p>
+  1872→                  <p className="text-xs text-muted-foreground">
+  1873→                    Permanently remove all ingredients, recipes, purchases, and expenses from the database
+  1874→                  </p>
+  1875→                </div>
+  1876→                <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+  1877→              </div>
+  1878→              <AlertDialog>
+  1879→                <AlertDialogTrigger asChild>
+  1880→                  <Button
+  1881→                    variant="destructive"
+  1882→                    className="w-full"
+  1883→                    disabled={isSeeding}
+  1884→                  >
+  1885→                    <Trash2 className="mr-2 h-4 w-4" />
+  1886→                    Clear All Data
+  1887→                  </Button>
+  1888→                </AlertDialogTrigger>
+  1889→                <AlertDialogContent>
+  1890→                  <AlertDialogHeader>
+  1891→                    <AlertDialogTitle className="flex items-center gap-2">
+  1892→                      <AlertTriangle className="h-5 w-5 text-destructive" />
+  1893→                      Are you absolutely sure?
+  1894→                    </AlertDialogTitle>
+  1895→                    <AlertDialogDescription>
+  1896→                      This action cannot be undone. This will permanently delete all
+  1897→                      ingredients, recipes, purchases, expenses, stock movements, and
+  1898→                      daily meal records from the database.
+  1899→                    </AlertDialogDescription>
+  1900→                  </AlertDialogHeader>
+  1901→                  <AlertDialogFooter>
+  1902→                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+  1903→                    <AlertDialogAction
+  1904→                      onClick={handleClearData}
+  1905→                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+  1906→                    >
+  1907→                      Yes, clear all data
+  1908→                    </AlertDialogAction>
+  1909→                  </AlertDialogFooter>
+  1910→                </AlertDialogContent>
+  1911→              </AlertDialog>
+  1912→              {clearSuccess && (
+  1913→                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+  1914→                  <CheckCircle2 className="h-4 w-4" />
+  1915→                  All data cleared successfully
+  1916→                </div>
+  1917→              )}
+  1918→            </div>
+  1919→          </CardContent>
+  1920→        </Card>
+  1921→
+  1922→        {/* ─── Data Summary Card ────────────────────────────────────────── */}
+  1923→        <Card className="border-amber-200/60 dark:border-amber-800/30">
+  1924→          <CardHeader>
+  1925→            <div className="flex items-center justify-between">
+  1926→              <div>
+  1927→                <CardTitle className="flex items-center gap-2">
+  1928→                  <Layers className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1929→                  Data Summary
+  1930→                </CardTitle>
+  1931→                <CardDescription>
+  1932→                  Overview of records across all modules
+  1933→                </CardDescription>
+  1934→              </div>
+  1935→              <Button
+  1936→                variant="outline"
+  1937→                size="sm"
+  1938→                onClick={fetchDataSummary}
+  1939→                disabled={isLoadingSummary}
+  1940→                className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/20"
+  1941→              >
+  1942→                <RefreshCw
+  1943→                  className={`h-4 w-4 ${isLoadingSummary ? "animate-spin" : ""}`}
+  1944→                />
+  1945→              </Button>
+  1946→            </div>
+  1947→          </CardHeader>
+  1948→          <CardContent>
+  1949→            {isLoadingSummary ? (
+  1950→              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+  1951→                {[1, 2, 3, 4, 5].map((i) => (
+  1952→                  <div
+  1953→                    key={i}
+  1954→                    className="h-20 rounded-lg bg-muted/50 animate-pulse"
+  1955→                  />
+  1956→                ))}
+  1957→              </div>
+  1958→            ) : (
+  1959→              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+  1960→                <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+  1961→                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1962→                    <Package className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1963→                  </div>
+  1964→                  <div>
+  1965→                    <p className="text-2xl font-bold">{dataSummary.totalIngredients}</p>
+  1966→                    <p className="text-xs text-muted-foreground">Ingredients</p>
+  1967→                  </div>
+  1968→                </div>
+  1969→
+  1970→                <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+  1971→                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1972→                    <ChefHat className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1973→                  </div>
+  1974→                  <div>
+  1975→                    <p className="text-2xl font-bold">{dataSummary.totalRecipes}</p>
+  1976→                    <p className="text-xs text-muted-foreground">Recipes</p>
+  1977→                  </div>
+  1978→                </div>
+  1979→
+  1980→                <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+  1981→                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1982→                    <ShoppingCart className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1983→                  </div>
+  1984→                  <div>
+  1985→                    <p className="text-2xl font-bold">{dataSummary.totalPurchases}</p>
+  1986→                    <p className="text-xs text-muted-foreground">Purchases</p>
+  1987→                  </div>
+  1988→                </div>
+  1989→
+  1990→                <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+  1991→                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1992→                    <Receipt className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1993→                  </div>
+  1994→                  <div>
+  1995→                    <p className="text-2xl font-bold">{dataSummary.totalExpenses}</p>
+  1996→                    <p className="text-xs text-muted-foreground">Expenses</p>
+  1997→                  </div>
+  1998→                </div>
+  1999→
+  2000→                <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+
+[showing lines 1-2000 of 2113; use offset=2001 with limit to continue reading]

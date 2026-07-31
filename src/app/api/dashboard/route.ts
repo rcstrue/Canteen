@@ -147,6 +147,42 @@ export async function GET(_request: NextRequest) {
       ([category, amount]) => ({ category, amount })
     )
 
+    // 10. 7-day cost trend (daily food cost for last 7 days)
+    const sevenDaysAgo = new Date(todayStart)
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6) // inclusive of today
+
+    const last7DaysMovements = await db.stockMovement.findMany({
+      where: {
+        type: 'PURCHASE',
+        date: { gte: sevenDaysAgo },
+      },
+      select: {
+        date: true,
+        totalAmount: true,
+      },
+    })
+
+    // Aggregate by day
+    const costByDay = new Map<string, number>()
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(todayStart)
+      d.setDate(d.getDate() - i)
+      const key = d.toISOString().split('T')[0]
+      costByDay.set(key, 0)
+    }
+
+    for (const m of last7DaysMovements) {
+      const key = m.date.toISOString().split('T')[0]
+      if (costByDay.has(key)) {
+        costByDay.set(key, (costByDay.get(key) || 0) + m.totalAmount)
+      }
+    }
+
+    const costTrend = Array.from(costByDay.entries()).map(([date, cost]) => ({
+      date,
+      cost,
+    }))
+
     return NextResponse.json({
       foodCost: {
         today: costToday._sum.totalAmount || 0,
@@ -166,6 +202,7 @@ export async function GET(_request: NextRequest) {
         breakdown: expenseBreakdown,
       },
       totalOperatingCost: totalFoodCostMonth + (expenseMonth._sum.amount || 0),
+      costTrend,
     })
   } catch (error) {
     console.error('Error fetching dashboard:', error)

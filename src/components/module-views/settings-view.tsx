@@ -25,7 +25,31 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/components/auth/auth-provider";
 import {
   Settings,
   Building2,
@@ -60,6 +84,10 @@ import {
   CalendarClock,
   HardDriveDownload,
   Truck,
+  UserPlus,
+  Pencil,
+  UserCircle,
+  KeyRound,
 } from "lucide-react";
 import type { ViewId } from "@/components/app-sidebar";
 
@@ -90,6 +118,17 @@ interface AlertSettings {
   operatingThreshold: number;
 }
 
+interface BudgetRecord {
+  id: string;
+  month: string;
+  foodBudget: number;
+  operatingBudget: number;
+  totalBudget: number;
+  alertThreshold: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface DashboardData {
   foodCost: { today: number; week: number; month: number };
   meals: { today: number; month: number };
@@ -104,6 +143,24 @@ interface CostReportData {
   totalOperatingCost: number;
 }
 
+// ─── User Management Types ────────────────────────────────────────────────────
+
+interface UserRecord {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface UserFormData {
+  name: string;
+  email: string;
+  role: string;
+  password: string;
+}
+
 // ─── Backup / Restore Types ───────────────────────────────────────────────────
 
 interface BackupCounts {
@@ -115,6 +172,8 @@ interface BackupCounts {
   purchases: number;
   purchaseItems?: number;
   expenses: number;
+  suppliers?: number;
+  users?: number;
   total: number;
 }
 
@@ -254,7 +313,7 @@ function validateBackupFile(parsed: unknown): {
     return { valid: false, error: 'Missing "data" object.' };
   }
   // At least one collection must be an array
-  const collections = ["ingredients", "recipes", "stockMovements", "dailyMeals", "purchases", "expenses"];
+  const collections = ["ingredients", "recipes", "stockMovements", "dailyMeals", "purchases", "expenses", "suppliers", "users"];
   const hasAny = collections.some((k) => Array.isArray((data as Record<string, unknown>)[k]));
   if (!hasAny) {
     return { valid: false, error: "Backup contains no recognizable data collections." };
@@ -371,11 +430,17 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
   const [alertsSaved, setAlertsSaved] = useState(false);
   const [costReport, setCostReport] = useState<CostReportData | null>(null);
 
+  // DB-backed budget state
+  const [budgetHistory, setBudgetHistory] = useState<BudgetRecord[]>([]);
+  const [currentMonthBudget, setCurrentMonthBudget] = useState<BudgetRecord | null>(null);
+
   // Editable budget inputs
   const [foodBudgetInput, setFoodBudgetInput] = useState("");
   const [operatingBudgetInput, setOperatingBudgetInput] = useState("");
+  const [totalBudgetInput, setTotalBudgetInput] = useState("");
   const [foodThresholdInput, setFoodThresholdInput] = useState("");
   const [operatingThresholdInput, setOperatingThresholdInput] = useState("");
+  const [alertThresholdInput, setAlertThresholdInput] = useState("");
 
   // Backup / Restore state
   const { toast } = useToast();
@@ -400,6 +465,28 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
     counts: BackupCounts;
   } | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // User Management state
+  const { user: currentUser } = useAuth();
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
+  const [addUserOpen, setAddUserOpen] = useState(false);
+  const [editUserOpen, setEditUserOpen] = useState(false);
+  const [deleteUserOpen, setDeleteUserOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserRecord | null>(null);
+  const [isSavingUser, setIsSavingUser] = useState(false);
+  const [addUserForm, setAddUserForm] = useState<UserFormData>({
+    name: "",
+    email: "",
+    role: "staff",
+    password: "",
+  });
+  const [editUserForm, setEditUserForm] = useState<UserFormData>({
+    name: "",
+    email: "",
+    role: "staff",
+    password: "",
+  });
 
   // Load canteen info from localStorage
   useEffect(() => {
@@ -427,7 +514,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
     }
   }, []);
 
-  // Load budget & alerts from localStorage
+  // Load budget & alerts from localStorage (fallback) and DB
   useEffect(() => {
     try {
       const storedBudget = localStorage.getItem(BUDGET_KEY);
@@ -436,10 +523,12 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         setBudget(parsed);
         setFoodBudgetInput(String(parsed.monthlyFoodBudget));
         setOperatingBudgetInput(String(parsed.monthlyOperatingBudget));
+        setTotalBudgetInput(String(parsed.monthlyOperatingBudget)); // Default total = operating
       } else {
         localStorage.setItem(BUDGET_KEY, JSON.stringify(DEFAULT_BUDGET));
         setFoodBudgetInput(String(DEFAULT_BUDGET.monthlyFoodBudget));
         setOperatingBudgetInput(String(DEFAULT_BUDGET.monthlyOperatingBudget));
+        setTotalBudgetInput(String(DEFAULT_BUDGET.monthlyOperatingBudget));
       }
 
       const storedAlerts = localStorage.getItem(ALERTS_KEY);
@@ -448,24 +537,27 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         setAlertSettings(parsed);
         setFoodThresholdInput(String(parsed.foodThreshold));
         setOperatingThresholdInput(String(parsed.operatingThreshold));
+        setAlertThresholdInput(String(parsed.foodThreshold));
       } else {
         localStorage.setItem(ALERTS_KEY, JSON.stringify(DEFAULT_ALERTS));
         setFoodThresholdInput(String(DEFAULT_ALERTS.foodThreshold));
         setOperatingThresholdInput(String(DEFAULT_ALERTS.operatingThreshold));
+        setAlertThresholdInput(String(DEFAULT_ALERTS.foodThreshold));
       }
     } catch {
       // Ignore localStorage errors
     }
   }, []);
 
-  // Fetch dashboard data for budget tracking
+  // Fetch dashboard data for budget tracking (including DB budgets)
   const fetchBudgetData = useCallback(async () => {
     setIsLoadingBudget(true);
     try {
-      const [dashboardRes, lowStockRes, costRes] = await Promise.all([
+      const [dashboardRes, lowStockRes, costRes, budgetsRes] = await Promise.all([
         fetch("/api/dashboard"),
         fetch("/api/ingredients?lowStock=true"),
         fetch("/api/reports/cost?period=month"),
+        fetch("/api/budgets"),
       ]);
 
       if (dashboardRes.ok) {
@@ -482,6 +574,32 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         const data = await costRes.json();
         setCostReport(data);
       }
+
+      if (budgetsRes.ok) {
+        const budgets = (await budgetsRes.json()) as BudgetRecord[];
+        setBudgetHistory(budgets);
+        // Find current month's budget
+        const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const currentBudget = budgets.find((b) => b.month === currentMonth);
+        if (currentBudget) {
+          setCurrentMonthBudget(currentBudget);
+          // Override localStorage values with DB values
+          setBudget({
+            monthlyFoodBudget: currentBudget.foodBudget,
+            monthlyOperatingBudget: currentBudget.operatingBudget,
+          });
+          setFoodBudgetInput(String(currentBudget.foodBudget));
+          setOperatingBudgetInput(String(currentBudget.operatingBudget));
+          setTotalBudgetInput(String(currentBudget.totalBudget));
+          setAlertThresholdInput(String(currentBudget.alertThreshold));
+          setAlertSettings({
+            foodThreshold: currentBudget.alertThreshold,
+            operatingThreshold: currentBudget.alertThreshold,
+          });
+          setFoodThresholdInput(String(currentBudget.alertThreshold));
+          setOperatingThresholdInput(String(currentBudget.alertThreshold));
+        }
+      }
     } catch (error) {
       console.error("Error fetching budget data:", error);
     } finally {
@@ -493,19 +611,49 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
     fetchBudgetData();
   }, [fetchBudgetData]);
 
-  // Save budget
-  const handleSaveBudget = () => {
+  // Save budget (to DB + localStorage)
+  const handleSaveBudget = async () => {
     const foodVal = parseFloat(foodBudgetInput) || DEFAULT_BUDGET.monthlyFoodBudget;
     const opVal = parseFloat(operatingBudgetInput) || DEFAULT_BUDGET.monthlyOperatingBudget;
+    const totalVal = parseFloat(totalBudgetInput) || opVal;
     const newBudget: BudgetData = { monthlyFoodBudget: foodVal, monthlyOperatingBudget: opVal };
     setBudget(newBudget);
     localStorage.setItem(BUDGET_KEY, JSON.stringify(newBudget));
+
+    // Save to DB via API
+    try {
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const alertTh = parseFloat(alertThresholdInput) || 80;
+      const res = await fetch("/api/budgets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          month: currentMonth,
+          foodBudget: foodVal,
+          operatingBudget: opVal,
+          totalBudget: totalVal,
+          alertThreshold: alertTh,
+        }),
+      });
+      if (res.ok) {
+        const saved = await res.json();
+        setCurrentMonthBudget(saved);
+        // Refresh budget history
+        const budgetsRes = await fetch("/api/budgets");
+        if (budgetsRes.ok) {
+          setBudgetHistory((await budgetsRes.json()) as BudgetRecord[]);
+        }
+      }
+    } catch (error) {
+      console.error("Error saving budget to DB:", error);
+    }
+
     setBudgetSaved(true);
     setTimeout(() => setBudgetSaved(false), 3000);
   };
 
-  // Save alerts
-  const handleSaveAlerts = () => {
+  // Save alerts (to DB + localStorage)
+  const handleSaveAlerts = async () => {
     const foodTh = parseFloat(foodThresholdInput) || DEFAULT_ALERTS.foodThreshold;
     const opTh = parseFloat(operatingThresholdInput) || DEFAULT_ALERTS.operatingThreshold;
     const newAlerts: AlertSettings = {
@@ -514,6 +662,26 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
     };
     setAlertSettings(newAlerts);
     localStorage.setItem(ALERTS_KEY, JSON.stringify(newAlerts));
+
+    // Update DB budget record with alert threshold
+    try {
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const alertTh = parseFloat(alertThresholdInput) || 80;
+      await fetch("/api/budgets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          month: currentMonth,
+          foodBudget: budget.monthlyFoodBudget,
+          operatingBudget: budget.monthlyOperatingBudget,
+          totalBudget: currentMonthBudget?.totalBudget ?? budget.monthlyOperatingBudget,
+          alertThreshold: alertTh,
+        }),
+      });
+    } catch (error) {
+      console.error("Error saving alert thresholds to DB:", error);
+    }
+
     setAlertsSaved(true);
     setTimeout(() => setAlertsSaved(false), 3000);
   };
@@ -554,6 +722,170 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
   useEffect(() => {
     fetchDataSummary();
   }, [fetchDataSummary]);
+
+  // ─── User Management ──────────────────────────────────────────────────────
+  const fetchUsers = useCallback(async () => {
+    setIsLoadingUsers(true);
+    try {
+      const res = await fetch("/api/users");
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error);
+    } finally {
+      setIsLoadingUsers(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const handleAddUser = async () => {
+    if (!addUserForm.name || !addUserForm.email || !addUserForm.password) {
+      toast({
+        title: "Missing fields",
+        description: "Name, email, and password are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSavingUser(true);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(addUserForm),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to create user");
+      }
+      setAddUserOpen(false);
+      setAddUserForm({ name: "", email: "", role: "staff", password: "" });
+      await fetchUsers();
+      toast({ title: "User created", description: "The new user has been added successfully." });
+    } catch (error) {
+      toast({
+        title: "Failed to create user",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  const handleEditUser = async () => {
+    if (!selectedUser) return;
+    if (!editUserForm.name || !editUserForm.email) {
+      toast({
+        title: "Missing fields",
+        description: "Name and email are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setIsSavingUser(true);
+    try {
+      const payload: Record<string, string> = {
+        name: editUserForm.name,
+        email: editUserForm.email,
+        role: editUserForm.role,
+      };
+      if (editUserForm.password.trim().length > 0) {
+        payload.password = editUserForm.password;
+      }
+      const res = await fetch(`/api/users/${selectedUser.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to update user");
+      }
+      setEditUserOpen(false);
+      setSelectedUser(null);
+      setEditUserForm({ name: "", email: "", role: "staff", password: "" });
+      await fetchUsers();
+      toast({ title: "User updated", description: "User details have been saved." });
+    } catch (error) {
+      toast({
+        title: "Failed to update user",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!selectedUser) return;
+    setIsSavingUser(true);
+    try {
+      const res = await fetch(`/api/users/${selectedUser.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to delete user");
+      }
+      setDeleteUserOpen(false);
+      setSelectedUser(null);
+      await fetchUsers();
+      toast({ title: "User deleted", description: "The user has been removed." });
+    } catch (error) {
+      toast({
+        title: "Failed to delete user",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  const openEditDialog = (user: UserRecord) => {
+    setSelectedUser(user);
+    setEditUserForm({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      password: "",
+    });
+    setEditUserOpen(true);
+  };
+
+  const openDeleteDialog = (user: UserRecord) => {
+    setSelectedUser(user);
+    setDeleteUserOpen(true);
+  };
+
+  const getRoleBadgeClass = (role: string) => {
+    switch (role) {
+      case "admin":
+        return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800";
+      case "store":
+        return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800";
+      case "kitchen":
+        return "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800";
+      default:
+        return "bg-stone-100 text-stone-800 dark:bg-stone-900/30 dark:text-stone-400 border-stone-200 dark:border-stone-800";
+    }
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case "admin": return "Admin";
+      case "store": return "Store";
+      case "kitchen": return "Kitchen";
+      default: return "Staff";
+    }
+  };
 
   // Seed sample data
   const handleSeedData = async () => {
@@ -1012,7 +1344,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                 <Target className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                 <h3 className="text-sm font-semibold">Monthly Budget Setup</h3>
               </div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="foodBudget" className="text-xs text-muted-foreground">
                     Food Budget (₹)
@@ -1051,6 +1383,25 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                     Current: {formatINR(budget.monthlyOperatingBudget)}
                   </p>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="totalBudget" className="text-xs text-muted-foreground">
+                    Total Budget (₹)
+                  </Label>
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="totalBudget"
+                      type="number"
+                      value={totalBudgetInput}
+                      onChange={(e) => setTotalBudgetInput(e.target.value)}
+                      placeholder="750000"
+                      className="pl-9 tabular-nums"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Current: {formatINR(currentMonthBudget?.totalBudget ?? budget.monthlyOperatingBudget)}
+                  </p>
+                </div>
               </div>
               <Button
                 onClick={handleSaveBudget}
@@ -1081,7 +1432,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
               <p className="text-xs text-muted-foreground">
                 Get notified when spending reaches a certain percentage of your budget.
               </p>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="foodThreshold" className="text-xs text-muted-foreground">
                     Food Budget Alert (%)
@@ -1143,6 +1494,27 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                       </Badge>
                     )}
                   </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="alertThreshold" className="text-xs text-muted-foreground">
+                    Default Alert Threshold (%)
+                  </Label>
+                  <div className="relative">
+                    <Bell className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="alertThreshold"
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={alertThresholdInput}
+                      onChange={(e) => setAlertThresholdInput(e.target.value)}
+                      placeholder="80"
+                      className="pl-9 tabular-nums"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Saved to DB for this month: {currentMonthBudget?.alertThreshold ?? 80}%
+                  </p>
                 </div>
               </div>
               <Button
@@ -1267,11 +1639,82 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                           </td>
                         </tr>
                       )}
+                      {currentMonthBudget && currentMonthBudget.totalBudget > 0 && (
+                        <tr className="border-b last:border-0 bg-amber-50/50 dark:bg-amber-900/10">
+                          <td className="px-4 py-2.5 font-medium">Total Budget</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(currentMonthBudget.totalBudget)}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(operatingSpent)}</td>
+                          <td className={`px-4 py-2.5 text-right tabular-nums ${(currentMonthBudget.totalBudget - operatingSpent) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                            {(currentMonthBudget.totalBudget - operatingSpent) >= 0 ? "+" : ""}{formatINR(currentMonthBudget.totalBudget - operatingSpent)}
+                          </td>
+                          <td className="px-4 py-2.5 text-right">
+                            {operatingSpent > currentMonthBudget.totalBudget ? (
+                              <Badge variant="destructive" className="text-xs">Over</Badge>
+                            ) : (operatingSpent / currentMonthBudget.totalBudget) * 100 >= (currentMonthBudget.alertThreshold ?? 80) ? (
+                              <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">Warning</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">OK</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
               )}
             </div>
+
+            <Separator />
+
+            {/* ─── Past Months Budget History ────────────────────────────── */}
+            {budgetHistory.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <h3 className="text-sm font-semibold">Budget History — Past Months</h3>
+                </div>
+                <div className="rounded-lg border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/50 border-b">
+                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Month</th>
+                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Food Budget</th>
+                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Operating Budget</th>
+                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Total Budget</th>
+                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Alert %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {budgetHistory
+                        .filter((b) => b.month !== new Date().toISOString().slice(0, 7))
+                        .slice(0, 6)
+                        .map((b) => (
+                          <tr key={b.id} className="border-b last:border-0">
+                            <td className="px-4 py-2.5 font-medium">
+                              {new Date(b.month + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+                            </td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.foodBudget)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.operatingBudget)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.totalBudget)}</td>
+                            <td className="px-4 py-2.5 text-right">
+                              <Badge variant="outline" className="text-xs border-amber-200 dark:border-amber-800">
+                                {b.alertThreshold}%
+                              </Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      {budgetHistory.filter((b) => b.month !== new Date().toISOString().slice(0, 7)).length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-4 py-4 text-center text-muted-foreground text-sm">
+                            No past months&apos; budget data yet. Save a budget to start tracking.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -1465,6 +1908,8 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                         {importSuccess.counts.recipes} recipes •{" "}
                         {importSuccess.counts.purchases} purchases •{" "}
                         {importSuccess.counts.expenses} expenses
+                        {importSuccess.counts.suppliers ? ` • ${importSuccess.counts.suppliers} suppliers` : ""}
+                        {importSuccess.counts.users ? ` • ${importSuccess.counts.users} users` : ""}
                       </p>
                     </div>
                   </div>
@@ -1507,6 +1952,18 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                             <span className="font-medium">{pendingImport.file.metadata.counts.purchases}</span>
                             <span className="text-muted-foreground">Expenses:</span>
                             <span className="font-medium">{pendingImport.file.metadata.counts.expenses}</span>
+                            {pendingImport.file.metadata.counts.suppliers ? (
+                              <>
+                                <span className="text-muted-foreground">Suppliers:</span>
+                                <span className="font-medium">{pendingImport.file.metadata.counts.suppliers}</span>
+                              </>
+                            ) : null}
+                            {pendingImport.file.metadata.counts.users ? (
+                              <>
+                                <span className="text-muted-foreground">Users:</span>
+                                <span className="font-medium">{pendingImport.file.metadata.counts.users}</span>
+                              </>
+                            ) : null}
                             <span className="text-muted-foreground font-semibold">Total:</span>
                             <span className="font-bold">{pendingImport.file.metadata.counts.total}</span>
                           </div>
@@ -1540,13 +1997,384 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
             <div className="flex items-start gap-2 rounded-lg bg-muted/40 border px-3 py-2.5">
               <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
               <p className="text-xs text-muted-foreground">
-                Backup files contain all canteen data including IDs and timestamps, allowing a
-                complete restore to the exact state at export time. Keep your backups in a safe
+                Backup files contain all canteen data (ingredients, recipes, stock movements, daily meals,
+                purchases, expenses, suppliers, users) including IDs and timestamps, allowing a
+                complete restore to the exact state at export time. User passwords are not exported —
+                restored users will receive a default password. Keep your backups in a safe
                 location — they may contain sensitive financial information.
               </p>
             </div>
           </CardContent>
         </Card>
+
+        {/* ─── User Management Card ─────────────────────────────────────────── */}
+        <Card className="md:col-span-2 border-amber-200/60 dark:border-amber-800/30 overflow-hidden">
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <UserCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    User Management
+                  </CardTitle>
+                  <CardDescription>
+                    Manage users, roles, and access control for the canteen system
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={fetchUsers}
+                    disabled={isLoadingUsers}
+                    className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${isLoadingUsers ? "animate-spin" : ""}`} />
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setAddUserForm({ name: "", email: "", role: "staff", password: "" });
+                      setAddUserOpen(true);
+                    }}
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Add User
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+          </div>
+
+          <CardContent className="pt-6">
+            {isLoadingUsers ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-12 rounded-lg bg-muted/50 animate-pulse" />
+                ))}
+              </div>
+            ) : users.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <Users className="h-12 w-12 text-muted-foreground/40 mb-3" />
+                <p className="text-sm font-medium text-muted-foreground">No users found</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Add users to manage access to the canteen system
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-lg border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {users.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{u.name}</span>
+                            {currentUser?.id === u.id && (
+                              <Badge className="text-[10px] px-1.5 py-0 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                                You
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">{u.email}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={getRoleBadgeClass(u.role)}>
+                            {getRoleLabel(u.role)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs">
+                          {new Date(u.createdAt).toLocaleDateString("en-IN", {
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEditDialog(u)}
+                              className="h-8 w-8 p-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openDeleteDialog(u)}
+                              disabled={currentUser?.id === u.id}
+                              className="h-8 w-8 p-0 text-red-500 hover:text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-40"
+                              title={currentUser?.id === u.id ? "Cannot delete your own account" : "Delete user"}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {/* Users count summary */}
+            {!isLoadingUsers && users.length > 0 && (
+              <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
+                <span>{users.length} user{users.length !== 1 ? "s" : ""} total</span>
+                <span>•</span>
+                <span>{users.filter((u) => u.role === "admin").length} admin</span>
+                <span>•</span>
+                <span>{users.filter((u) => u.role === "store").length} store</span>
+                <span>•</span>
+                <span>{users.filter((u) => u.role === "kitchen").length} kitchen</span>
+                <span>•</span>
+                <span>{users.filter((u) => u.role === "staff").length} staff</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ─── Add User Dialog ───────────────────────────────────────────────── */}
+        <Dialog open={addUserOpen} onOpenChange={setAddUserOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                Add New User
+              </DialogTitle>
+              <DialogDescription>
+                Create a new user account with access to the canteen system
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="add-name">Full Name</Label>
+                <Input
+                  id="add-name"
+                  placeholder="Enter full name"
+                  value={addUserForm.name}
+                  onChange={(e) => setAddUserForm({ ...addUserForm, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-email">Email Address</Label>
+                <Input
+                  id="add-email"
+                  type="email"
+                  placeholder="user@rcs-canteen.com"
+                  value={addUserForm.email}
+                  onChange={(e) => setAddUserForm({ ...addUserForm, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-role">Role</Label>
+                <Select
+                  value={addUserForm.role}
+                  onValueChange={(val) => setAddUserForm({ ...addUserForm, role: val })}
+                >
+                  <SelectTrigger className="w-full" id="add-role">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="store">Store Manager</SelectItem>
+                    <SelectItem value="kitchen">Kitchen Manager</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="add-password">Password</Label>
+                <Input
+                  id="add-password"
+                  type="password"
+                  placeholder="Enter password"
+                  value={addUserForm.password}
+                  onChange={(e) => setAddUserForm({ ...addUserForm, password: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setAddUserOpen(false)}
+                disabled={isSavingUser}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddUser}
+                disabled={isSavingUser}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {isSavingUser ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Create User
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Edit User Dialog ──────────────────────────────────────────────── */}
+        <Dialog open={editUserOpen} onOpenChange={setEditUserOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Pencil className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                Edit User
+              </DialogTitle>
+              <DialogDescription>
+                Update user details. Leave password blank to keep the current password.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Full Name</Label>
+                <Input
+                  id="edit-name"
+                  placeholder="Enter full name"
+                  value={editUserForm.name}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-email">Email Address</Label>
+                <Input
+                  id="edit-email"
+                  type="email"
+                  placeholder="user@rcs-canteen.com"
+                  value={editUserForm.email}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-role">Role</Label>
+                <Select
+                  value={editUserForm.role}
+                  onValueChange={(val) => setEditUserForm({ ...editUserForm, role: val })}
+                >
+                  <SelectTrigger className="w-full" id="edit-role">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="store">Store Manager</SelectItem>
+                    <SelectItem value="kitchen">Kitchen Manager</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-password" className="flex items-center gap-2">
+                  <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
+                  New Password
+                  <span className="text-xs text-muted-foreground font-normal">(leave blank to keep current)</span>
+                </Label>
+                <Input
+                  id="edit-password"
+                  type="password"
+                  placeholder="Enter new password (optional)"
+                  value={editUserForm.password}
+                  onChange={(e) => setEditUserForm({ ...editUserForm, password: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditUserOpen(false);
+                  setSelectedUser(null);
+                }}
+                disabled={isSavingUser}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleEditUser}
+                disabled={isSavingUser}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {isSavingUser ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ─── Delete User Confirmation Dialog ──────────────────────────────── */}
+        <AlertDialog open={deleteUserOpen} onOpenChange={setDeleteUserOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                Delete User
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete{" "}
+                <span className="font-semibold text-foreground">{selectedUser?.name}</span>{" "}
+                ({selectedUser?.email})? This action cannot be undone. The user will permanently
+                lose access to the canteen system.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setDeleteUserOpen(false);
+                  setSelectedUser(null);
+                }}
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteUser}
+                disabled={isSavingUser}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isSavingUser ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete User
+                  </>
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* ─── Canteen Information Card ─────────────────────────────────── */}
         <Card className="border-amber-200/60 dark:border-amber-800/30">

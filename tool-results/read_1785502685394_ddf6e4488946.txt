@@ -1,0 +1,956 @@
+     1→import { db } from '@/lib/db'
+     2→import { NextResponse } from 'next/server'
+     3→
+     4→// POST /api/seed - Seed sample data for testing
+     5→export async function POST() {
+     6→  try {
+     7→    // Clean up existing data (in reverse order of dependencies)
+     8→    await db.stockMovement.deleteMany()
+     9→    await db.dailyMealServed.deleteMany()
+    10→    await db.purchaseItem.deleteMany()
+    11→    await db.purchase.deleteMany()
+    12→    await db.expense.deleteMany()
+    13→    await db.recipeIngredient.deleteMany()
+    14→    await db.recipe.deleteMany()
+    15→    await db.ingredient.deleteMany()
+    16→    await db.supplier.deleteMany()
+    17→    await db.user.deleteMany()
+    18→
+    19→    // 1. Create admin user
+    20→    const admin = await db.user.create({
+    21→      data: {
+    22→        name: 'Admin User',
+    23→        email: 'admin@rcs-canteen.com',
+    24→        role: 'admin',
+    25→        password: 'admin123',
+    26→      },
+    27→    })
+    28→
+    29→    // 1b. Create suppliers (vendor master)
+    30→    const suppliers = await Promise.all([
+    31→      db.supplier.create({
+    32→        data: {
+    33→          name: 'Rajesh Grains',
+    34→          contactPerson: 'Rajesh Patel',
+    35→          phone: '9825012345',
+    36→          email: 'rajesh@rajeshgrains.in',
+    37→          address: 'Shop 12, Grain Market, Dahej, Gujarat 392130',
+    38→          gstin: '24ABCDE1234F1Z5',
+    39→          category: 'Grains',
+    40→          notes: 'Weekly delivery on Mondays. 15-day credit terms.',
+    41→        },
+    42→      }),
+    43→      db.supplier.create({
+    44→        data: {
+    45→          name: 'Fresh Meats',
+    46→          contactPerson: 'Imran Khan',
+    47→          phone: '9825023456',
+    48→          email: 'orders@freshmeats.in',
+    49→          address: 'Plot 5, Meat Market, Dahej, Gujarat 392130',
+    50→          gstin: '24FGHIJ5678K1Z2',
+    51→          category: 'Meat',
+    52→          notes: 'Daily morning delivery by 7 AM. Cash on delivery.',
+    53→        },
+    54→      }),
+    55→      db.supplier.create({
+    56→        data: {
+    57→          name: 'Oil Industries',
+    58→          contactPerson: 'Suresh Shah',
+    59→          phone: '9825034567',
+    60→          email: 'sales@oilindustries.in',
+    61→          address: 'Industrial Area, Plot 28, Dahej, Gujarat 392130',
+    62→          gstin: '24KLMNO9012P1Z9',
+    63→          category: 'Oil',
+    64→          notes: 'Bulk oil + spices supply. Monthly billing.',
+    65→        },
+    66→      }),
+    67→      db.supplier.create({
+    68→        data: {
+    69→          name: 'Local Market',
+    70→          contactPerson: 'Mukesh Vegetablewala',
+    71→          phone: '9825045678',
+    72→          email: null,
+    73→          address: 'APMC Market, Bharuch, Gujarat 392001',
+    74→          gstin: null,
+    75→          category: 'Vegetables',
+    76→          notes: 'Fresh vegetables daily. Negotiable rates.',
+    77→        },
+    78→      }),
+    79→      db.supplier.create({
+    80→        data: {
+    81→          name: 'Pulse Traders',
+    82→          contactPerson: 'Anil Jain',
+    83→          phone: '9825056789',
+    84→          email: 'anil@pulsetraders.in',
+    85→          address: 'Shop 8, APMC Market, Bharuch, Gujarat 392001',
+    86→          gstin: '24PQRST3456U1Z6',
+    87→          category: 'Pulses',
+    88→          notes: 'Pulses & dry groceries. 30-day credit.',
+    89→        },
+    90→      }),
+    91→      db.supplier.create({
+    92→        data: {
+    93→          name: 'Dairy Farm',
+    94→          contactPerson: 'Mahesh Patel',
+    95→          phone: '9825067890',
+    96→          email: 'dairy@maheshfarm.in',
+    97→          address: 'Village Suvali, Surat, Gujarat 394510',
+    98→          gstin: '24VWXYZ7890A1Z3',
+    99→          category: 'Dairy',
+   100→          notes: 'Fresh milk + ghee daily. Weekly billing.',
+   101→        },
+   102→      }),
+   103→    ])
+   104→
+   105→    // Helper to find supplier by name
+   106→    const findSupplier = (name: string) => suppliers.find((s) => s.name === name)!
+   107→
+   108→    // 2. Create ingredients (linked to suppliers via supplierId)
+   109→    const ingredients = await Promise.all([
+   110→      db.ingredient.create({
+   111→        data: {
+   112→          name: 'Rice (Basmati)',
+   113→          unit: 'kg',
+   114→          category: 'Grains',
+   115→          currentStock: 150,
+   116→          minStock: 50,
+   117→          lastPurchasePrice: 45,
+   118→          avgCost: 43,
+   119→          supplier: 'Rajesh Grains',
+   120→          supplierId: findSupplier('Rajesh Grains').id,
+   121→        },
+   122→      }),
+   123→      db.ingredient.create({
+   124→        data: {
+   125→          name: 'Wheat Flour',
+   126→          unit: 'kg',
+   127→          category: 'Grains',
+   128→          currentStock: 100,
+   129→          minStock: 30,
+   130→          lastPurchasePrice: 35,
+   131→          avgCost: 34,
+   132→          supplier: 'Rajesh Grains',
+   133→          supplierId: findSupplier('Rajesh Grains').id,
+   134→        },
+   135→      }),
+   136→      db.ingredient.create({
+   137→        data: {
+   138→          name: 'Toor Dal',
+   139→          unit: 'kg',
+   140→          category: 'Pulses',
+   141→          currentStock: 60,
+   142→          minStock: 20,
+   143→          lastPurchasePrice: 120,
+   144→          avgCost: 115,
+   145→          supplier: 'Pulse Traders',
+   146→          supplierId: findSupplier('Pulse Traders').id,
+   147→        },
+   148→      }),
+   149→      db.ingredient.create({
+   150→        data: {
+   151→          name: 'Cooking Oil',
+   152→          unit: 'litre',
+   153→          category: 'Oil',
+   154→          currentStock: 40,
+   155→          minStock: 15,
+   156→          lastPurchasePrice: 150,
+   157→          avgCost: 145,
+   158→          supplier: 'Oil Industries',
+   159→          supplierId: findSupplier('Oil Industries').id,
+   160→        },
+   161→      }),
+   162→      db.ingredient.create({
+   163→        data: {
+   164→          name: 'Onions',
+   165→          unit: 'kg',
+   166→          category: 'Vegetables',
+   167→          currentStock: 30,
+   168→          minStock: 10,
+   169→          lastPurchasePrice: 25,
+   170→          avgCost: 28,
+   171→          supplier: 'Local Market',
+   172→          supplierId: findSupplier('Local Market').id,
+   173→        },
+   174→      }),
+   175→      db.ingredient.create({
+   176→        data: {
+   177→          name: 'Potatoes',
+   178→          unit: 'kg',
+   179→          category: 'Vegetables',
+   180→          currentStock: 50,
+   181→          minStock: 15,
+   182→          lastPurchasePrice: 20,
+   183→          avgCost: 22,
+   184→          supplier: 'Local Market',
+   185→          supplierId: findSupplier('Local Market').id,
+   186→        },
+   187→      }),
+   188→      db.ingredient.create({
+   189→        data: {
+   190→          name: 'Tomatoes',
+   191→          unit: 'kg',
+   192→          category: 'Vegetables',
+   193→          currentStock: 8,
+   194→          minStock: 10,
+   195→          lastPurchasePrice: 30,
+   196→          avgCost: 32,
+   197→          supplier: 'Local Market',
+   198→          supplierId: findSupplier('Local Market').id,
+   199→        },
+   200→      }),
+   201→      db.ingredient.create({
+   202→        data: {
+   203→          name: 'Green Chillies',
+   204→          unit: 'kg',
+   205→          category: 'Vegetables',
+   206→          currentStock: 5,
+   207→          minStock: 2,
+   208→          lastPurchasePrice: 40,
+   209→          avgCost: 38,
+   210→          supplier: 'Local Market',
+   211→          supplierId: findSupplier('Local Market').id,
+   212→        },
+   213→      }),
+   214→      db.ingredient.create({
+   215→        data: {
+   216→          name: 'Turmeric Powder',
+   217→          unit: 'kg',
+   218→          category: 'Spices',
+   219→          currentStock: 3,
+   220→          minStock: 1,
+   221→          lastPurchasePrice: 400,
+   222→          avgCost: 380,
+   223→          supplier: 'Oil Industries',
+   224→          supplierId: findSupplier('Oil Industries').id,
+   225→        },
+   226→      }),
+   227→      db.ingredient.create({
+   228→        data: {
+   229→          name: 'Red Chilli Powder',
+   230→          unit: 'kg',
+   231→          category: 'Spices',
+   232→          currentStock: 4,
+   233→          minStock: 1,
+   234→          lastPurchasePrice: 350,
+   235→          avgCost: 340,
+   236→          supplier: 'Oil Industries',
+   237→          supplierId: findSupplier('Oil Industries').id,
+   238→        },
+   239→      }),
+   240→      db.ingredient.create({
+   241→        data: {
+   242→          name: 'Cumin Seeds',
+   243→          unit: 'kg',
+   244→          category: 'Spices',
+   245→          currentStock: 2,
+   246→          minStock: 0.5,
+   247→          lastPurchasePrice: 500,
+   248→          avgCost: 480,
+   249→          supplier: 'Oil Industries',
+   250→          supplierId: findSupplier('Oil Industries').id,
+   251→        },
+   252→      }),
+   253→      db.ingredient.create({
+   254→        data: {
+   255→          name: 'Salt',
+   256→          unit: 'kg',
+   257→          category: 'Spices',
+   258→          currentStock: 15,
+   259→          minStock: 5,
+   260→          lastPurchasePrice: 10,
+   261→          avgCost: 10,
+   262→          supplier: 'Pulse Traders',
+   263→          supplierId: findSupplier('Pulse Traders').id,
+   264→        },
+   265→      }),
+   266→      db.ingredient.create({
+   267→        data: {
+   268→          name: 'Ghee',
+   269→          unit: 'kg',
+   270→          category: 'Dairy',
+   271→          currentStock: 10,
+   272→          minStock: 3,
+   273→          lastPurchasePrice: 550,
+   274→          avgCost: 540,
+   275→          supplier: 'Dairy Farm',
+   276→          supplierId: findSupplier('Dairy Farm').id,
+   277→        },
+   278→      }),
+   279→      db.ingredient.create({
+   280→        data: {
+   281→          name: 'Milk',
+   282→          unit: 'litre',
+   283→          category: 'Dairy',
+   284→          currentStock: 20,
+   285→          minStock: 10,
+   286→          lastPurchasePrice: 60,
+   287→          avgCost: 58,
+   288→          supplier: 'Dairy Farm',
+   289→          supplierId: findSupplier('Dairy Farm').id,
+   290→        },
+   291→      }),
+   292→      db.ingredient.create({
+   293→        data: {
+   294→          name: 'Chicken',
+   295→          unit: 'kg',
+   296→          category: 'Meat',
+   297→          currentStock: 25,
+   298→          minStock: 10,
+   299→          lastPurchasePrice: 240,
+   300→          avgCost: 235,
+   301→          supplier: 'Fresh Meats',
+   302→          supplierId: findSupplier('Fresh Meats').id,
+   303→        },
+   304→      }),
+   305→      db.ingredient.create({
+   306→        data: {
+   307→          name: 'Sugar',
+   308→          unit: 'kg',
+   309→          category: 'Grains',
+   310→          currentStock: 40,
+   311→          minStock: 15,
+   312→          lastPurchasePrice: 45,
+   313→          avgCost: 44,
+   314→          supplier: 'Rajesh Grains',
+   315→          supplierId: findSupplier('Rajesh Grains').id,
+   316→        },
+   317→      }),
+   318→      db.ingredient.create({
+   319→        data: {
+   320→          name: 'Tea Powder',
+   321→          unit: 'kg',
+   322→          category: 'Beverages',
+   323→          currentStock: 5,
+   324→          minStock: 2,
+   325→          lastPurchasePrice: 600,
+   326→          avgCost: 580,
+   327→          supplier: 'Dairy Farm',
+   328→          supplierId: findSupplier('Dairy Farm').id,
+   329→        },
+   330→      }),
+   331→      db.ingredient.create({
+   332→        data: {
+   333→          name: 'Mustard Seeds',
+   334→          unit: 'kg',
+   335→          category: 'Spices',
+   336→          currentStock: 1.5,
+   337→          minStock: 0.5,
+   338→          lastPurchasePrice: 300,
+   339→          avgCost: 290,
+   340→          supplier: 'Oil Industries',
+   341→          supplierId: findSupplier('Oil Industries').id,
+   342→        },
+   343→      }),
+   344→      db.ingredient.create({
+   345→        data: {
+   346→          name: 'Coriander Powder',
+   347→          unit: 'kg',
+   348→          category: 'Spices',
+   349→          currentStock: 2,
+   350→          minStock: 0.5,
+   351→          lastPurchasePrice: 350,
+   352→          avgCost: 340,
+   353→          supplier: 'Oil Industries',
+   354→          supplierId: findSupplier('Oil Industries').id,
+   355→        },
+   356→      }),
+   357→      db.ingredient.create({
+   358→        data: {
+   359→          name: 'Ginger-Garlic Paste',
+   360→          unit: 'kg',
+   361→          category: 'Spices',
+   362→          currentStock: 3,
+   363→          minStock: 1,
+   364→          lastPurchasePrice: 200,
+   365→          avgCost: 190,
+   366→          supplier: 'Local Market',
+   367→          supplierId: findSupplier('Local Market').id,
+   368→        },
+   369→      }),
+   370→      db.ingredient.create({
+   371→        data: {
+   372→          name: 'Lemon',
+   373→          unit: 'kg',
+   374→          category: 'Vegetables',
+   375→          currentStock: 5,
+   376→          minStock: 2,
+   377→          lastPurchasePrice: 80,
+   378→          avgCost: 75,
+   379→          supplier: 'Local Market',
+   380→          supplierId: findSupplier('Local Market').id,
+   381→        },
+   382→      }),
+   383→    ])
+   384→
+   385→    // Helper to find ingredient by name
+   386→    const findIngredient = (name: string) => ingredients.find((i) => i.name === name)!
+   387→
+   388→    // 3. Create recipes
+   389→    const dalRice = await db.recipe.create({
+   390→      data: {
+   391→        name: 'Dal Rice',
+   392→        description: 'Classic dal rice with tadka',
+   393→        mealType: 'Lunch',
+   394→        baseServings: 100,
+   395→        instructions: 'Cook rice and dal separately. Prepare tadka and mix.',
+   396→        ingredients: {
+   397→          create: [
+   398→            { ingredientId: findIngredient('Rice (Basmati)').id, quantity: 15, unit: 'kg' },
+   399→            { ingredientId: findIngredient('Toor Dal').id, quantity: 8, unit: 'kg' },
+   400→            { ingredientId: findIngredient('Cooking Oil').id, quantity: 2, unit: 'litre' },
+   401→            { ingredientId: findIngredient('Onions').id, quantity: 3, unit: 'kg' },
+   402→            { ingredientId: findIngredient('Tomatoes').id, quantity: 3, unit: 'kg' },
+   403→            { ingredientId: findIngredient('Turmeric Powder').id, quantity: 0.1, unit: 'kg' },
+   404→            { ingredientId: findIngredient('Red Chilli Powder').id, quantity: 0.15, unit: 'kg' },
+   405→            { ingredientId: findIngredient('Cumin Seeds').id, quantity: 0.1, unit: 'kg' },
+   406→            { ingredientId: findIngredient('Salt').id, quantity: 0.5, unit: 'kg' },
+   407→            { ingredientId: findIngredient('Mustard Seeds').id, quantity: 0.05, unit: 'kg' },
+   408→            { ingredientId: findIngredient('Ghee').id, quantity: 0.5, unit: 'kg' },
+   409→          ],
+   410→        },
+   411→      },
+   412→      include: { ingredients: true },
+   413→    })
+   414→
+   415→    const chickenCurryRice = await db.recipe.create({
+   416→      data: {
+   417→        name: 'Chicken Curry Rice',
+   418→        description: 'Chicken curry served with steamed rice',
+   419→        mealType: 'Lunch',
+   420→        baseServings: 100,
+   421→        instructions: 'Marinate chicken. Cook curry with spices. Serve with rice.',
+   422→        ingredients: {
+   423→          create: [
+   424→            { ingredientId: findIngredient('Rice (Basmati)').id, quantity: 15, unit: 'kg' },
+   425→            { ingredientId: findIngredient('Chicken').id, quantity: 20, unit: 'kg' },
+   426→            { ingredientId: findIngredient('Cooking Oil').id, quantity: 3, unit: 'litre' },
+   427→            { ingredientId: findIngredient('Onions').id, quantity: 5, unit: 'kg' },
+   428→            { ingredientId: findIngredient('Tomatoes').id, quantity: 4, unit: 'kg' },
+   429→            { ingredientId: findIngredient('Ginger-Garlic Paste').id, quantity: 1, unit: 'kg' },
+   430→            { ingredientId: findIngredient('Turmeric Powder').id, quantity: 0.1, unit: 'kg' },
+   431→            { ingredientId: findIngredient('Red Chilli Powder').id, quantity: 0.2, unit: 'kg' },
+   432→            { ingredientId: findIngredient('Coriander Powder').id, quantity: 0.15, unit: 'kg' },
+   433→            { ingredientId: findIngredient('Cumin Seeds').id, quantity: 0.1, unit: 'kg' },
+   434→            { ingredientId: findIngredient('Salt').id, quantity: 0.5, unit: 'kg' },
+   435→            { ingredientId: findIngredient('Ghee').id, quantity: 0.3, unit: 'kg' },
+   436→          ],
+   437→        },
+   438→      },
+   439→      include: { ingredients: true },
+   440→    })
+   441→
+   442→    const rotiSabzi = await db.recipe.create({
+   443→      data: {
+   444→        name: 'Roti Sabzi',
+   445→        description: 'Wheat roti with mixed vegetable curry',
+   446→        mealType: 'Lunch',
+   447→        baseServings: 100,
+   448→        instructions: 'Make roti dough. Prepare vegetable curry. Serve together.',
+   449→        ingredients: {
+   450→          create: [
+   451→            { ingredientId: findIngredient('Wheat Flour').id, quantity: 20, unit: 'kg' },
+   452→            { ingredientId: findIngredient('Potatoes').id, quantity: 8, unit: 'kg' },
+   453→            { ingredientId: findIngredient('Onions').id, quantity: 4, unit: 'kg' },
+   454→            { ingredientId: findIngredient('Tomatoes').id, quantity: 3, unit: 'kg' },
+   455→            { ingredientId: findIngredient('Cooking Oil').id, quantity: 2, unit: 'litre' },
+   456→            { ingredientId: findIngredient('Turmeric Powder').id, quantity: 0.1, unit: 'kg' },
+   457→            { ingredientId: findIngredient('Red Chilli Powder').id, quantity: 0.15, unit: 'kg' },
+   458→            { ingredientId: findIngredient('Coriander Powder').id, quantity: 0.1, unit: 'kg' },
+   459→            { ingredientId: findIngredient('Cumin Seeds').id, quantity: 0.1, unit: 'kg' },
+   460→            { ingredientId: findIngredient('Salt').id, quantity: 0.4, unit: 'kg' },
+   461→            { ingredientId: findIngredient('Green Chillies').id, quantity: 0.5, unit: 'kg' },
+   462→          ],
+   463→        },
+   464→      },
+   465→      include: { ingredients: true },
+   466→    })
+   467→
+   468→    const breakfastPoha = await db.recipe.create({
+   469→      data: {
+   470→        name: 'Poha',
+   471→        description: 'Flattened rice with peanuts and spices',
+   472→        mealType: 'Breakfast',
+   473→        baseServings: 100,
+   474→        instructions: 'Wash poha. Prepare tempering. Mix and serve.',
+   475→        ingredients: {
+   476→          create: [
+   477→            { ingredientId: findIngredient('Rice (Basmati)').id, quantity: 8, unit: 'kg' },
+   478→            { ingredientId: findIngredient('Cooking Oil').id, quantity: 1.5, unit: 'litre' },
+   479→            { ingredientId: findIngredient('Onions').id, quantity: 2, unit: 'kg' },
+   480→            { ingredientId: findIngredient('Turmeric Powder').id, quantity: 0.05, unit: 'kg' },
+   481→            { ingredientId: findIngredient('Mustard Seeds').id, quantity: 0.05, unit: 'kg' },
+   482→            { ingredientId: findIngredient('Salt').id, quantity: 0.3, unit: 'kg' },
+   483→            { ingredientId: findIngredient('Green Chillies').id, quantity: 0.3, unit: 'kg' },
+   484→            { ingredientId: findIngredient('Lemon').id, quantity: 2, unit: 'kg' },
+   485→          ],
+   486→        },
+   487→      },
+   488→      include: { ingredients: true },
+   489→    })
+   490→
+   491→    const tea = await db.recipe.create({
+   492→      data: {
+   493→        name: 'Chai',
+   494→        description: 'Indian masala tea',
+   495→        mealType: 'Snack',
+   496→        baseServings: 100,
+   497→        instructions: 'Boil water with tea powder and spices. Add milk and sugar.',
+   498→        ingredients: {
+   499→          create: [
+   500→            { ingredientId: findIngredient('Tea Powder').id, quantity: 0.5, unit: 'kg' },
+   501→            { ingredientId: findIngredient('Milk').id, quantity: 10, unit: 'litre' },
+   502→            { ingredientId: findIngredient('Sugar').id, quantity: 3, unit: 'kg' },
+   503→            { ingredientId: findIngredient('Ginger-Garlic Paste').id, quantity: 0.2, unit: 'kg' },
+   504→          ],
+   505→        },
+   506→      },
+   507→      include: { ingredients: true },
+   508→    })
+   509→
+   510→    const dinnerKhichdi = await db.recipe.create({
+   511→      data: {
+   512→        name: 'Khichdi',
+   513→        description: 'Comforting rice and lentil dish',
+   514→        mealType: 'Dinner',
+   515→        baseServings: 100,
+   516→        instructions: 'Cook rice and dal together. Prepare tadka.',
+   517→        ingredients: {
+   518→          create: [
+   519→            { ingredientId: findIngredient('Rice (Basmati)').id, quantity: 12, unit: 'kg' },
+   520→            { ingredientId: findIngredient('Toor Dal').id, quantity: 6, unit: 'kg' },
+   521→            { ingredientId: findIngredient('Cooking Oil').id, quantity: 1.5, unit: 'litre' },
+   522→            { ingredientId: findIngredient('Onions').id, quantity: 2, unit: 'kg' },
+   523→            { ingredientId: findIngredient('Tomatoes').id, quantity: 2, unit: 'kg' },
+   524→            { ingredientId: findIngredient('Turmeric Powder').id, quantity: 0.1, unit: 'kg' },
+   525→            { ingredientId: findIngredient('Cumin Seeds').id, quantity: 0.1, unit: 'kg' },
+   526→            { ingredientId: findIngredient('Salt').id, quantity: 0.4, unit: 'kg' },
+   527→            { ingredientId: findIngredient('Ghee').id, quantity: 0.5, unit: 'kg' },
+   528→          ],
+   529→        },
+   530→      },
+   531→      include: { ingredients: true },
+   532→    })
+   533→
+   534→    // 4. Create some purchases for the past month
+   535→    const today = new Date()
+   536→    const dates = [
+   537→      new Date(today.getFullYear(), today.getMonth(), today.getDate()),
+   538→      new Date(today.getFullYear(), today.getMonth(), today.getDate() - 3),
+   539→      new Date(today.getFullYear(), today.getMonth(), today.getDate() - 7),
+   540→      new Date(today.getFullYear(), today.getMonth(), today.getDate() - 14),
+   541→      new Date(today.getFullYear(), today.getMonth(), today.getDate() - 21),
+   542→    ]
+   543→
+   544→    const purchases = []
+   545→
+   546→    // Purchase 1: Weekly groceries
+   547→    const purchase1 = await db.purchase.create({
+   548→      data: {
+   549→        date: dates[0],
+   550→        supplier: 'Rajesh Grains',
+   551→        supplierId: findSupplier('Rajesh Grains').id,
+   552→        invoiceNo: 'INV-2024-001',
+   553→        totalAmount: 0,
+   554→        notes: 'Weekly grains purchase',
+   555→        items: {
+   556→          create: [
+   557→            { ingredientId: findIngredient('Rice (Basmati)').id, quantity: 50, unitPrice: 45, totalAmount: 2250 },
+   558→            { ingredientId: findIngredient('Wheat Flour').id, quantity: 30, unitPrice: 35, totalAmount: 1050 },
+   559→            { ingredientId: findIngredient('Toor Dal').id, quantity: 20, unitPrice: 120, totalAmount: 2400 },
+   560→          ],
+   561→        },
+   562→      },
+   563→      include: { items: true },
+   564→    })
+   565→    await db.purchase.update({
+   566→      where: { id: purchase1.id },
+   567→      data: { totalAmount: purchase1.items.reduce((s, i) => s + i.totalAmount, 0) },
+   568→    })
+   569→    purchases.push(purchase1)
+   570→
+   571→    // Purchase 2: Vegetables
+   572→    const purchase2 = await db.purchase.create({
+   573→      data: {
+   574→        date: dates[1],
+   575→        supplier: 'Local Market',
+   576→        supplierId: findSupplier('Local Market').id,
+   577→        invoiceNo: 'INV-2024-002',
+   578→        totalAmount: 0,
+   579→        notes: 'Vegetable supply',
+   580→        items: {
+   581→          create: [
+   582→            { ingredientId: findIngredient('Onions').id, quantity: 20, unitPrice: 25, totalAmount: 500 },
+   583→            { ingredientId: findIngredient('Potatoes').id, quantity: 25, unitPrice: 20, totalAmount: 500 },
+   584→            { ingredientId: findIngredient('Tomatoes').id, quantity: 15, unitPrice: 30, totalAmount: 450 },
+   585→            { ingredientId: findIngredient('Green Chillies').id, quantity: 3, unitPrice: 40, totalAmount: 120 },
+   586→          ],
+   587→        },
+   588→      },
+   589→      include: { items: true },
+   590→    })
+   591→    await db.purchase.update({
+   592→      where: { id: purchase2.id },
+   593→      data: { totalAmount: purchase2.items.reduce((s, i) => s + i.totalAmount, 0) },
+   594→    })
+   595→    purchases.push(purchase2)
+   596→
+   597→    // Purchase 3: Oil & Spices
+   598→    const purchase3 = await db.purchase.create({
+   599→      data: {
+   600→        date: dates[2],
+   601→        supplier: 'Oil Industries',
+   602→        supplierId: findSupplier('Oil Industries').id,
+   603→        invoiceNo: 'INV-2024-003',
+   604→        totalAmount: 0,
+   605→        notes: 'Oil and spices',
+   606→        items: {
+   607→          create: [
+   608→            { ingredientId: findIngredient('Cooking Oil').id, quantity: 20, unitPrice: 150, totalAmount: 3000 },
+   609→            { ingredientId: findIngredient('Turmeric Powder').id, quantity: 2, unitPrice: 400, totalAmount: 800 },
+   610→            { ingredientId: findIngredient('Red Chilli Powder').id, quantity: 2, unitPrice: 350, totalAmount: 700 },
+   611→            { ingredientId: findIngredient('Cumin Seeds').id, quantity: 1, unitPrice: 500, totalAmount: 500 },
+   612→            { ingredientId: findIngredient('Coriander Powder').id, quantity: 1.5, unitPrice: 350, totalAmount: 525 },
+   613→            { ingredientId: findIngredient('Mustard Seeds').id, quantity: 1, unitPrice: 300, totalAmount: 300 },
+   614→          ],
+   615→        },
+   616→      },
+   617→      include: { items: true },
+   618→    })
+   619→    await db.purchase.update({
+   620→      where: { id: purchase3.id },
+   621→      data: { totalAmount: purchase3.items.reduce((s, i) => s + i.totalAmount, 0) },
+   622→    })
+   623→    purchases.push(purchase3)
+   624→
+   625→    // Purchase 4: Meat & Dairy
+   626→    const purchase4 = await db.purchase.create({
+   627→      data: {
+   628→        date: dates[3],
+   629→        supplier: 'Fresh Meats',
+   630→        supplierId: findSupplier('Fresh Meats').id,
+   631→        invoiceNo: 'INV-2024-004',
+   632→        totalAmount: 0,
+   633→        notes: 'Meat and dairy',
+   634→        items: {
+   635→          create: [
+   636→            { ingredientId: findIngredient('Chicken').id, quantity: 30, unitPrice: 240, totalAmount: 7200 },
+   637→            { ingredientId: findIngredient('Ghee').id, quantity: 5, unitPrice: 550, totalAmount: 2750 },
+   638→            { ingredientId: findIngredient('Milk').id, quantity: 15, unitPrice: 60, totalAmount: 900 },
+   639→          ],
+   640→        },
+   641→      },
+   642→      include: { items: true },
+   643→    })
+   644→    await db.purchase.update({
+   645→      where: { id: purchase4.id },
+   646→      data: { totalAmount: purchase4.items.reduce((s, i) => s + i.totalAmount, 0) },
+   647→    })
+   648→    purchases.push(purchase4)
+   649→
+   650→    // Purchase 5: Beverages & Grocery (remapped from "Tea Traders" to Dairy Farm which now supplies beverages)
+   651→    const purchase5 = await db.purchase.create({
+   652→      data: {
+   653→        date: dates[4],
+   654→        supplier: 'Dairy Farm',
+   655→        supplierId: findSupplier('Dairy Farm').id,
+   656→        invoiceNo: 'INV-2024-005',
+   657→        totalAmount: 0,
+   658→        notes: 'Beverages and sugar',
+   659→        items: {
+   660→          create: [
+   661→            { ingredientId: findIngredient('Tea Powder').id, quantity: 3, unitPrice: 600, totalAmount: 1800 },
+   662→            { ingredientId: findIngredient('Sugar').id, quantity: 20, unitPrice: 45, totalAmount: 900 },
+   663→            { ingredientId: findIngredient('Salt').id, quantity: 10, unitPrice: 10, totalAmount: 100 },
+   664→            { ingredientId: findIngredient('Ginger-Garlic Paste').id, quantity: 2, unitPrice: 200, totalAmount: 400 },
+   665→          ],
+   666→        },
+   667→      },
+   668→      include: { items: true },
+   669→    })
+   670→    await db.purchase.update({
+   671→      where: { id: purchase5.id },
+   672→      data: { totalAmount: purchase5.items.reduce((s, i) => s + i.totalAmount, 0) },
+   673→    })
+   674→    purchases.push(purchase5)
+   675→
+   676→    // 5. Create PURCHASE stock movements for all purchase items
+   677→    for (const purchase of purchases) {
+   678→      const purchaseWithItems = await db.purchase.findUnique({
+   679→        where: { id: purchase.id },
+   680→        include: { items: true },
+   681→      })
+   682→
+   683→      if (purchaseWithItems) {
+   684→        for (const item of purchaseWithItems.items) {
+   685→          await db.stockMovement.create({
+   686→            data: {
+   687→              ingredientId: item.ingredientId,
+   688→              type: 'PURCHASE',
+   689→              quantity: item.quantity,
+   690→              unitPrice: item.unitPrice,
+   691→              totalAmount: item.totalAmount,
+   692→              date: purchaseWithItems.date,
+   693→              notes: `Purchase ${purchaseWithItems.invoiceNo || ''}`,
+   694→              referenceId: purchaseWithItems.id,
+   695→            },
+   696→          })
+   697→        }
+   698→      }
+   699→    }
+   700→
+   701→    // 6. Create daily meals for the past week
+   702→    const mealRecipes = [
+   703→      { recipe: breakfastPoha, mealType: 'Breakfast' },
+   704→      { recipe: dalRice, mealType: 'Lunch' },
+   705→      { recipe: chickenCurryRice, mealType: 'Lunch' },
+   706→      { recipe: rotiSabzi, mealType: 'Lunch' },
+   707→      { recipe: tea, mealType: 'Snack' },
+   708→      { recipe: dinnerKhichdi, mealType: 'Dinner' },
+   709→    ]
+   710→
+   711→    // Create meals for the past 7 days
+   712→    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+   713→      const mealDate = new Date(today)
+   714→      mealDate.setDate(mealDate.getDate() - dayOffset)
+   715→
+   716→      // Vary servings between 450-600
+   717→      const baseServings = 450 + Math.floor(Math.random() * 150)
+   718→
+   719→      for (const mealRecipe of mealRecipes) {
+   720→        const servings = mealRecipe.mealType === 'Snack' ? baseServings : Math.floor(baseServings * 0.8)
+   721→        const meal = await db.dailyMealServed.create({
+   722→          data: {
+   723→            date: mealDate,
+   724→            mealType: mealRecipe.mealType,
+   725→            mealsServed: servings,
+   726→            recipeId: mealRecipe.recipe.id,
+   727→          },
+   728→        })
+   729→
+   730→        // Create CONSUMPTION stock movements for each ingredient
+   731→        const recipe = await db.recipe.findUnique({
+   732→          where: { id: mealRecipe.recipe.id },
+   733→          include: { ingredients: { include: { ingredient: true } } },
+   734→        })
+   735→
+   736→        if (recipe) {
+   737→          const ratio = servings / recipe.baseServings
+   738→          for (const ri of recipe.ingredients) {
+   739→            const consumedQty = ratio * ri.quantity
+   740→            await db.stockMovement.create({
+   741→              data: {
+   742→                ingredientId: ri.ingredientId,
+   743→                type: 'CONSUMPTION',
+   744→                quantity: consumedQty,
+   745→                unitPrice: ri.ingredient.avgCost,
+   746→                totalAmount: consumedQty * ri.ingredient.avgCost,
+   747→                date: mealDate,
+   748→                notes: `${mealRecipe.mealType} - ${recipe.name} (${servings} servings)`,
+   749→                referenceId: meal.id,
+   750→              },
+   751→            })
+   752→          }
+   753→        }
+   754→      }
+   755→    }
+   756→
+   757→    // Create meals + consumption for PREVIOUS month (15 days spread) so Monthly Comparison works
+   758→    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+   759→    for (let dayOffset = 0; dayOffset < 15; dayOffset++) {
+   760→      const mealDate = new Date(prevMonth)
+   761→      mealDate.setDate(mealDate.getDate() + dayOffset * 2) // spread across the month
+   762→
+   763→      const baseServings = 440 + Math.floor(Math.random() * 160)
+   764→
+   765→      for (const mealRecipe of mealRecipes) {
+   766→        const servings = mealRecipe.mealType === 'Snack' ? baseServings : Math.floor(baseServings * 0.78)
+   767→        const meal = await db.dailyMealServed.create({
+   768→          data: {
+   769→            date: mealDate,
+   770→            mealType: mealRecipe.mealType,
+   771→            mealsServed: servings,
+   772→            recipeId: mealRecipe.recipe.id,
+   773→          },
+   774→        })
+   775→
+   776→        const recipe = await db.recipe.findUnique({
+   777→          where: { id: mealRecipe.recipe.id },
+   778→          include: { ingredients: { include: { ingredient: true } } },
+   779→        })
+   780→
+   781→        if (recipe) {
+   782→          const ratio = servings / recipe.baseServings
+   783→          for (const ri of recipe.ingredients) {
+   784→            const consumedQty = ratio * ri.quantity
+   785→            await db.stockMovement.create({
+   786→              data: {
+   787→                ingredientId: ri.ingredientId,
+   788→                type: 'CONSUMPTION',
+   789→                quantity: consumedQty,
+   790→                unitPrice: ri.ingredient.avgCost,
+   791→                totalAmount: consumedQty * ri.ingredient.avgCost,
+   792→                date: mealDate,
+   793→                notes: `${mealRecipe.mealType} - ${recipe.name} (${servings} servings)`,
+   794→                referenceId: meal.id,
+   795→              },
+   796→            })
+   797→          }
+   798→        }
+   799→      }
+   800→    }
+   801→
+   802→    // Create PURCHASE stock movements for previous month (so food cost has data)
+   803→    const prevMonthPurchases = [
+   804→      { ingredient: 'Rice (Basmati)', qty: 200, price: 44 },
+   805→      { ingredient: 'Wheat Flour', qty: 150, price: 36 },
+   806→      { ingredient: 'Toor Dal', qty: 80, price: 118 },
+   807→      { ingredient: 'Cooking Oil', qty: 60, price: 152 },
+   808→      { ingredient: 'Onions', qty: 100, price: 28 },
+   809→      { ingredient: 'Tomatoes', qty: 80, price: 30 },
+   810→      { ingredient: 'Chicken', qty: 40, price: 238 },
+   811→      { ingredient: 'Milk', qty: 200, price: 58 },
+   812→    ]
+   813→    for (const p of prevMonthPurchases) {
+   814→      const ing = findIngredient(p.ingredient)
+   815→      if (ing) {
+   816→        await db.stockMovement.create({
+   817→          data: {
+   818→            ingredientId: ing.id,
+   819→            type: 'PURCHASE',
+   820→            quantity: p.qty,
+   821→            unitPrice: p.price,
+   822→            totalAmount: p.qty * p.price,
+   823→            date: new Date(prevMonth.getFullYear(), prevMonth.getMonth(), 10 + Math.floor(Math.random() * 15)),
+   824→            notes: `Previous month purchase - ${p.ingredient}`,
+   825→          },
+   826→        })
+   827→      }
+   828→    }
+   829→
+   830→    // Create expenses for previous month
+   831→    const prevMonthExpenses = [
+   832→      { category: 'Gas', amount: 7500, description: 'LPG cylinders - prev month' },
+   833→      { category: 'Electricity', amount: 14000, description: 'Electricity bill - prev month' },
+   834→      { category: 'Water', amount: 4800, description: 'Water supply - prev month' },
+   835→      { category: 'Maintenance', amount: 3000, description: 'Equipment maintenance - prev month' },
+   836→    ]
+   837→    for (const e of prevMonthExpenses) {
+   838→      await db.expense.create({
+   839→        data: {
+   840→          date: new Date(prevMonth.getFullYear(), prevMonth.getMonth(), 5 + Math.floor(Math.random() * 20)),
+   841→          category: e.category,
+   842→          amount: e.amount,
+   843→          description: e.description,
+   844→        },
+   845→      })
+   846→    }
+   847→
+   848→    // 7. Create some wastage entries
+   849→    const wastageItems = [
+   850→      { ingredient: findIngredient('Onions'), qty: 2, reason: 'Spoiled' },
+   851→      { ingredient: findIngredient('Tomatoes'), qty: 1.5, reason: 'Overripe' },
+   852→      { ingredient: findIngredient('Potatoes'), qty: 1, reason: 'Sprouted' },
+   853→      { ingredient: findIngredient('Milk'), qty: 3, reason: 'Expired' },
+   854→    ]
+   855→
+   856→    for (const w of wastageItems) {
+   857→      await db.stockMovement.create({
+   858→        data: {
+   859→          ingredientId: w.ingredient.id,
+   860→          type: 'WASTAGE',
+   861→          quantity: w.qty,
+   862→          unitPrice: w.ingredient.avgCost,
+   863→          totalAmount: w.qty * w.ingredient.avgCost,
+   864→          date: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 2),
+   865→          notes: w.reason,
+   866→        },
+   867→      })
+   868→    }
+   869→
+   870→    // 8. Create expenses for the month
+   871→    const expenses = await Promise.all([
+   872→      db.expense.create({
+   873→        data: {
+   874→          date: new Date(today.getFullYear(), today.getMonth(), 5),
+   875→          category: 'Gas',
+   876→          amount: 8000,
+   877→          description: 'LPG cylinders - monthly',
+   878→        },
+   879→      }),
+   880→      db.expense.create({
+   881→        data: {
+   882→          date: new Date(today.getFullYear(), today.getMonth(), 1),
+   883→          category: 'Electricity',
+   884→          amount: 15000,
+   885→          description: 'Kitchen electricity bill',
+   886→        },
+   887→      }),
+   888→      db.expense.create({
+   889→        data: {
+   890→          date: new Date(today.getFullYear(), today.getMonth(), 10),
+   891→          category: 'Water',
+   892→          amount: 5000,
+   893→          description: 'Water supply',
+   894→        },
+   895→      }),
+   896→      db.expense.create({
+   897→        data: {
+   898→          date: new Date(today.getFullYear(), today.getMonth(), 15),
+   899→          category: 'Maintenance',
+   900→          amount: 3500,
+   901→          description: 'Kitchen equipment repair',
+   902→        },
+   903→      }),
+   904→      db.expense.create({
+   905→        data: {
+   906→          date: new Date(today.getFullYear(), today.getMonth(), 20),
+   907→          category: 'Gas',
+   908→          amount: 8000,
+   909→          description: 'LPG cylinders - mid-month',
+   910→        },
+   911→      }),
+   912→      db.expense.create({
+   913→        data: {
+   914→          date: new Date(today.getFullYear(), today.getMonth(), 25),
+   915→          category: 'Other',
+   916→          amount: 2000,
+   917→          description: 'Cleaning supplies',
+   918→        },
+   919→      }),
+   920→    ])
+   921→
+   922→    // 9. Create a stock adjustment
+   923→    await db.stockMovement.create({
+   924→      data: {
+   925→        ingredientId: findIngredient('Rice (Basmati)').id,
+   926→        type: 'ADJUSTMENT',
+   927→        quantity: 150,
+   928→        unitPrice: 0,
+   929→        totalAmount: 0,
+   930→        date: new Date(),
+   931→        notes: 'Stock adjustment after physical count',
+   932→      },
+   933→    })
+   934→
+   935→    return NextResponse.json({
+   936→      message: 'Sample data seeded successfully',
+   937→      data: {
+   938→        user: admin.id,
+   939→        suppliers: suppliers.length,
+   940→        ingredients: ingredients.length,
+   941→        recipes: 6,
+   942→        purchases: purchases.length,
+   943→        meals: '7 days of meal data',
+   944→        expenses: expenses.length,
+   945→        wastage: wastageItems.length,
+   946→      },
+   947→    })
+   948→  } catch (error) {
+   949→    console.error('Error seeding data:', error)
+   950→    return NextResponse.json(
+   951→      { error: 'Failed to seed data', details: error instanceof Error ? error.message : String(error) },
+   952→      { status: 500 }
+   953→    )
+   954→  }
+   955→}
+   956→

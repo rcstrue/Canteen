@@ -143,3 +143,14 @@ model Expense {
   description String?
   createdAt   DateTime @default(now())
 }
+
+model Budget {
+  id              String   @id @default(cuid())
+  month           String   @unique // Format: "2026-07" (YYYY-MM)
+  foodBudget      Float    @default(0) // Monthly food budget
+  operatingBudget Float    @default(0) // Monthly operating budget (food + expenses)
+  totalBudget     Float    @default(0) // Total monthly budget
+  alertThreshold  Float    @default(80) // Alert at 80% utilization
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}

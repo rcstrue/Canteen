@@ -1,0 +1,971 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback } from "react";
+     4→
+     5→import {
+     6→  Card,
+     7→  CardContent,
+     8→  CardDescription,
+     9→  CardHeader,
+    10→  CardTitle,
+    11→} from "@/components/ui/card";
+    12→import {
+    13→  Table,
+    14→  TableBody,
+    15→  TableCell,
+    16→  TableHead,
+    17→  TableHeader,
+    18→  TableRow,
+    19→} from "@/components/ui/table";
+    20→import {
+    21→  Dialog,
+    22→  DialogContent,
+    23→  DialogDescription,
+    24→  DialogFooter,
+    25→  DialogHeader,
+    26→  DialogTitle,
+    27→} from "@/components/ui/dialog";
+    28→import {
+    29→  AlertDialog,
+    30→  AlertDialogAction,
+    31→  AlertDialogCancel,
+    32→  AlertDialogContent,
+    33→  AlertDialogDescription,
+    34→  AlertDialogFooter,
+    35→  AlertDialogHeader,
+    36→  AlertDialogTitle,
+    37→} from "@/components/ui/alert-dialog";
+    38→import {
+    39→  Select,
+    40→  SelectContent,
+    41→  SelectItem,
+    42→  SelectTrigger,
+    43→  SelectValue,
+    44→} from "@/components/ui/select";
+    45→import { Input } from "@/components/ui/input";
+    46→import { Button } from "@/components/ui/button";
+    47→import { Badge } from "@/components/ui/badge";
+    48→import { Skeleton } from "@/components/ui/skeleton";
+    49→import { Textarea } from "@/components/ui/textarea";
+    50→import { Label } from "@/components/ui/label";
+    51→import {
+    52→  ChartContainer,
+    53→  ChartTooltip,
+    54→  ChartTooltipContent,
+    55→  type ChartConfig,
+    56→} from "@/components/ui/chart";
+    57→
+    58→import {
+    59→  Receipt,
+    60→  Plus,
+    61→  Pencil,
+    62→  Trash2,
+    63→  IndianRupee,
+    64→  CalendarDays,
+    65→  Flame,
+    66→  Zap,
+    67→  Droplets,
+    68→  Wrench,
+    69→  MoreHorizontal,
+    70→  Loader2,
+    71→  X,
+    72→  TrendingUp,
+    73→  ArrowUpDown,
+    74→  ChevronLeft,
+    75→  ChevronRight,
+    76→  ChevronUp,
+    77→  ChevronDown,
+    78→} from "lucide-react";
+    79→
+    80→import {
+    81→  PieChart,
+    82→  Pie,
+    83→  Cell,
+    84→  ResponsiveContainer,
+    85→} from "recharts";
+    86→
+    87→// ─── Types ───────────────────────────────────────────────────────────────────
+    88→
+    89→interface Expense {
+    90→  id: string;
+    91→  date: string;
+    92→  category: string;
+    93→  amount: number;
+    94→  description: string | null;
+    95→  createdAt: string;
+    96→}
+    97→
+    98→// ─── Constants ───────────────────────────────────────────────────────────────
+    99→
+   100→const ITEMS_PER_PAGE = 10;
+   101→
+   102→const CATEGORIES = ["Gas", "Electricity", "Water", "Maintenance", "Other"] as const;
+   103→type Category = (typeof CATEGORIES)[number];
+   104→
+   105→const CATEGORY_COLORS: Record<Category, string> = {
+   106→  Gas: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 border-orange-200 dark:border-orange-800",
+   107→  Electricity: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800",
+   108→  Water: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+   109→  Maintenance: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300 border-green-200 dark:border-green-800",
+   110→  Other: "bg-gray-100 text-gray-800 dark:bg-gray-950 dark:text-gray-300 border-gray-200 dark:border-gray-800",
+   111→};
+   112→
+   113→const CATEGORY_PIE_COLORS: Record<Category, string> = {
+   114→  Gas: "#f97316",
+   115→  Electricity: "#eab308",
+   116→  Water: "#3b82f6",
+   117→  Maintenance: "#22c55e",
+   118→  Other: "#6b7280",
+   119→};
+   120→
+   121→const CATEGORY_ICONS: Record<Category, React.ReactNode> = {
+   122→  Gas: <Flame className="h-3 w-3" />,
+   123→  Electricity: <Zap className="h-3 w-3" />,
+   124→  Water: <Droplets className="h-3 w-3" />,
+   125→  Maintenance: <Wrench className="h-3 w-3" />,
+   126→  Other: <MoreHorizontal className="h-3 w-3" />,
+   127→};
+   128→
+   129→const CHART_CONFIG: ChartConfig = {
+   130→  Gas: { label: "Gas", color: "#f97316" },
+   131→  Electricity: { label: "Electricity", color: "#eab308" },
+   132→  Water: { label: "Water", color: "#3b82f6" },
+   133→  Maintenance: { label: "Maintenance", color: "#22c55e" },
+   134→  Other: { label: "Other", color: "#6b7280" },
+   135→};
+   136→
+   137→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   138→
+   139→function formatCurrency(amount: number): string {
+   140→  return new Intl.NumberFormat("en-IN", {
+   141→    style: "currency",
+   142→    currency: "INR",
+   143→    minimumFractionDigits: 0,
+   144→    maximumFractionDigits: 2,
+   145→  }).format(amount);
+   146→}
+   147→
+   148→function formatDate(dateStr: string): string {
+   149→  const d = new Date(dateStr);
+   150→  const day = String(d.getDate()).padStart(2, "0");
+   151→  const month = String(d.getMonth() + 1).padStart(2, "0");
+   152→  const year = d.getFullYear();
+   153→  return `${day}/${month}/${year}`;
+   154→}
+   155→
+   156→function getTodayStr(): string {
+   157→  const d = new Date();
+   158→  return d.toISOString().split("T")[0];
+   159→}
+   160→
+   161→function getMonthStartStr(): string {
+   162→  const d = new Date();
+   163→  d.setDate(1);
+   164→  return d.toISOString().split("T")[0];
+   165→}
+   166→
+   167→// ─── Component ───────────────────────────────────────────────────────────────
+   168→
+   169→export function ExpensesView() {
+   170→  // State
+   171→  const [expenses, setExpenses] = useState<Expense[]>([]);
+   172→  const [loading, setLoading] = useState(true);
+   173→  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+   174→  const [startDate, setStartDate] = useState<string>("");
+   175→  const [endDate, setEndDate] = useState<string>("");
+   176→
+   177→  // Dialog states
+   178→  const [dialogOpen, setDialogOpen] = useState(false);
+   179→  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+   180→  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+   181→  const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
+   182→  const [submitting, setSubmitting] = useState(false);
+   183→
+   184→  // Sort
+   185→  const [sortField, setSortField] = useState<"date" | "amount" | "category">("date");
+   186→  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+   187→
+   188→  // Pagination
+   189→  const [currentPage, setCurrentPage] = useState(1);
+   190→
+   191→  // Form state
+   192→  const [formDate, setFormDate] = useState(getTodayStr());
+   193→  const [formCategory, setFormCategory] = useState<string>("");
+   194→  const [formAmount, setFormAmount] = useState<string>("");
+   195→  const [formDescription, setFormDescription] = useState<string>("");
+   196→
+   197→  // ─── Fetch ─────────────────────────────────────────────────────────────────
+   198→
+   199→  const fetchExpenses = useCallback(async () => {
+   200→    setLoading(true);
+   201→    try {
+   202→      const params = new URLSearchParams();
+   203→      if (categoryFilter && categoryFilter !== "all") params.set("category", categoryFilter);
+   204→      if (startDate) params.set("startDate", startDate);
+   205→      if (endDate) params.set("endDate", endDate);
+   206→      params.set("limit", "200");
+   207→
+   208→      const res = await fetch(`/api/expenses?${params.toString()}`);
+   209→      if (!res.ok) throw new Error("Failed to fetch");
+   210→      const json = await res.json();
+   211→      setExpenses(json.data || []);
+   212→    } catch (err) {
+   213→      console.error("Error fetching expenses:", err);
+   214→    } finally {
+   215→      setLoading(false);
+   216→    }
+   217→  }, [categoryFilter, startDate, endDate]);
+   218→
+   219→  useEffect(() => {
+   220→    fetchExpenses();
+   221→  }, [fetchExpenses]);
+   222→
+   223→  // Reset to page 1 when filters change
+   224→  useEffect(() => {
+   225→    setCurrentPage(1);
+   226→  }, [categoryFilter, startDate, endDate]);
+   227→
+   228→  // ─── Computed ──────────────────────────────────────────────────────────────
+   229→
+   230→  const todayStr = new Date().toISOString().split("T")[0];
+   231→  const monthStart = new Date();
+   232→  monthStart.setDate(1);
+   233→  monthStart.setHours(0, 0, 0, 0);
+   234→
+   235→  const totalThisMonth = expenses
+   236→    .filter((e) => new Date(e.date) >= monthStart)
+   237→    .reduce((sum, e) => sum + e.amount, 0);
+   238→
+   239→  const totalToday = expenses
+   240→    .filter((e) => e.date.split("T")[0] === todayStr)
+   241→    .reduce((sum, e) => sum + e.amount, 0);
+   242→
+   243→  const categoryBreakdown = CATEGORIES.map((cat) => ({
+   244→    category: cat,
+   245→    total: expenses
+   246→      .filter((e) => e.category === cat)
+   247→      .reduce((sum, e) => sum + e.amount, 0),
+   248→  })).filter((c) => c.total > 0);
+   249→
+   250→  const pieData = categoryBreakdown.map((c) => ({
+   251→    name: c.category,
+   252→    value: c.total,
+   253→    fill: CATEGORY_PIE_COLORS[c.category as Category],
+   254→  }));
+   255→
+   256→  // ─── Sort ──────────────────────────────────────────────────────────────────
+   257→
+   258→  const sortedExpenses = [...expenses].sort((a, b) => {
+   259→    let cmp = 0;
+   260→    if (sortField === "date") {
+   261→      cmp = new Date(a.date).getTime() - new Date(b.date).getTime();
+   262→    } else if (sortField === "amount") {
+   263→      cmp = a.amount - b.amount;
+   264→    } else {
+   265→      cmp = a.category.localeCompare(b.category);
+   266→    }
+   267→    return sortDir === "desc" ? -cmp : cmp;
+   268→  });
+   269→
+   270→  function handleSort(field: "date" | "amount" | "category") {
+   271→    if (sortField === field) {
+   272→      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+   273→    } else {
+   274→      setSortField(field);
+   275→      setSortDir("desc");
+   276→    }
+   277→    setCurrentPage(1);
+   278→  }
+   279→
+   280→  // ─── Pagination ────────────────────────────────────────────────────────────
+   281→
+   282→  const totalExpenses = sortedExpenses.length;
+   283→  const totalAmount = sortedExpenses.reduce((sum, e) => sum + e.amount, 0);
+   284→  const totalPages = Math.max(1, Math.ceil(totalExpenses / ITEMS_PER_PAGE));
+   285→  const safeCurrentPage = Math.min(currentPage, totalPages);
+   286→  const paginatedExpenses = sortedExpenses.slice(
+   287→    (safeCurrentPage - 1) * ITEMS_PER_PAGE,
+   288→    safeCurrentPage * ITEMS_PER_PAGE
+   289→  );
+   290→  const showingFrom = totalExpenses === 0 ? 0 : (safeCurrentPage - 1) * ITEMS_PER_PAGE + 1;
+   291→  const showingTo = Math.min(safeCurrentPage * ITEMS_PER_PAGE, totalExpenses);
+   292→
+   293→  // ─── Dialog handlers ───────────────────────────────────────────────────────
+   294→
+   295→  function openAddDialog() {
+   296→    setEditingExpense(null);
+   297→    setFormDate(getTodayStr());
+   298→    setFormCategory("");
+   299→    setFormAmount("");
+   300→    setFormDescription("");
+   301→    setDialogOpen(true);
+   302→  }
+   303→
+   304→  function openEditDialog(expense: Expense) {
+   305→    setEditingExpense(expense);
+   306→    setFormDate(expense.date.split("T")[0]);
+   307→    setFormCategory(expense.category);
+   308→    setFormAmount(String(expense.amount));
+   309→    setFormDescription(expense.description || "");
+   310→    setDialogOpen(true);
+   311→  }
+   312→
+   313→  function openDeleteDialog(expense: Expense) {
+   314→    setDeletingExpense(expense);
+   315→    setDeleteDialogOpen(true);
+   316→  }
+   317→
+   318→  async function handleSubmit() {
+   319→    if (!formDate || !formCategory || !formAmount || Number(formAmount) <= 0) return;
+   320→
+   321→    setSubmitting(true);
+   322→    try {
+   323→      const body = {
+   324→        date: formDate,
+   325→        category: formCategory,
+   326→        amount: Number(formAmount),
+   327→        description: formDescription || null,
+   328→      };
+   329→
+   330→      if (editingExpense) {
+   331→        const res = await fetch(`/api/expenses/${editingExpense.id}`, {
+   332→          method: "PUT",
+   333→          headers: { "Content-Type": "application/json" },
+   334→          body: JSON.stringify(body),
+   335→        });
+   336→        if (!res.ok) throw new Error("Failed to update");
+   337→      } else {
+   338→        const res = await fetch("/api/expenses", {
+   339→          method: "POST",
+   340→          headers: { "Content-Type": "application/json" },
+   341→          body: JSON.stringify(body),
+   342→        });
+   343→        if (!res.ok) throw new Error("Failed to create");
+   344→      }
+   345→
+   346→      setDialogOpen(false);
+   347→      fetchExpenses();
+   348→    } catch (err) {
+   349→      console.error("Error saving expense:", err);
+   350→    } finally {
+   351→      setSubmitting(false);
+   352→    }
+   353→  }
+   354→
+   355→  async function handleDelete() {
+   356→    if (!deletingExpense) return;
+   357→    try {
+   358→      const res = await fetch(`/api/expenses/${deletingExpense.id}`, {
+   359→        method: "DELETE",
+   360→      });
+   361→      if (!res.ok) throw new Error("Failed to delete");
+   362→      setDeleteDialogOpen(false);
+   363→      setDeletingExpense(null);
+   364→      fetchExpenses();
+   365→    } catch (err) {
+   366→      console.error("Error deleting expense:", err);
+   367→    }
+   368→  }
+   369→
+   370→  // ─── Custom Tooltip for Pie ────────────────────────────────────────────────
+   371→
+   372→  function PieTooltipContent({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { fill: string } }> }) {
+   373→    if (!active || !payload?.length) return null;
+   374→    const item = payload[0];
+   375→    return (
+   376→      <div className="border-border/50 bg-background rounded-lg border px-3 py-2 text-xs shadow-xl">
+   377→        <p className="font-medium">{item.name}</p>
+   378→        <p className="text-muted-foreground">{formatCurrency(item.value)}</p>
+   379→      </div>
+   380→    );
+   381→  }
+   382→
+   383→  // ─── Render ────────────────────────────────────────────────────────────────
+   384→
+   385→  return (
+   386→    <div className="space-y-6">
+   387→      {/* ─── Header ─────────────────────────────────────────────────────────── */}
+   388→      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   389→        <div className="flex items-center gap-3">
+   390→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
+   391→            <Receipt className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   392→          </div>
+   393→          <div>
+   394→            <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
+   395→            <p className="text-muted-foreground text-sm">
+   396→              Track overhead expenses, utility bills &amp; non-food costs
+   397→            </p>
+   398→          </div>
+   399→        </div>
+   400→        <Button onClick={openAddDialog} className="bg-orange-600 hover:bg-orange-700 text-white gap-2">
+   401→          <Plus className="h-4 w-4" />
+   402→          Add Expense
+   403→        </Button>
+   404→      </div>
+   405→
+   406→      {/* ─── Filters ────────────────────────────────────────────────────────── */}
+   407→      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+   408→        <div className="flex flex-col gap-1.5">
+   409→          <Label className="text-xs text-muted-foreground">Category</Label>
+   410→          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   411→            <SelectTrigger className="w-[160px]">
+   412→              <SelectValue placeholder="All Categories" />
+   413→            </SelectTrigger>
+   414→            <SelectContent>
+   415→              <SelectItem value="all">All Categories</SelectItem>
+   416→              {CATEGORIES.map((cat) => (
+   417→                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+   418→              ))}
+   419→            </SelectContent>
+   420→          </Select>
+   421→        </div>
+   422→        <div className="flex flex-col gap-1.5">
+   423→          <Label className="text-xs text-muted-foreground">From</Label>
+   424→          <Input
+   425→            type="date"
+   426→            value={startDate}
+   427→            onChange={(e) => setStartDate(e.target.value)}
+   428→            className="w-[160px]"
+   429→          />
+   430→        </div>
+   431→        <div className="flex flex-col gap-1.5">
+   432→          <Label className="text-xs text-muted-foreground">To</Label>
+   433→          <Input
+   434→            type="date"
+   435→            value={endDate}
+   436→            onChange={(e) => setEndDate(e.target.value)}
+   437→            className="w-[160px]"
+   438→          />
+   439→        </div>
+   440→        {(categoryFilter !== "all" || startDate || endDate) && (
+   441→          <Button
+   442→            variant="ghost"
+   443→            size="sm"
+   444→            className="gap-1 text-muted-foreground"
+   445→            onClick={() => {
+   446→              setCategoryFilter("all");
+   447→              setStartDate("");
+   448→              setEndDate("");
+   449→            }}
+   450→          >
+   451→            <X className="h-3 w-3" />
+   452→            Clear
+   453→          </Button>
+   454→        )}
+   455→      </div>
+   456→
+   457→      {/* ─── Summary Cards ──────────────────────────────────────────────────── */}
+   458→      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   459→        {/* Total This Month */}
+   460→        <Card>
+   461→          <CardContent className="p-6">
+   462→            <div className="flex items-center gap-3">
+   463→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
+   464→                <CalendarDays className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   465→              </div>
+   466→              <div className="flex-1">
+   467→                <p className="text-sm text-muted-foreground">Total This Month</p>
+   468→                {loading ? (
+   469→                  <Skeleton className="h-7 w-32" />
+   470→                ) : (
+   471→                  <p className="text-2xl font-bold tabular-nums text-orange-600 dark:text-orange-400">
+   472→                    {formatCurrency(totalThisMonth)}
+   473→                  </p>
+   474→                )}
+   475→              </div>
+   476→              <TrendingUp className="h-5 w-5 text-orange-400" />
+   477→            </div>
+   478→          </CardContent>
+   479→        </Card>
+   480→
+   481→        {/* Total Today */}
+   482→        <Card>
+   483→          <CardContent className="p-6">
+   484→            <div className="flex items-center gap-3">
+   485→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-950">
+   486→                <IndianRupee className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   487→              </div>
+   488→              <div className="flex-1">
+   489→                <p className="text-sm text-muted-foreground">Total Today</p>
+   490→                {loading ? (
+   491→                  <Skeleton className="h-7 w-32" />
+   492→                ) : (
+   493→                  <p className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+   494→                    {formatCurrency(totalToday)}
+   495→                  </p>
+   496→                )}
+   497→              </div>
+   498→            </div>
+   499→          </CardContent>
+   500→        </Card>
+   501→
+   502→        {/* Category Breakdown Inline */}
+   503→        <Card>
+   504→          <CardContent className="p-6">
+   505→            <p className="text-sm text-muted-foreground mb-3">By Category</p>
+   506→            {loading ? (
+   507→              <div className="space-y-2">
+   508→                {Array.from({ length: 3 }).map((_, i) => (
+   509→                  <Skeleton key={i} className="h-4 w-full" />
+   510→                ))}
+   511→              </div>
+   512→            ) : categoryBreakdown.length === 0 ? (
+   513→              <p className="text-xs text-muted-foreground">No expenses recorded</p>
+   514→            ) : (
+   515→              <div className="space-y-2">
+   516→                {categoryBreakdown.map((c) => (
+   517→                  <div key={c.category} className="flex items-center justify-between gap-2">
+   518→                    <div className="flex items-center gap-1.5">
+   519→                      {CATEGORY_ICONS[c.category as Category]}
+   520→                      <span className="text-xs font-medium">{c.category}</span>
+   521→                    </div>
+   522→                    <span className="text-xs font-semibold tabular-nums">{formatCurrency(c.total)}</span>
+   523→                  </div>
+   524→                ))}
+   525→              </div>
+   526→            )}
+   527→          </CardContent>
+   528→        </Card>
+   529→      </div>
+   530→
+   531→      {/* ─── Main Content: Table + Pie Chart ─────────────────────────────────── */}
+   532→      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+   533→        {/* Expenses Table */}
+   534→        <Card>
+   535→          <CardHeader className="pb-3">
+   536→            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+   537→              <div>
+   538→                <CardTitle className="text-lg">Expense Records</CardTitle>
+   539→                <CardDescription>
+   540→                  {loading
+   541→                    ? "Loading..."
+   542→                    : `${totalExpenses} expense${totalExpenses !== 1 ? "s" : ""} found`}
+   543→                </CardDescription>
+   544→              </div>
+   545→              {!loading && totalExpenses > 0 && (
+   546→                <div className="text-left sm:text-right">
+   547→                  <p className="text-xs text-muted-foreground">Total Amount (filtered)</p>
+   548→                  <p className="text-lg font-bold tabular-nums text-orange-600 dark:text-orange-400">
+   549→                    {formatCurrency(totalAmount)}
+   550→                  </p>
+   551→                </div>
+   552→              )}
+   553→            </div>
+   554→          </CardHeader>
+   555→          <CardContent>
+   556→            {loading ? (
+   557→              <div className="space-y-3">
+   558→                {Array.from({ length: 5 }).map((_, i) => (
+   559→                  <div key={i} className="flex items-center gap-4">
+   560→                    <Skeleton className="h-4 w-20" />
+   561→                    <Skeleton className="h-4 w-16" />
+   562→                    <Skeleton className="h-4 w-24" />
+   563→                    <Skeleton className="h-4 flex-1" />
+   564→                  </div>
+   565→                ))}
+   566→              </div>
+   567→            ) : totalExpenses === 0 ? (
+   568→              <div className="flex flex-col items-center justify-center py-12 text-center">
+   569→                <Receipt className="h-12 w-12 text-muted-foreground/40 mb-3" />
+   570→                <p className="text-muted-foreground text-sm font-medium">No expenses found</p>
+   571→                <p className="text-muted-foreground/70 text-xs mt-1">
+   572→                  Add your first expense or adjust filters
+   573→                </p>
+   574→                <Button
+   575→                  onClick={openAddDialog}
+   576→                  variant="outline"
+   577→                  className="mt-4 gap-2 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-950"
+   578→                >
+   579→                  <Plus className="h-4 w-4" />
+   580→                  Add Expense
+   581→                </Button>
+   582→              </div>
+   583→            ) : (
+   584→              <>
+   585→                <div className="overflow-x-auto">
+   586→                  <Table>
+   587→                    <TableHeader>
+   588→                      <TableRow>
+   589→                        <TableHead
+   590→                          className="cursor-pointer select-none hover:text-foreground"
+   591→                          onClick={() => handleSort("date")}
+   592→                        >
+   593→                          <div className="flex items-center gap-1">
+   594→                            Date
+   595→                            {sortField === "date" ? (
+   596→                              sortDir === "asc" ? (
+   597→                                <ChevronUp className="h-3 w-3" />
+   598→                              ) : (
+   599→                                <ChevronDown className="h-3 w-3" />
+   600→                              )
+   601→                            ) : (
+   602→                              <ArrowUpDown className="h-3 w-3 opacity-40" />
+   603→                            )}
+   604→                          </div>
+   605→                        </TableHead>
+   606→                        <TableHead
+   607→                          className="cursor-pointer select-none hover:text-foreground"
+   608→                          onClick={() => handleSort("category")}
+   609→                        >
+   610→                          <div className="flex items-center gap-1">
+   611→                            Category
+   612→                            {sortField === "category" ? (
+   613→                              sortDir === "asc" ? (
+   614→                                <ChevronUp className="h-3 w-3" />
+   615→                              ) : (
+   616→                                <ChevronDown className="h-3 w-3" />
+   617→                              )
+   618→                            ) : (
+   619→                              <ArrowUpDown className="h-3 w-3 opacity-40" />
+   620→                            )}
+   621→                          </div>
+   622→                        </TableHead>
+   623→                        <TableHead
+   624→                          className="cursor-pointer select-none hover:text-foreground text-right"
+   625→                          onClick={() => handleSort("amount")}
+   626→                        >
+   627→                          <div className="flex items-center justify-end gap-1">
+   628→                            Amount
+   629→                            {sortField === "amount" ? (
+   630→                              sortDir === "asc" ? (
+   631→                                <ChevronUp className="h-3 w-3" />
+   632→                              ) : (
+   633→                                <ChevronDown className="h-3 w-3" />
+   634→                              )
+   635→                            ) : (
+   636→                              <ArrowUpDown className="h-3 w-3 opacity-40" />
+   637→                            )}
+   638→                          </div>
+   639→                        </TableHead>
+   640→                        <TableHead>Description</TableHead>
+   641→                        <TableHead className="text-right">Actions</TableHead>
+   642→                      </TableRow>
+   643→                    </TableHeader>
+   644→                    <TableBody>
+   645→                      {paginatedExpenses.map((expense) => (
+   646→                        <TableRow
+   647→                          key={expense.id}
+   648→                          className="hover:bg-muted/50 transition-colors"
+   649→                        >
+   650→                          <TableCell className="font-medium whitespace-nowrap">
+   651→                            {formatDate(expense.date)}
+   652→                          </TableCell>
+   653→                          <TableCell>
+   654→                            <Badge
+   655→                              variant="outline"
+   656→                              className={`gap-1 ${CATEGORY_COLORS[expense.category as Category] || CATEGORY_COLORS.Other}`}
+   657→                            >
+   658→                              {CATEGORY_ICONS[expense.category as Category]}
+   659→                              {expense.category}
+   660→                            </Badge>
+   661→                          </TableCell>
+   662→                          <TableCell className="text-right font-semibold whitespace-nowrap tabular-nums">
+   663→                            {formatCurrency(expense.amount)}
+   664→                          </TableCell>
+   665→                          <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
+   666→                            {expense.description || "—"}
+   667→                          </TableCell>
+   668→                          <TableCell className="text-right">
+   669→                            <div className="flex items-center justify-end gap-1">
+   670→                              <Button
+   671→                                variant="ghost"
+   672→                                size="icon"
+   673→                                className="h-8 w-8 text-muted-foreground hover:text-orange-600"
+   674→                                onClick={() => openEditDialog(expense)}
+   675→                              >
+   676→                                <Pencil className="h-3.5 w-3.5" />
+   677→                              </Button>
+   678→                              <Button
+   679→                                variant="ghost"
+   680→                                size="icon"
+   681→                                className="h-8 w-8 text-muted-foreground hover:text-red-600"
+   682→                                onClick={() => openDeleteDialog(expense)}
+   683→                              >
+   684→                                <Trash2 className="h-3.5 w-3.5" />
+   685→                              </Button>
+   686→                            </div>
+   687→                          </TableCell>
+   688→                        </TableRow>
+   689→                      ))}
+   690→                    </TableBody>
+   691→                  </Table>
+   692→                </div>
+   693→
+   694→                {/* Pagination */}
+   695→                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+   696→                  <p className="text-sm text-muted-foreground">
+   697→                    Showing{" "}
+   698→                    <span className="font-medium text-foreground">{showingFrom}</span>
+   699→                    {" "}to{" "}
+   700→                    <span className="font-medium text-foreground">{showingTo}</span>
+   701→                    {" "}of{" "}
+   702→                    <span className="font-medium text-foreground">{totalExpenses}</span>
+   703→                    {" "}results
+   704→                  </p>
+   705→                  <div className="flex items-center gap-2">
+   706→                    <Button
+   707→                      variant="outline"
+   708→                      size="sm"
+   709→                      disabled={safeCurrentPage === 1}
+   710→                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+   711→                    >
+   712→                      <ChevronLeft className="h-4 w-4" />
+   713→                      Previous
+   714→                    </Button>
+   715→                    <div className="flex items-center gap-1">
+   716→                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+   717→                        .filter((page) => {
+   718→                          // Show first, last, current, and adjacent pages
+   719→                          return (
+   720→                            page === 1 ||
+   721→                            page === totalPages ||
+   722→                            Math.abs(page - safeCurrentPage) <= 1
+   723→                          );
+   724→                        })
+   725→                        .map((page, idx, arr) => {
+   726→                          const prev = arr[idx - 1];
+   727→                          const showEllipsis = prev && page - prev > 1;
+   728→                          return (
+   729→                            <span key={page} className="flex items-center">
+   730→                              {showEllipsis && (
+   731→                                <span className="px-1 text-muted-foreground">…</span>
+   732→                              )}
+   733→                              <Button
+   734→                                variant={safeCurrentPage === page ? "default" : "outline"}
+   735→                                size="sm"
+   736→                                className={`h-8 w-8 p-0 ${
+   737→                                  safeCurrentPage === page
+   738→                                    ? "bg-orange-600 hover:bg-orange-700 text-white"
+   739→                                    : ""
+   740→                                }`}
+   741→                                onClick={() => setCurrentPage(page)}
+   742→                              >
+   743→                                {page}
+   744→                              </Button>
+   745→                            </span>
+   746→                          );
+   747→                        })}
+   748→                    </div>
+   749→                    <Button
+   750→                      variant="outline"
+   751→                      size="sm"
+   752→                      disabled={safeCurrentPage === totalPages}
+   753→                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+   754→                    >
+   755→                      Next
+   756→                      <ChevronRight className="h-4 w-4" />
+   757→                    </Button>
+   758→                  </div>
+   759→                </div>
+   760→              </>
+   761→            )}
+   762→          </CardContent>
+   763→        </Card>
+   764→
+   765→        {/* Category Breakdown Pie Chart */}
+   766→        <Card>
+   767→          <CardHeader className="pb-3">
+   768→            <CardTitle className="text-lg">Category Breakdown</CardTitle>
+   769→            <CardDescription>Expense distribution by category</CardDescription>
+   770→          </CardHeader>
+   771→          <CardContent>
+   772→            {loading ? (
+   773→              <div className="flex flex-col items-center gap-4">
+   774→                <Skeleton className="h-[200px] w-[200px] rounded-full" />
+   775→                <div className="w-full space-y-2">
+   776→                  {Array.from({ length: 3 }).map((_, i) => (
+   777→                    <Skeleton key={i} className="h-4 w-full" />
+   778→                  ))}
+   779→                </div>
+   780→              </div>
+   781→            ) : pieData.length === 0 ? (
+   782→              <div className="flex flex-col items-center justify-center py-8 text-center">
+   783→                <Receipt className="h-10 w-10 text-muted-foreground/40 mb-2" />
+   784→                <p className="text-muted-foreground text-xs">No data for chart</p>
+   785→              </div>
+   786→            ) : (
+   787→              <div className="flex flex-col items-center">
+   788→                <ChartContainer config={CHART_CONFIG} className="mx-auto aspect-square max-h-[220px] w-full">
+   789→                  <PieChart>
+   790→                    <ChartTooltip content={<PieTooltipContent />} />
+   791→                    <Pie
+   792→                      data={pieData}
+   793→                      dataKey="value"
+   794→                      nameKey="name"
+   795→                      cx="50%"
+   796→                      cy="50%"
+   797→                      innerRadius={50}
+   798→                      outerRadius={85}
+   799→                      paddingAngle={3}
+   800→                      strokeWidth={2}
+   801→                      stroke="var(--background)"
+   802→                    >
+   803→                      {pieData.map((entry, index) => (
+   804→                        <Cell key={`cell-${index}`} fill={entry.fill} />
+   805→                      ))}
+   806→                    </Pie>
+   807→                  </PieChart>
+   808→                </ChartContainer>
+   809→                <div className="mt-4 w-full space-y-2">
+   810→                  {categoryBreakdown.map((c) => {
+   811→                    const total = categoryBreakdown.reduce((s, x) => s + x.total, 0);
+   812→                    const pct = total > 0 ? ((c.total / total) * 100).toFixed(1) : "0";
+   813→                    return (
+   814→                      <div key={c.category} className="flex items-center justify-between gap-2">
+   815→                        <div className="flex items-center gap-2">
+   816→                          <div
+   817→                            className="h-2.5 w-2.5 rounded-sm shrink-0"
+   818→                            style={{ backgroundColor: CATEGORY_PIE_COLORS[c.category as Category] }}
+   819→                          />
+   820→                          <span className="text-xs font-medium">{c.category}</span>
+   821→                        </div>
+   822→                        <div className="flex items-center gap-2">
+   823→                          <span className="text-xs font-semibold tabular-nums">{formatCurrency(c.total)}</span>
+   824→                          <span className="text-xs text-muted-foreground tabular-nums">({pct}%)</span>
+   825→                        </div>
+   826→                      </div>
+   827→                    );
+   828→                  })}
+   829→                </div>
+   830→              </div>
+   831→            )}
+   832→          </CardContent>
+   833→        </Card>
+   834→      </div>
+   835→
+   836→      {/* ─── Add/Edit Dialog ─────────────────────────────────────────────────── */}
+   837→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   838→        <DialogContent className="sm:max-w-[460px]">
+   839→          <DialogHeader>
+   840→            <DialogTitle>
+   841→              {editingExpense ? "Edit Expense" : "Add Expense"}
+   842→            </DialogTitle>
+   843→            <DialogDescription>
+   844→              {editingExpense
+   845→                ? "Update the expense details below"
+   846→                : "Record a new expense entry"}
+   847→            </DialogDescription>
+   848→          </DialogHeader>
+   849→
+   850→          <div className="grid gap-4 py-4">
+   851→            {/* Date */}
+   852→            <div className="grid gap-2">
+   853→              <Label htmlFor="exp-date" className="text-sm font-medium">
+   854→                Date <span className="text-red-500">*</span>
+   855→              </Label>
+   856→              <Input
+   857→                id="exp-date"
+   858→                type="date"
+   859→                value={formDate}
+   860→                onChange={(e) => setFormDate(e.target.value)}
+   861→              />
+   862→            </div>
+   863→
+   864→            {/* Category */}
+   865→            <div className="grid gap-2">
+   866→              <Label htmlFor="exp-category" className="text-sm font-medium">
+   867→                Category <span className="text-red-500">*</span>
+   868→              </Label>
+   869→              <Select value={formCategory} onValueChange={setFormCategory}>
+   870→                <SelectTrigger id="exp-category">
+   871→                  <SelectValue placeholder="Select category" />
+   872→                </SelectTrigger>
+   873→                <SelectContent>
+   874→                  {CATEGORIES.map((cat) => (
+   875→                    <SelectItem key={cat} value={cat}>
+   876→                      <div className="flex items-center gap-2">
+   877→                        {CATEGORY_ICONS[cat]}
+   878→                        {cat}
+   879→                      </div>
+   880→                    </SelectItem>
+   881→                  ))}
+   882→                </SelectContent>
+   883→              </Select>
+   884→            </div>
+   885→
+   886→            {/* Amount */}
+   887→            <div className="grid gap-2">
+   888→              <Label htmlFor="exp-amount" className="text-sm font-medium">
+   889→                Amount (₹) <span className="text-red-500">*</span>
+   890→              </Label>
+   891→              <div className="relative">
+   892→                <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   893→                <Input
+   894→                  id="exp-amount"
+   895→                  type="number"
+   896→                  min="0"
+   897→                  step="0.01"
+   898→                  placeholder="0.00"
+   899→                  value={formAmount}
+   900→                  onChange={(e) => setFormAmount(e.target.value)}
+   901→                  className="pl-9"
+   902→                />
+   903→              </div>
+   904→            </div>
+   905→
+   906→            {/* Description */}
+   907→            <div className="grid gap-2">
+   908→              <Label htmlFor="exp-desc" className="text-sm font-medium">
+   909→                Description
+   910→              </Label>
+   911→              <Textarea
+   912→                id="exp-desc"
+   913→                placeholder="Optional notes about this expense..."
+   914→                value={formDescription}
+   915→                onChange={(e) => setFormDescription(e.target.value)}
+   916→                rows={3}
+   917→              />
+   918→            </div>
+   919→          </div>
+   920→
+   921→          <DialogFooter>
+   922→            <Button
+   923→              variant="outline"
+   924→              onClick={() => setDialogOpen(false)}
+   925→              disabled={submitting}
+   926→            >
+   927→              Cancel
+   928→            </Button>
+   929→            <Button
+   930→              onClick={handleSubmit}
+   931→              disabled={submitting || !formDate || !formCategory || !formAmount || Number(formAmount) <= 0}
+   932→              className="bg-orange-600 hover:bg-orange-700 text-white gap-2"
+   933→            >
+   934→              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+   935→              {editingExpense ? "Update" : "Add"} Expense
+   936→            </Button>
+   937→          </DialogFooter>
+   938→        </DialogContent>
+   939→      </Dialog>
+   940→
+   941→      {/* ─── Delete Confirmation ─────────────────────────────────────────────── */}
+   942→      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+   943→        <AlertDialogContent>
+   944→          <AlertDialogHeader>
+   945→            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+   946→            <AlertDialogDescription>
+   947→              Are you sure you want to delete this expense record?
+   948→              {deletingExpense && (
+   949→                <span className="mt-2 block font-medium text-foreground">
+   950→                  {deletingExpense.category} — {formatCurrency(deletingExpense.amount)} on{" "}
+   951→                  {formatDate(deletingExpense.date)}
+   952→                </span>
+   953→              )}
+   954→              <span className="mt-1 block">This action cannot be undone.</span>
+   955→            </AlertDialogDescription>
+   956→          </AlertDialogHeader>
+   957→          <AlertDialogFooter>
+   958→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   959→            <AlertDialogAction
+   960→              onClick={handleDelete}
+   961→              className="bg-red-600 hover:bg-red-700 text-white"
+   962→            >
+   963→              Delete
+   964→            </AlertDialogAction>
+   965→          </AlertDialogFooter>
+   966→        </AlertDialogContent>
+   967→      </AlertDialog>
+   968→    </div>
+   969→  );
+   970→}
+   971→

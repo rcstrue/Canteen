@@ -1,0 +1,602 @@
+  1001→                <div className="h-20 rounded-lg bg-muted/50 animate-pulse" />
+  1002→              </div>
+  1003→            ) : (
+  1004→              <div className="space-y-4">
+  1005→                {/* Food Budget Progress */}
+  1006→                <div className="rounded-lg border p-4 space-y-3">
+  1007→                  <div className="flex items-center justify-between">
+  1008→                    <div className="flex items-center gap-2">
+  1009→                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1010→                        <IndianRupee className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1011→                      </div>
+  1012→                      <div>
+  1013→                        <p className="text-sm font-semibold">Food Budget</p>
+  1014→                        <p className="text-xs text-muted-foreground">Monthly food purchase costs</p>
+  1015→                      </div>
+  1016→                    </div>
+  1017→                    <div className="flex items-center gap-2">
+  1018→                      {foodOverBudget ? (
+  1019→                        <Badge variant="destructive" className="text-xs">
+  1020→                          Over Budget!
+  1021→                        </Badge>
+  1022→                      ) : foodAlertTriggered ? (
+  1023→                        <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+  1024→                          <Bell className="h-3 w-3 mr-1" />
+  1025→                          Alert
+  1026→                        </Badge>
+  1027→                      ) : (
+  1028→                        <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+  1029→                          <CheckCircle2 className="h-3 w-3 mr-1" />
+  1030→                          On Track
+  1031→                        </Badge>
+  1032→                      )}
+  1033→                    </div>
+  1034→                  </div>
+  1035→                  <Progress
+  1036→                    value={Math.min(foodBudgetPct, 100)}
+  1037→                    className={`h-3 ${getProgressClass(foodBudgetPct)}`}
+  1038→                  />
+  1039→                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+  1040→                    <span className="tabular-nums">
+  1041→                      <span className={getBudgetColorClass(foodBudgetPct)}>{Math.round(foodBudgetPct)}%</span>{" "}
+  1042→                      used — {formatINR(foodSpent)}
+  1043→                    </span>
+  1044→                    <span className="tabular-nums">
+  1045→                      {foodRemaining >= 0 ? (
+  1046→                        <span className="text-emerald-600 dark:text-emerald-400">{formatINR(foodRemaining)} remaining</span>
+  1047→                      ) : (
+  1048→                        <span className="text-red-600 dark:text-red-400">{formatINR(Math.abs(foodRemaining))} over</span>
+  1049→                      )}
+  1050→                    </span>
+  1051→                  </div>
+  1052→                </div>
+  1053→
+  1054→                {/* Operating Budget Progress */}
+  1055→                <div className="rounded-lg border p-4 space-y-3">
+  1056→                  <div className="flex items-center justify-between">
+  1057→                    <div className="flex items-center gap-2">
+  1058→                      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-orange-100 dark:bg-orange-900/30">
+  1059→                        <TrendingUp className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+  1060→                      </div>
+  1061→                      <div>
+  1062→                        <p className="text-sm font-semibold">Operating Budget</p>
+  1063→                        <p className="text-xs text-muted-foreground">Food + operating expenses combined</p>
+  1064→                      </div>
+  1065→                    </div>
+  1066→                    <div className="flex items-center gap-2">
+  1067→                      {operatingOverBudget ? (
+  1068→                        <Badge variant="destructive" className="text-xs">
+  1069→                          Over Budget!
+  1070→                        </Badge>
+  1071→                      ) : operatingAlertTriggered ? (
+  1072→                        <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+  1073→                          <Bell className="h-3 w-3 mr-1" />
+  1074→                          Alert
+  1075→                        </Badge>
+  1076→                      ) : (
+  1077→                        <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+  1078→                          <CheckCircle2 className="h-3 w-3 mr-1" />
+  1079→                          On Track
+  1080→                        </Badge>
+  1081→                      )}
+  1082→                    </div>
+  1083→                  </div>
+  1084→                  <Progress
+  1085→                    value={Math.min(operatingBudgetPct, 100)}
+  1086→                    className={`h-3 ${getProgressClass(operatingBudgetPct)}`}
+  1087→                  />
+  1088→                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+  1089→                    <span className="tabular-nums">
+  1090→                      <span className={getBudgetColorClass(operatingBudgetPct)}>{Math.round(operatingBudgetPct)}%</span>{" "}
+  1091→                      used — {formatINR(operatingSpent)}
+  1092→                    </span>
+  1093→                    <span className="tabular-nums">
+  1094→                      {operatingRemaining >= 0 ? (
+  1095→                        <span className="text-emerald-600 dark:text-emerald-400">{formatINR(operatingRemaining)} remaining</span>
+  1096→                      ) : (
+  1097→                        <span className="text-red-600 dark:text-red-400">{formatINR(Math.abs(operatingRemaining))} over</span>
+  1098→                      )}
+  1099→                    </span>
+  1100→                  </div>
+  1101→                </div>
+  1102→              </div>
+  1103→            )}
+  1104→
+  1105→            <Separator />
+  1106→
+  1107→            {/* ─── Budget Setup ─────────────────────────────────────────── */}
+  1108→            <div className="space-y-4">
+  1109→              <div className="flex items-center gap-2">
+  1110→                <Target className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1111→                <h3 className="text-sm font-semibold">Monthly Budget Setup</h3>
+  1112→              </div>
+  1113→              <div className="grid gap-4 sm:grid-cols-3">
+  1114→                <div className="space-y-2">
+  1115→                  <Label htmlFor="foodBudget" className="text-xs text-muted-foreground">
+  1116→                    Food Budget (₹)
+  1117→                  </Label>
+  1118→                  <div className="relative">
+  1119→                    <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1120→                    <Input
+  1121→                      id="foodBudget"
+  1122→                      type="number"
+  1123→                      value={foodBudgetInput}
+  1124→                      onChange={(e) => setFoodBudgetInput(e.target.value)}
+  1125→                      placeholder="500000"
+  1126→                      className="pl-9 tabular-nums"
+  1127→                    />
+  1128→                  </div>
+  1129→                  <p className="text-xs text-muted-foreground">
+  1130→                    Current: {formatINR(budget.monthlyFoodBudget)}
+  1131→                  </p>
+  1132→                </div>
+  1133→                <div className="space-y-2">
+  1134→                  <Label htmlFor="operatingBudget" className="text-xs text-muted-foreground">
+  1135→                    Operating Budget (₹)
+  1136→                  </Label>
+  1137→                  <div className="relative">
+  1138→                    <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1139→                    <Input
+  1140→                      id="operatingBudget"
+  1141→                      type="number"
+  1142→                      value={operatingBudgetInput}
+  1143→                      onChange={(e) => setOperatingBudgetInput(e.target.value)}
+  1144→                      placeholder="750000"
+  1145→                      className="pl-9 tabular-nums"
+  1146→                    />
+  1147→                  </div>
+  1148→                  <p className="text-xs text-muted-foreground">
+  1149→                    Current: {formatINR(budget.monthlyOperatingBudget)}
+  1150→                  </p>
+  1151→                </div>
+  1152→                <div className="space-y-2">
+  1153→                  <Label htmlFor="totalBudget" className="text-xs text-muted-foreground">
+  1154→                    Total Budget (₹)
+  1155→                  </Label>
+  1156→                  <div className="relative">
+  1157→                    <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1158→                    <Input
+  1159→                      id="totalBudget"
+  1160→                      type="number"
+  1161→                      value={totalBudgetInput}
+  1162→                      onChange={(e) => setTotalBudgetInput(e.target.value)}
+  1163→                      placeholder="750000"
+  1164→                      className="pl-9 tabular-nums"
+  1165→                    />
+  1166→                  </div>
+  1167→                  <p className="text-xs text-muted-foreground">
+  1168→                    Current: {formatINR(currentMonthBudget?.totalBudget ?? budget.monthlyOperatingBudget)}
+  1169→                  </p>
+  1170→                </div>
+  1171→              </div>
+  1172→              <Button
+  1173→                onClick={handleSaveBudget}
+  1174→                className="bg-amber-600 hover:bg-amber-700 text-white"
+  1175→              >
+  1176→                {budgetSaved ? (
+  1177→                  <>
+  1178→                    <CheckCircle2 className="mr-2 h-4 w-4" />
+  1179→                    Budget Saved!
+  1180→                  </>
+  1181→                ) : (
+  1182→                  <>
+  1183→                    <Save className="mr-2 h-4 w-4" />
+  1184→                    Save Budget
+  1185→                  </>
+  1186→                )}
+  1187→              </Button>
+  1188→            </div>
+  1189→
+  1190→            <Separator />
+  1191→
+  1192→            {/* ─── Alert Thresholds ─────────────────────────────────────── */}
+  1193→            <div className="space-y-4">
+  1194→              <div className="flex items-center gap-2">
+  1195→                <ShieldAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1196→                <h3 className="text-sm font-semibold">Alert Thresholds</h3>
+  1197→              </div>
+  1198→              <p className="text-xs text-muted-foreground">
+  1199→                Get notified when spending reaches a certain percentage of your budget.
+  1200→              </p>
+  1201→              <div className="grid gap-4 sm:grid-cols-3">
+  1202→                <div className="space-y-2">
+  1203→                  <Label htmlFor="foodThreshold" className="text-xs text-muted-foreground">
+  1204→                    Food Budget Alert (%)
+  1205→                  </Label>
+  1206→                  <div className="relative">
+  1207→                    <Bell className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1208→                    <Input
+  1209→                      id="foodThreshold"
+  1210→                      type="number"
+  1211→                      min={1}
+  1212→                      max={100}
+  1213→                      value={foodThresholdInput}
+  1214→                      onChange={(e) => setFoodThresholdInput(e.target.value)}
+  1215→                      placeholder="80"
+  1216→                      className="pl-9 tabular-nums"
+  1217→                    />
+  1218→                  </div>
+  1219→                  <div className="flex items-center gap-2">
+  1220→                    <p className="text-xs text-muted-foreground">
+  1221→                      Alert at {alertSettings.foodThreshold}% — Currently{" "}
+  1222→                      <span className={foodAlertTriggered ? "text-amber-600 dark:text-amber-400 font-medium" : "text-emerald-600 dark:text-emerald-400"}>
+  1223→                        {Math.round(foodBudgetPct)}%
+  1224→                      </span>
+  1225→                    </p>
+  1226→                    {foodAlertTriggered && (
+  1227→                      <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800 px-1.5 py-0">
+  1228→                        Triggered
+  1229→                      </Badge>
+  1230→                    )}
+  1231→                  </div>
+  1232→                </div>
+  1233→                <div className="space-y-2">
+  1234→                  <Label htmlFor="operatingThreshold" className="text-xs text-muted-foreground">
+  1235→                    Operating Budget Alert (%)
+  1236→                  </Label>
+  1237→                  <div className="relative">
+  1238→                    <Bell className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1239→                    <Input
+  1240→                      id="operatingThreshold"
+  1241→                      type="number"
+  1242→                      min={1}
+  1243→                      max={100}
+  1244→                      value={operatingThresholdInput}
+  1245→                      onChange={(e) => setOperatingThresholdInput(e.target.value)}
+  1246→                      placeholder="80"
+  1247→                      className="pl-9 tabular-nums"
+  1248→                    />
+  1249→                  </div>
+  1250→                  <div className="flex items-center gap-2">
+  1251→                    <p className="text-xs text-muted-foreground">
+  1252→                      Alert at {alertSettings.operatingThreshold}% — Currently{" "}
+  1253→                      <span className={operatingAlertTriggered ? "text-amber-600 dark:text-amber-400 font-medium" : "text-emerald-600 dark:text-emerald-400"}>
+  1254→                        {Math.round(operatingBudgetPct)}%
+  1255→                      </span>
+  1256→                    </p>
+  1257→                    {operatingAlertTriggered && (
+  1258→                      <Badge className="text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800 px-1.5 py-0">
+  1259→                        Triggered
+  1260→                      </Badge>
+  1261→                    )}
+  1262→                  </div>
+  1263→                </div>
+  1264→                <div className="space-y-2">
+  1265→                  <Label htmlFor="alertThreshold" className="text-xs text-muted-foreground">
+  1266→                    Default Alert Threshold (%)
+  1267→                  </Label>
+  1268→                  <div className="relative">
+  1269→                    <Bell className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+  1270→                    <Input
+  1271→                      id="alertThreshold"
+  1272→                      type="number"
+  1273→                      min={1}
+  1274→                      max={100}
+  1275→                      value={alertThresholdInput}
+  1276→                      onChange={(e) => setAlertThresholdInput(e.target.value)}
+  1277→                      placeholder="80"
+  1278→                      className="pl-9 tabular-nums"
+  1279→                    />
+  1280→                  </div>
+  1281→                  <p className="text-xs text-muted-foreground">
+  1282→                    Saved to DB for this month: {currentMonthBudget?.alertThreshold ?? 80}%
+  1283→                  </p>
+  1284→                </div>
+  1285→              </div>
+  1286→              <Button
+  1287→                onClick={handleSaveAlerts}
+  1288→                className="bg-amber-600 hover:bg-amber-700 text-white"
+  1289→              >
+  1290→                {alertsSaved ? (
+  1291→                  <>
+  1292→                    <CheckCircle2 className="mr-2 h-4 w-4" />
+  1293→                    Alerts Saved!
+  1294→                  </>
+  1295→                ) : (
+  1296→                  <>
+  1297→                    <Save className="mr-2 h-4 w-4" />
+  1298→                    Save Alert Thresholds
+  1299→                  </>
+  1300→                )}
+  1301→              </Button>
+  1302→            </div>
+  1303→
+  1304→            <Separator />
+  1305→
+  1306→            {/* ─── Low Stock Alerts & Quick Link ────────────────────────── */}
+  1307→            <div className="space-y-4">
+  1308→              <div className="flex items-center gap-2">
+  1309→                <PackageOpen className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1310→                <h3 className="text-sm font-semibold">Low Stock Alerts</h3>
+  1311→              </div>
+  1312→              <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
+  1313→                <div className="flex items-center gap-3">
+  1314→                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+  1315→                    <PackageOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1316→                  </div>
+  1317→                  <div>
+  1318→                    <p className="font-semibold tabular-nums">
+  1319→                      {isLoadingBudget ? "..." : lowStockCount}
+  1320→                    </p>
+  1321→                    <p className="text-xs text-muted-foreground">
+  1322→                      Ingredients below minimum stock level
+  1323→                    </p>
+  1324→                  </div>
+  1325→                </div>
+  1326→                {onNavigate && (
+  1327→                  <Button
+  1328→                    variant="outline"
+  1329→                    size="sm"
+  1330→                    onClick={() => onNavigate("stock")}
+  1331→                    className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/20"
+  1332→                  >
+  1333→                    View Stock
+  1334→                    <ArrowRight className="ml-1 h-4 w-4" />
+  1335→                  </Button>
+  1336→                )}
+  1337→              </div>
+  1338→            </div>
+  1339→
+  1340→            <Separator />
+  1341→
+  1342→            {/* ─── Budget History Table ─────────────────────────────────── */}
+  1343→            <div className="space-y-4">
+  1344→              <div className="flex items-center gap-2">
+  1345→                <TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1346→                <h3 className="text-sm font-semibold">Budget History — Current Month</h3>
+  1347→              </div>
+  1348→              {isLoadingBudget ? (
+  1349→                <div className="h-24 rounded-lg bg-muted/50 animate-pulse" />
+  1350→              ) : (
+  1351→                <div className="rounded-lg border overflow-hidden">
+  1352→                  <table className="w-full text-sm">
+  1353→                    <thead>
+  1354→                      <tr className="bg-muted/50 border-b">
+  1355→                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Category</th>
+  1356→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Budget</th>
+  1357→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Actual</th>
+  1358→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Variance</th>
+  1359→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Status</th>
+  1360→                      </tr>
+  1361→                    </thead>
+  1362→                    <tbody>
+  1363→                      <tr className="border-b last:border-0">
+  1364→                        <td className="px-4 py-2.5 font-medium">Food Cost</td>
+  1365→                        <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(budget.monthlyFoodBudget)}</td>
+  1366→                        <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(foodSpent)}</td>
+  1367→                        <td className={`px-4 py-2.5 text-right tabular-nums ${foodRemaining >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+  1368→                          {foodRemaining >= 0 ? "+" : ""}{formatINR(foodRemaining)}
+  1369→                        </td>
+  1370→                        <td className="px-4 py-2.5 text-right">
+  1371→                          {foodOverBudget ? (
+  1372→                            <Badge variant="destructive" className="text-xs">Over</Badge>
+  1373→                          ) : foodAlertTriggered ? (
+  1374→                            <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">Warning</Badge>
+  1375→                          ) : (
+  1376→                            <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">OK</Badge>
+  1377→                          )}
+  1378→                        </td>
+  1379→                      </tr>
+  1380→                      <tr className="border-b last:border-0">
+  1381→                        <td className="px-4 py-2.5 font-medium">Operating Cost</td>
+  1382→                        <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(budget.monthlyOperatingBudget)}</td>
+  1383→                        <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(operatingSpent)}</td>
+  1384→                        <td className={`px-4 py-2.5 text-right tabular-nums ${operatingRemaining >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+  1385→                          {operatingRemaining >= 0 ? "+" : ""}{formatINR(operatingRemaining)}
+  1386→                        </td>
+  1387→                        <td className="px-4 py-2.5 text-right">
+  1388→                          {operatingOverBudget ? (
+  1389→                            <Badge variant="destructive" className="text-xs">Over</Badge>
+  1390→                          ) : operatingAlertTriggered ? (
+  1391→                            <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">Warning</Badge>
+  1392→                          ) : (
+  1393→                            <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">OK</Badge>
+  1394→                          )}
+  1395→                        </td>
+  1396→                      </tr>
+  1397→                      {costReport && (
+  1398→                        <tr className="border-b last:border-0 bg-muted/20">
+  1399→                          <td className="px-4 py-2.5 font-medium">Expenses</td>
+  1400→                          <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">—</td>
+  1401→                          <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(costReport.expenses?.total ?? 0)}</td>
+  1402→                          <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">—</td>
+  1403→                          <td className="px-4 py-2.5 text-right">
+  1404→                            <Badge variant="outline" className="text-xs border-amber-200 dark:border-amber-800">Info</Badge>
+  1405→                          </td>
+  1406→                        </tr>
+  1407→                      )}
+  1408→                      {currentMonthBudget && currentMonthBudget.totalBudget > 0 && (
+  1409→                        <tr className="border-b last:border-0 bg-amber-50/50 dark:bg-amber-900/10">
+  1410→                          <td className="px-4 py-2.5 font-medium">Total Budget</td>
+  1411→                          <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(currentMonthBudget.totalBudget)}</td>
+  1412→                          <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(operatingSpent)}</td>
+  1413→                          <td className={`px-4 py-2.5 text-right tabular-nums ${(currentMonthBudget.totalBudget - operatingSpent) >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+  1414→                            {(currentMonthBudget.totalBudget - operatingSpent) >= 0 ? "+" : ""}{formatINR(currentMonthBudget.totalBudget - operatingSpent)}
+  1415→                          </td>
+  1416→                          <td className="px-4 py-2.5 text-right">
+  1417→                            {operatingSpent > currentMonthBudget.totalBudget ? (
+  1418→                              <Badge variant="destructive" className="text-xs">Over</Badge>
+  1419→                            ) : (operatingSpent / currentMonthBudget.totalBudget) * 100 >= (currentMonthBudget.alertThreshold ?? 80) ? (
+  1420→                              <Badge className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">Warning</Badge>
+  1421→                            ) : (
+  1422→                              <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">OK</Badge>
+  1423→                            )}
+  1424→                          </td>
+  1425→                        </tr>
+  1426→                      )}
+  1427→                    </tbody>
+  1428→                  </table>
+  1429→                </div>
+  1430→              )}
+  1431→            </div>
+  1432→
+  1433→            <Separator />
+  1434→
+  1435→            {/* ─── Past Months Budget History ────────────────────────────── */}
+  1436→            {budgetHistory.length > 0 && (
+  1437→              <div className="space-y-4">
+  1438→                <div className="flex items-center gap-2">
+  1439→                  <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1440→                  <h3 className="text-sm font-semibold">Budget History — Past Months</h3>
+  1441→                </div>
+  1442→                <div className="rounded-lg border overflow-hidden">
+  1443→                  <table className="w-full text-sm">
+  1444→                    <thead>
+  1445→                      <tr className="bg-muted/50 border-b">
+  1446→                        <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Month</th>
+  1447→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Food Budget</th>
+  1448→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Operating Budget</th>
+  1449→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Total Budget</th>
+  1450→                        <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Alert %</th>
+  1451→                      </tr>
+  1452→                    </thead>
+  1453→                    <tbody>
+  1454→                      {budgetHistory
+  1455→                        .filter((b) => b.month !== new Date().toISOString().slice(0, 7))
+  1456→                        .slice(0, 6)
+  1457→                        .map((b) => (
+  1458→                          <tr key={b.id} className="border-b last:border-0">
+  1459→                            <td className="px-4 py-2.5 font-medium">
+  1460→                              {new Date(b.month + "-01").toLocaleDateString("en-IN", { month: "long", year: "numeric" })}
+  1461→                            </td>
+  1462→                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.foodBudget)}</td>
+  1463→                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.operatingBudget)}</td>
+  1464→                            <td className="px-4 py-2.5 text-right tabular-nums">{formatINR(b.totalBudget)}</td>
+  1465→                            <td className="px-4 py-2.5 text-right">
+  1466→                              <Badge variant="outline" className="text-xs border-amber-200 dark:border-amber-800">
+  1467→                                {b.alertThreshold}%
+  1468→                              </Badge>
+  1469→                            </td>
+  1470→                          </tr>
+  1471→                        ))}
+  1472→                      {budgetHistory.filter((b) => b.month !== new Date().toISOString().slice(0, 7)).length === 0 && (
+  1473→                        <tr>
+  1474→                          <td colSpan={5} className="px-4 py-4 text-center text-muted-foreground text-sm">
+  1475→                            No past months&apos; budget data yet. Save a budget to start tracking.
+  1476→                          </td>
+  1477→                        </tr>
+  1478→                      )}
+  1479→                    </tbody>
+  1480→                  </table>
+  1481→                </div>
+  1482→              </div>
+  1483→            )}
+  1484→          </CardContent>
+  1485→        </Card>
+  1486→
+  1487→        {/* ─── Data Backup & Restore Card ─────────────────────────────────── */}
+  1488→        <Card className="md:col-span-2 border-amber-300/70 dark:border-amber-700/40 overflow-hidden">
+  1489→          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
+  1490→            <CardHeader>
+  1491→              <div className="flex items-start justify-between gap-3 flex-wrap">
+  1492→                <div>
+  1493→                  <CardTitle className="flex items-center gap-2">
+  1494→                    <HardDriveDownload className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1495→                    Data Backup &amp; Restore
+  1496→                  </CardTitle>
+  1497→                  <CardDescription>
+  1498→                    Export all canteen data to a JSON file or restore from a previous backup
+  1499→                  </CardDescription>
+  1500→                </div>
+  1501→                {/* Last backup + total records badges */}
+  1502→                <div className="flex items-center gap-2 flex-wrap">
+  1503→                  <Badge
+  1504→                    variant="outline"
+  1505→                    className="border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+  1506→                  >
+  1507→                    <CalendarClock className="h-3 w-3 mr-1" />
+  1508→                    Last backup: {formatRelativeDate(lastBackupDate)}
+  1509→                  </Badge>
+  1510→                  <Badge
+  1511→                    variant="outline"
+  1512→                    className="border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+  1513→                  >
+  1514→                    <Database className="h-3 w-3 mr-1" />
+  1515→                    {totalRecords} records
+  1516→                  </Badge>
+  1517→                </div>
+  1518→              </div>
+  1519→            </CardHeader>
+  1520→          </div>
+  1521→
+  1522→          <CardContent className="space-y-5 pt-6">
+  1523→            {/* ─── Auto-backup reminder banner ──────────────────────────── */}
+  1524→            {backupStale && (
+  1525→              <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-900/20 px-4 py-3">
+  1526→                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+  1527→                <div className="space-y-0.5">
+  1528→                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+  1529→                    {lastBackupDate
+  1530→                      ? "It's been more than 7 days since your last backup"
+  1531→                      : "No backup has been created yet"}
+  1532→                  </p>
+  1533→                  <p className="text-xs text-amber-700 dark:text-amber-400">
+  1534→                    Regular backups protect your data. Export a backup now to keep it safe.
+  1535→                  </p>
+  1536→                </div>
+  1537→              </div>
+  1538→            )}
+  1539→
+  1540→            {/* ─── Two-column layout: Export / Import ───────────────────── */}
+  1541→            <div className="grid gap-5 md:grid-cols-2">
+  1542→              {/* Export (Backup) */}
+  1543→              <div className="rounded-xl border border-amber-200/70 dark:border-amber-800/40 bg-gradient-to-br from-amber-50/40 to-orange-50/30 dark:from-amber-900/10 dark:to-orange-900/10 p-5 space-y-4">
+  1544→                <div className="flex items-center gap-3">
+  1545→                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1546→                    <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1547→                  </div>
+  1548→                  <div>
+  1549→                    <h3 className="text-sm font-semibold">Export Data (Backup)</h3>
+  1550→                    <p className="text-xs text-muted-foreground">
+  1551→                      Download all data as a JSON file
+  1552→                    </p>
+  1553→                  </div>
+  1554→                </div>
+  1555→
+  1556→                <p className="text-xs text-muted-foreground">
+  1557→                  Exports ingredients, recipes, stock movements, daily meals, purchases, and expenses
+  1558→                  with metadata (version, export date, record counts).
+  1559→                </p>
+  1560→
+  1561→                <Button
+  1562→                  onClick={handleExport}
+  1563→                  disabled={isExporting || isImporting}
+  1564→                  className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+  1565→                >
+  1566→                  {isExporting ? (
+  1567→                    <>
+  1568→                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1569→                      Exporting...
+  1570→                    </>
+  1571→                  ) : (
+  1572→                    <>
+  1573→                      <Download className="mr-2 h-4 w-4" />
+  1574→                      Download Backup
+  1575→                    </>
+  1576→                  )}
+  1577→                </Button>
+  1578→
+  1579→                {/* Last export summary */}
+  1580→                {lastExportInfo && (
+  1581→                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800/40 dark:bg-emerald-900/20 px-3 py-2 flex items-center gap-2">
+  1582→                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+  1583→                    <div className="text-xs">
+  1584→                      <p className="font-medium text-emerald-700 dark:text-emerald-300">
+  1585→                        Last export: {formatBytes(lastExportInfo.size)}
+  1586→                      </p>
+  1587→                      <p className="text-emerald-600/80 dark:text-emerald-400/80 tabular-nums">
+  1588→                        {lastExportInfo.counts.total} records •{" "}
+  1589→                        {lastExportInfo.counts.ingredients} ingredients •{" "}
+  1590→                        {lastExportInfo.counts.recipes} recipes •{" "}
+  1591→                        {lastExportInfo.counts.purchases} purchases •{" "}
+  1592→                        {lastExportInfo.counts.expenses} expenses
+  1593→                      </p>
+  1594→                    </div>
+  1595→                  </div>
+  1596→                )}
+  1597→              </div>
+  1598→
+  1599→              {/* Import (Restore) */}
+  1600→              <div className="rounded-xl border-2 border-amber-300/80 dark:border-amber-700/50 bg-gradient-to-br from-amber-50/30 to-orange-50/20 dark:from-amber-900/5 dark:to-orange-900/5 p-5 space-y-4">
+
+[showing lines 1001-1600 of 2113; use offset=1601 with limit to continue reading]

@@ -81,6 +81,9 @@ import {
   ArrowUpRight,
   RefreshCw,
   History,
+  CheckCircle2,
+  ShieldAlert,
+  CircleAlert,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -258,6 +261,51 @@ function formatStockWithUnit(quantity: number, unit: string): string {
 
 function isLowStock(item: Ingredient): boolean {
   return item.currentStock < item.minStock;
+}
+
+type StockHealth = "OK" | "LOW" | "CRITICAL";
+
+function getStockHealth(item: Ingredient): StockHealth {
+  if (item.minStock === 0) return "OK";
+  const ratio = item.currentStock / item.minStock;
+  if (ratio < 1) return "CRITICAL";    // currentStock < minStock → red
+  if (ratio < 1.2) return "LOW";       // 80-100% of minStock (near par) → amber
+  return "OK";                          // currentStock >= minStock → green
+}
+
+function getStockHealthConfig(health: StockHealth): {
+  label: string;
+  badgeClass: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  barColor: string;
+} {
+  switch (health) {
+    case "CRITICAL":
+      return {
+        label: "CRITICAL",
+        badgeClass:
+          "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800",
+        Icon: ShieldAlert,
+        barColor: "bg-red-500",
+      };
+    case "LOW":
+      return {
+        label: "LOW",
+        badgeClass:
+          "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+        Icon: CircleAlert,
+        barColor: "bg-amber-500",
+      };
+    case "OK":
+    default:
+      return {
+        label: "OK",
+        badgeClass:
+          "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+        Icon: CheckCircle2,
+        barColor: "bg-emerald-500",
+      };
+  }
 }
 
 function formatDateDDMMYYYY(dateStr: string): string {
@@ -687,8 +735,8 @@ export function StockView() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="transition-all hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
@@ -701,31 +749,46 @@ export function StockView() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="transition-all hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
-                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Low Stock</p>
-                <p className="text-xl font-bold text-red-600 dark:text-red-400">
-                  {lowStockCount}
+                <p className="text-sm text-muted-foreground">Stock OK</p>
+                <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                  {ingredients.filter((i) => getStockHealth(i) === "OK").length}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="transition-all hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/40">
-                <Package className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
+                <CircleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">In Stock</p>
-                <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                  {ingredients.length - lowStockCount}
+                <p className="text-sm text-muted-foreground">Near Par</p>
+                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">
+                  {ingredients.filter((i) => getStockHealth(i) === "LOW").length}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="transition-all hover:shadow-md">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
+                <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Critical</p>
+                <p className="text-xl font-bold text-red-600 dark:text-red-400">
+                  {ingredients.filter((i) => getStockHealth(i) === "CRITICAL").length}
                 </p>
               </div>
             </div>
@@ -835,11 +898,25 @@ export function StockView() {
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : sortedIngredients.length === 0 ? (
-            <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-muted-foreground/25">
-              <Package className="mb-2 h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                No ingredients found. Add your first ingredient to get started.
+            <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed border-muted-foreground/25">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30 mb-4">
+                <Package className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+              </div>
+              <p className="text-base font-medium text-foreground">No ingredients found</p>
+              <p className="mt-1 text-sm text-muted-foreground max-w-xs text-center">
+                {search || categoryFilter !== "All" || showLowStockOnly
+                  ? "Try adjusting your search or filters to find what you're looking for."
+                  : "Start building your inventory by adding your first raw material."}
               </p>
+              {!search && categoryFilter === "All" && !showLowStockOnly && (
+                <Button
+                  onClick={openAddDialog}
+                  className="mt-4 bg-orange-600 hover:bg-orange-700 text-white"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add First Ingredient
+                </Button>
+              )}
             </div>
           ) : (
             <>
@@ -855,19 +932,8 @@ export function StockView() {
                           Category
                         </SortableHeader>
                       </TableHead>
-                      <TableHead>
-                        <SortableHeader field="unit">Unit</SortableHeader>
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <SortableHeader field="currentStock">
-                          Current Stock
-                        </SortableHeader>
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <SortableHeader field="minStock">
-                          Min Stock
-                        </SortableHeader>
-                      </TableHead>
+                      <TableHead>Stock Level</TableHead>
+                      <TableHead>Health</TableHead>
                       <TableHead className="text-right">
                         <SortableHeader field="lastPurchasePrice">
                           Last Price
@@ -883,20 +949,26 @@ export function StockView() {
                           Supplier
                         </SortableHeader>
                       </TableHead>
-                      <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedIngredients.map((item) => {
-                      const low = isLowStock(item);
+                      const health = getStockHealth(item);
+                      const healthConfig = getStockHealthConfig(health);
+                      const HealthIcon = healthConfig.Icon;
+                      const stockPercent = item.minStock > 0
+                        ? Math.min(Math.round((item.currentStock / item.minStock) * 100), 100)
+                        : item.currentStock > 0 ? 100 : 0;
                       return (
                         <TableRow
                           key={item.id}
-                          className={`cursor-pointer ${
-                            low
+                          className={`cursor-pointer transition-colors ${
+                            health === "CRITICAL"
                               ? "bg-red-50/50 hover:bg-red-100/50 dark:bg-red-950/20 dark:hover:bg-red-950/30"
-                              : ""
+                              : health === "LOW"
+                                ? "bg-amber-50/30 hover:bg-amber-100/30 dark:bg-amber-950/10 dark:hover:bg-amber-950/20"
+                                : "hover:bg-muted/50"
                           }`}
                           onClick={() => openDetailDialog(item)}
                         >
@@ -914,14 +986,43 @@ export function StockView() {
                               {item.category}
                             </Badge>
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {item.unit}
+                          <TableCell>
+                            <div className="min-w-[140px] space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="font-mono font-medium">
+                                  {item.currentStock} {item.unit}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  min: {item.minStock}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <div className="h-3 flex-1 rounded-full bg-muted overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-500 ${healthConfig.barColor}`}
+                                    style={{ width: `${Math.min(stockPercent, 100)}%` }}
+                                  />
+                                </div>
+                                <span className={`text-[11px] font-semibold tabular-nums w-9 text-right ${
+                                  health === "CRITICAL"
+                                    ? "text-red-600 dark:text-red-400"
+                                    : health === "LOW"
+                                      ? "text-amber-600 dark:text-amber-400"
+                                      : "text-emerald-600 dark:text-emerald-400"
+                                }`}>
+                                  {stockPercent}%
+                                </span>
+                              </div>
+                            </div>
                           </TableCell>
-                          <TableCell className="text-right font-mono">
-                            {formatStockWithUnit(item.currentStock, item.unit)}
-                          </TableCell>
-                          <TableCell className="text-right font-mono text-muted-foreground">
-                            {formatStockWithUnit(item.minStock, item.unit)}
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={`gap-1 text-[10px] font-semibold ${healthConfig.badgeClass}`}
+                            >
+                              <HealthIcon className="h-3 w-3" />
+                              {healthConfig.label}
+                            </Badge>
                           </TableCell>
                           <TableCell className="text-right font-mono">
                             {formatCurrency(item.lastPurchasePrice)}
@@ -931,21 +1032,6 @@ export function StockView() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {item.supplier || "—"}
-                          </TableCell>
-                          <TableCell>
-                            {low ? (
-                              <Badge
-                                variant="destructive"
-                                className="gap-1"
-                              >
-                                <AlertTriangle className="h-3 w-3" />
-                                Low Stock
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                                In Stock
-                              </Badge>
-                            )}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -1753,6 +1839,49 @@ export function StockView() {
 
           {detailItem && (
             <div className="space-y-4">
+              {/* Stock Health Banner */}
+              {(() => {
+                const health = getStockHealth(detailItem);
+                const config = getStockHealthConfig(health);
+                const HIcon = config.Icon;
+                const pct = detailItem.minStock > 0
+                  ? Math.min(Math.round((detailItem.currentStock / detailItem.minStock) * 100), 100)
+                  : detailItem.currentStock > 0 ? 100 : 0;
+                return (
+                  <div className={`rounded-lg border p-3 ${
+                    health === "CRITICAL"
+                      ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800"
+                      : health === "LOW"
+                        ? "bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800"
+                        : "bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-800"
+                  }`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <HIcon className={`h-4 w-4 ${
+                          health === "CRITICAL" ? "text-red-600 dark:text-red-400"
+                            : health === "LOW" ? "text-amber-600 dark:text-amber-400"
+                              : "text-emerald-600 dark:text-emerald-400"
+                        }`} />
+                        <span className="text-sm font-medium">Stock Level</span>
+                      </div>
+                      <Badge variant="outline" className={`gap-1 text-[10px] font-semibold ${config.badgeClass}`}>
+                        {health}
+                      </Badge>
+                    </div>
+                    <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${config.barColor}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                      <span>{detailItem.currentStock} {detailItem.unit}</span>
+                      <span>min: {detailItem.minStock} {detailItem.unit}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Basic Info */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1807,19 +1936,6 @@ export function StockView() {
                   <p className="font-medium">
                     {detailItem.supplier || "—"}
                   </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  {isLowStock(detailItem) ? (
-                    <Badge variant="destructive" className="gap-1">
-                      <AlertTriangle className="h-3 w-3" />
-                      Low Stock
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
-                      In Stock
-                    </Badge>
-                  )}
                 </div>
               </div>
 

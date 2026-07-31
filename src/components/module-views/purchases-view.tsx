@@ -64,6 +64,10 @@ import {
   Minus,
   AlertTriangle,
   Download,
+  Clock,
+  CheckCircle2,
+  Banknote,
+  CircleDot,
 } from "lucide-react";
 import { downloadCSV } from "@/lib/export-utils";
 import { useToast } from "@/hooks/use-toast";
@@ -137,6 +141,46 @@ function formatDate(dateStr: string): string {
 function getTodayStr(): string {
   const d = new Date();
   return d.toISOString().split("T")[0];
+}
+
+// Purchase status based on date (simulated since no status field in DB)
+type PurchaseStatus = "Pending" | "Received" | "Paid";
+
+function getPurchaseStatus(purchase: Purchase): PurchaseStatus {
+  const purchaseDate = new Date(purchase.date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.floor((today.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24));
+  if (diffDays <= 0) return "Pending";
+  if (diffDays <= 7) return "Received";
+  return "Paid";
+}
+
+function getStatusConfig(status: PurchaseStatus): {
+  label: string;
+  badgeClass: string;
+  Icon: React.ComponentType<{ className?: string }>;
+} {
+  switch (status) {
+    case "Pending":
+      return {
+        label: "Pending",
+        badgeClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+        Icon: Clock,
+      };
+    case "Received":
+      return {
+        label: "Received",
+        badgeClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+        Icon: CheckCircle2,
+      };
+    case "Paid":
+      return {
+        label: "Paid",
+        badgeClass: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+        Icon: Banknote,
+      };
+  }
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -416,7 +460,7 @@ export function PurchasesView() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card>
+        <Card className="transition-all hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -429,7 +473,7 @@ export function PurchasesView() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="transition-all hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -444,7 +488,7 @@ export function PurchasesView() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="transition-all hover:shadow-md">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -554,13 +598,24 @@ export function PurchasesView() {
             </div>
           ) : purchases.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <ShoppingCart className="h-12 w-12 text-muted-foreground/50" />
-              <p className="mt-3 text-lg font-medium text-muted-foreground">No purchases found</p>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30 mb-4">
+                <ShoppingCart className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+              </div>
+              <p className="text-base font-medium text-foreground">No purchases found</p>
+              <p className="mt-1 text-sm text-muted-foreground max-w-xs">
                 {startDate || endDate || search
-                  ? "Try adjusting your filters"
-                  : "Click \"New Purchase\" to record your first purchase"}
+                  ? "Try adjusting your filters to find what you're looking for."
+                  : "Record your first purchase to start tracking incoming stock."}
               </p>
+              {!startDate && !endDate && !search && (
+                <Button
+                  onClick={openNewPurchase}
+                  className="mt-4 bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Purchase
+                </Button>
+              )}
             </div>
           ) : (
             <>
@@ -573,15 +628,20 @@ export function PurchasesView() {
                       <TableHead>Supplier</TableHead>
                       <TableHead>Invoice No</TableHead>
                       <TableHead className="text-center">Items</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="text-right">Total Amount</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {purchases.map((purchase) => (
+                    {purchases.map((purchase) => {
+                      const status = getPurchaseStatus(purchase);
+                      const statusConfig = getStatusConfig(status);
+                      const StatusIcon = statusConfig.Icon;
+                      return (
                       <TableRow
                         key={purchase.id}
-                        className="cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-950/20"
+                        className="cursor-pointer hover:bg-amber-50/50 dark:hover:bg-amber-950/20 transition-colors"
                         onClick={() => handleViewDetail(purchase)}
                       >
                         <TableCell className="font-medium">
@@ -607,6 +667,15 @@ export function PurchasesView() {
                         <TableCell className="text-center">
                           <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800">
                             {purchase.items?.length || 0}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={`gap-1 text-[11px] font-bold px-2 py-0.5 ${statusConfig.badgeClass}`}
+                          >
+                            <StatusIcon className="h-3 w-3" />
+                            {statusConfig.label}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-semibold text-amber-700 dark:text-amber-400">
@@ -640,7 +709,8 @@ export function PurchasesView() {
                           </div>
                         </TableCell>
                       </TableRow>
-                    ))}
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -667,9 +737,25 @@ export function PurchasesView() {
                         </p>
                       </div>
                       <div className="flex items-center justify-between mt-3">
-                        <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 text-xs">
-                          {purchase.items?.length || 0} items
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800 text-xs">
+                            {purchase.items?.length || 0} items
+                          </Badge>
+                          {(() => {
+                            const s = getPurchaseStatus(purchase);
+                            const sc = getStatusConfig(s);
+                            const SI = sc.Icon;
+                            return (
+                              <Badge
+                                variant="outline"
+                                className={`gap-1 text-[10px] font-semibold ${sc.badgeClass}`}
+                              >
+                                <SI className="h-3 w-3" />
+                                {sc.label}
+                              </Badge>
+                            );
+                          })()}
+                        </div>
                         <div className="flex gap-1">
                           <Button
                             variant="ghost"
@@ -702,6 +788,89 @@ export function PurchasesView() {
           )}
         </CardContent>
       </Card>
+
+      {/* Recent Purchase Activity Timeline */}
+      {purchases.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <CircleDot className="h-5 w-5 text-amber-600" />
+              Recent Purchase Activity
+            </CardTitle>
+            <CardDescription>
+              Latest purchase timeline
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="relative">
+              {/* Timeline line */}
+              <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-amber-200 dark:bg-amber-800" />
+              <div className="space-y-4">
+                {purchases.slice(0, 5).map((purchase, idx) => {
+                  const status = getPurchaseStatus(purchase);
+                  const statusConfig = getStatusConfig(status);
+                  const TIcon = statusConfig.Icon;
+                  return (
+                    <div key={purchase.id} className="relative flex items-start gap-4 pl-2">
+                      {/* Timeline dot */}
+                      <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 ${
+                        idx === 0
+                          ? "bg-amber-500 border-amber-500 text-white"
+                          : "bg-background border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400"
+                      }`}>
+                        <TIcon className="h-3.5 w-3.5" />
+                      </div>
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 pb-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {purchase.supplier || "No Supplier"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatDate(purchase.date)}
+                              {purchase.invoiceNo && ` · ${purchase.invoiceNo}`}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] font-semibold ${statusConfig.badgeClass}`}
+                            >
+                              {statusConfig.label}
+                            </Badge>
+                            <span className="text-sm font-semibold text-amber-700 dark:text-amber-400 tabular-nums">
+                              {formatCurrency(purchase.totalAmount)}
+                            </span>
+                          </div>
+                        </div>
+                        {purchase.items && purchase.items.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {purchase.items.slice(0, 3).map((item) => (
+                              <Badge
+                                key={item.id}
+                                variant="secondary"
+                                className="text-[10px] bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"
+                              >
+                                {item.ingredient?.name || "Unknown"}
+                              </Badge>
+                            ))}
+                            {purchase.items.length > 3 && (
+                              <Badge variant="secondary" className="text-[10px]">
+                                +{purchase.items.length - 3} more
+                              </Badge>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -802,7 +971,7 @@ export function PurchasesView() {
                       {selectedPurchase.items?.map((item, idx) => (
                         <TableRow
                           key={item.id}
-                          className={idx % 2 === 1 ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}
+                          className={`hover:bg-muted/50 transition-colors ${idx % 2 === 1 ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}`}
                         >
                           <TableCell className="text-sm font-medium">
                             {item.ingredient?.name || "Unknown"}

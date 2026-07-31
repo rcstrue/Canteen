@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 import {
   Card,
@@ -39,6 +39,12 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
 
 import {
   Trash2,
@@ -53,7 +59,10 @@ import {
   AlertCircle,
   Flame,
   Download,
+  BarChart3,
+  Trophy,
 } from "lucide-react";
+import { Line, LineChart, XAxis, YAxis, CartesianGrid } from "recharts";
 import { downloadCSV } from "@/lib/export-utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -154,6 +163,42 @@ function getMonthStartStr(): string {
   return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
 }
 
+type Severity = "LOW" | "MEDIUM" | "HIGH";
+
+function getWastageSeverity(amount: number): Severity {
+  if (amount < 100) return "LOW";
+  if (amount < 500) return "MEDIUM";
+  return "HIGH";
+}
+
+function getSeverityConfig(severity: Severity): { label: string; badgeClass: string } {
+  switch (severity) {
+    case "HIGH":
+      return {
+        label: "HIGH",
+        badgeClass: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800",
+      };
+    case "MEDIUM":
+      return {
+        label: "MEDIUM",
+        badgeClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+      };
+    case "LOW":
+    default:
+      return {
+        label: "LOW",
+        badgeClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+      };
+  }
+}
+
+const WASTAGE_CHART_CONFIG: ChartConfig = {
+  wastageCost: {
+    label: "Wastage Cost",
+    color: "oklch(0.6 0.15 30)",
+  },
+};
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function WastageView() {
@@ -251,6 +296,44 @@ export function WastageView() {
     const dateB = new Date(b.date).getTime();
     return sortDir === "desc" ? dateB - dateA : dateA - dateB;
   });
+
+  // ─── 7-Day Wastage Trend Chart Data ────────────────────────────────────────
+  const sevenDayTrend = useMemo(() => {
+    const days: { date: string; label: string; wastageCost: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split("T")[0];
+      const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric" });
+      const dayTotal = wastageEntries
+        .filter((e) => e.date.split("T")[0] === dateStr)
+        .reduce((sum, e) => sum + e.totalAmount, 0);
+      days.push({ date: dateStr, label: dayLabel, wastageCost: Math.round(dayTotal * 100) / 100 });
+    }
+    return days;
+  }, [wastageEntries]);
+
+  // ─── Top Wasted Items ─────────────────────────────────────────────────────
+  const topWastedItems = useMemo(() => {
+    const byItem: Record<string, { name: string; category: string; totalLoss: number; totalQty: number; unit: string }> = {};
+    wastageEntries.forEach((e) => {
+      const key = e.ingredientId;
+      if (!byItem[key]) {
+        byItem[key] = {
+          name: e.ingredient?.name || "Unknown",
+          category: e.ingredient?.category || "Other",
+          totalLoss: 0,
+          totalQty: 0,
+          unit: e.ingredient?.unit || "",
+        };
+      }
+      byItem[key].totalLoss += e.totalAmount;
+      byItem[key].totalQty += e.quantity;
+    });
+    return Object.values(byItem)
+      .sort((a, b) => b.totalLoss - a.totalLoss)
+      .slice(0, 5);
+  }, [wastageEntries]);
 
   // ─── Form Logic ────────────────────────────────────────────────────────────
 
@@ -437,7 +520,7 @@ export function WastageView() {
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
         {/* Total Wastage This Month */}
-        <Card className="border-red-200 dark:border-red-900/40">
+        <Card className="border-red-200 dark:border-red-900/40 transition-all hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Wastage This Month
@@ -461,7 +544,7 @@ export function WastageView() {
         </Card>
 
         {/* Total Wastage Today */}
-        <Card className="border-orange-200 dark:border-orange-900/40">
+        <Card className="border-orange-200 dark:border-orange-900/40 transition-all hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Wastage Today
@@ -485,7 +568,7 @@ export function WastageView() {
         </Card>
 
         {/* Wastage Entries This Month */}
-        <Card className="border-red-200 dark:border-red-900/40">
+        <Card className="border-red-200 dark:border-red-900/40 transition-all hover:shadow-md">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Entries This Month
@@ -498,13 +581,146 @@ export function WastageView() {
             {loading ? (
               <Skeleton className="h-8 w-16" />
             ) : (
-              <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                {wastageCountMonth}
-              </p>
+              <>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  {wastageCountMonth}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Wastage incidents recorded
+                </p>
+                {wastageCountMonth > 0 && (
+                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+                    <Badge variant="outline" className="gap-1 text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
+                      {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "LOW").length} LOW
+                    </Badge>
+                    <Badge variant="outline" className="gap-1 text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+                      {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "MEDIUM").length} MED
+                    </Badge>
+                    <Badge variant="outline" className="gap-1 text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800">
+                      {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "HIGH").length} HIGH
+                    </Badge>
+                  </div>
+                )}
+              </>
             )}
-            <p className="mt-1 text-xs text-muted-foreground">
-              Wastage incidents recorded
-            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 7-Day Wastage Trend + Top Wasted Items */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {/* 7-Day Trend Chart */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <BarChart3 className="h-5 w-5 text-red-500" />
+              7-Day Wastage Trend
+            </CardTitle>
+            <CardDescription>
+              Daily wastage cost over the last 7 days
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-[180px] w-full" />
+            ) : sevenDayTrend.every((d) => d.wastageCost === 0) ? (
+              <div className="flex h-[180px] flex-col items-center justify-center text-center">
+                <BarChart3 className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No wastage in the last 7 days</p>
+              </div>
+            ) : (
+              <ChartContainer config={WASTAGE_CHART_CONFIG} className="h-[180px] w-full">
+                <LineChart data={sevenDayTrend} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="label"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    tickMargin={8}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={11}
+                    tickFormatter={(v: number) => `₹${v}`}
+                  />
+                  <ChartTooltip
+                    content={<ChartTooltipContent />}
+                    formatter={(value: number) => [formatCurrency(value), "Wastage Cost"]}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="wastageCost"
+                    stroke="oklch(0.6 0.15 30)"
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: "oklch(0.6 0.15 30)" }}
+                    activeDot={{ r: 6 }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top Wasted Items */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Trophy className="h-5 w-5 text-amber-500" />
+              Top Wasted Items
+            </CardTitle>
+            <CardDescription>
+              Items with highest total wastage loss
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <Skeleton key={i} className="h-8 w-full" />
+                ))}
+              </div>
+            ) : topWastedItems.length === 0 ? (
+              <div className="flex h-[180px] flex-col items-center justify-center text-center">
+                <Trash2 className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                <p className="text-sm text-muted-foreground">No wastage data to rank</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {topWastedItems.map((item, idx) => {
+                  const maxLoss = topWastedItems[0]?.totalLoss || 1;
+                  const barWidth = Math.max(5, (item.totalLoss / maxLoss) * 100);
+                  return (
+                    <div key={item.name} className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 text-[10px] font-bold text-red-600 dark:text-red-400 shrink-0">
+                            {idx + 1}
+                          </span>
+                          <span className="text-sm font-medium truncate">{item.name}</span>
+                          <Badge
+                            variant="secondary"
+                            className={`text-[10px] px-1.5 py-0 ${CATEGORY_COLORS[item.category] || ""}`}
+                          >
+                            {item.category}
+                          </Badge>
+                        </div>
+                        <span className="text-sm font-semibold text-red-600 dark:text-red-400 tabular-nums whitespace-nowrap">
+                          {formatCurrency(item.totalLoss)}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-red-400 transition-all duration-500"
+                          style={{ width: `${barWidth}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -558,14 +774,18 @@ export function WastageView() {
                     <TableHead>Unit</TableHead>
                     <TableHead className="text-right">Unit Cost</TableHead>
                     <TableHead className="text-right">Total Loss</TableHead>
+                    <TableHead>Severity</TableHead>
                     <TableHead>Reason / Notes</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {sortedEntries.map((entry) => (
+                  {sortedEntries.map((entry) => {
+                    const severity = getWastageSeverity(entry.totalAmount);
+                    const severityConfig = getSeverityConfig(severity);
+                    return (
                     <TableRow
                       key={entry.id}
-                      className="hover:bg-red-50/50 dark:hover:bg-red-950/20"
+                      className="hover:bg-red-50/50 dark:hover:bg-red-950/20 transition-colors"
                     >
                       <TableCell className="font-medium whitespace-nowrap">
                         {formatDate(entry.date)}
@@ -597,11 +817,20 @@ export function WastageView() {
                       <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">
                         {formatCurrency(entry.totalAmount)}
                       </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={`gap-1 text-[11px] font-bold px-2 py-0.5 ${severityConfig.badgeClass}`}
+                        >
+                          {severityConfig.label}
+                        </Badge>
+                      </TableCell>
                       <TableCell className="max-w-[200px] truncate text-muted-foreground">
                         {entry.notes || "-"}
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>

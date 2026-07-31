@@ -840,7 +840,7 @@ export function ReportsView() {
                                 const costPerMeal =
                                   mealsForDay > 0 ? row.cost / mealsForDay : 0;
                                 return (
-                                  <TableRow key={row.date}>
+                                  <TableRow key={row.date} className="hover:bg-muted/50 transition-colors">
                                     <TableCell className="font-medium tabular-nums">
                                       {formatDate(row.date)}
                                     </TableCell>
@@ -884,7 +884,7 @@ export function ReportsView() {
                             </TableHeader>
                             <TableBody>
                               {costData.expenses.breakdown.map((exp) => (
-                                <TableRow key={exp.category}>
+                                <TableRow key={exp.category} className="hover:bg-muted/50 transition-colors">
                                   <TableCell className="font-medium">{exp.category}</TableCell>
                                   <TableCell className="text-right tabular-nums">{fmt.format(exp.amount)}</TableCell>
                                   <TableCell className="text-right tabular-nums">
@@ -1132,7 +1132,7 @@ export function ReportsView() {
                             </TableHeader>
                             <TableBody>
                               {consumptionData.usageByIngredient.map((item) => (
-                                <TableRow key={item.ingredient.id}>
+                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
                                   <TableCell className="font-medium">{item.ingredient.name}</TableCell>
                                   <TableCell>
                                     <Badge
@@ -1466,7 +1466,7 @@ export function ReportsView() {
                             </TableHeader>
                             <TableBody>
                               {varianceData.varianceByIngredient.map((item) => (
-                                <TableRow key={item.ingredient.id}>
+                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
                                   <TableCell className="font-medium">
                                     {item.ingredient.name}
                                     <span className="text-muted-foreground text-xs ml-1">
@@ -1541,7 +1541,7 @@ export function ReportsView() {
                             </TableHeader>
                             <TableBody>
                               {varianceData.varianceByIngredient.map((item) => (
-                                <TableRow key={item.ingredient.id}>
+                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
                                   <TableCell className="font-medium">{item.ingredient.name}</TableCell>
                                   <TableCell className="text-right tabular-nums">
                                     {fmt.format(item.theoreticalCost)}

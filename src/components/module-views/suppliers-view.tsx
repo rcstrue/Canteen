@@ -699,7 +699,7 @@ export function SuppliersView() {
                     {sortedSuppliers.map((supplier) => (
                       <TableRow
                         key={supplier.id}
-                        className="cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-900/10"
+                        className="cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-900/10 transition-colors"
                         onClick={() => handleViewDetail(supplier)}
                       >
                         <TableCell>

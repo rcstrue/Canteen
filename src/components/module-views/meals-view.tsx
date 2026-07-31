@@ -78,6 +78,8 @@ import {
   ArrowDownUp,
   Layers,
   TrendingUp,
+  TrendingDown,
+  Minus,
   Hash,
   ArrowDownAZ,
   Clock,
@@ -141,37 +143,42 @@ const MEAL_TYPES = ["All", "Breakfast", "Lunch", "Dinner", "Snack"] as const;
 
 const MEAL_TYPE_STYLES: Record<
   string,
-  { accent: string; badge: string; soft: string; icon: string }
+  { accent: string; badge: string; soft: string; icon: string; borderLeft: string }
 > = {
   Breakfast: {
     accent: "bg-amber-500",
     badge: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
     soft: "bg-amber-50 dark:bg-amber-950/20",
     icon: "text-amber-600 dark:text-amber-400",
+    borderLeft: "border-l-amber-500",
   },
   Lunch: {
     accent: "bg-orange-500",
     badge: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
     soft: "bg-orange-50 dark:bg-orange-950/20",
     icon: "text-orange-600 dark:text-orange-400",
+    borderLeft: "border-l-orange-500",
   },
   Dinner: {
+    accent: "bg-rose-500",
+    badge: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+    soft: "bg-rose-50 dark:bg-rose-950/20",
+    icon: "text-rose-600 dark:text-rose-400",
+    borderLeft: "border-l-rose-500",
+  },
+  Snack: {
     accent: "bg-emerald-500",
     badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
     soft: "bg-emerald-50 dark:bg-emerald-950/20",
     icon: "text-emerald-600 dark:text-emerald-400",
-  },
-  Snack: {
-    accent: "bg-violet-500",
-    badge: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-    soft: "bg-violet-50 dark:bg-violet-950/20",
-    icon: "text-violet-600 dark:text-violet-400",
+    borderLeft: "border-l-emerald-500",
   },
   default: {
     accent: "bg-slate-400",
     badge: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
     soft: "bg-slate-50 dark:bg-slate-900/30",
     icon: "text-slate-600 dark:text-slate-400",
+    borderLeft: "border-l-slate-400",
   },
 };
 
@@ -243,6 +250,23 @@ function calcCostBreakdown(ingredients: RecipeIngredient[]): {
     }))
     .sort((a, b) => b.amount - a.amount);
   return { entries, total };
+}
+
+// Compare cost using lastPurchasePrice vs avgCost to show trend
+function calcCostTrend(ingredients: RecipeIngredient[]): {
+  direction: "up" | "down" | "stable";
+  percentChange: number;
+} {
+  let costByAvg = 0;
+  let costByLast = 0;
+  ingredients.forEach((ri) => {
+    costByAvg += ri.quantity * ri.ingredient.avgCost;
+    costByLast += ri.quantity * ri.ingredient.lastPurchasePrice;
+  });
+  if (costByAvg === 0) return { direction: "stable", percentChange: 0 };
+  const pctChange = ((costByLast - costByAvg) / costByAvg) * 100;
+  if (Math.abs(pctChange) < 2) return { direction: "stable", percentChange: pctChange };
+  return { direction: pctChange > 0 ? "up" : "down", percentChange: pctChange };
 }
 
 // ─── Component ───────────────────────────────────────────────────
@@ -836,6 +860,7 @@ export function MealsView() {
                 recipe.baseServings
               );
               const breakdown = calcCostBreakdown(recipe.ingredients);
+              const trend = calcCostTrend(recipe.ingredients);
               const style = getMealTypeStyle(recipe.mealType);
               const isFav = favorites.has(recipe.id);
               return (
@@ -851,13 +876,12 @@ export function MealsView() {
                   <Card
                     className={cn(
                       "group relative h-full flex flex-col overflow-hidden cursor-pointer",
-                      "border-t-0 transition-all duration-200",
+                      "border-l-4 transition-all duration-200",
+                      style.borderLeft,
                       "hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/30"
                     )}
                     onClick={() => openDetail(recipe)}
                   >
-                    {/* Top accent border */}
-                    <div className={cn("h-1 w-full", style.accent)} />
 
                     <CardHeader className="pb-2 pt-4">
                       <div className="flex items-start justify-between gap-2">
@@ -948,6 +972,31 @@ export function MealsView() {
                           <span className="text-xs text-muted-foreground">
                             / meal
                           </span>
+                          {/* Cost trend indicator */}
+                          {trend.direction !== "stable" && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className={cn(
+                                  "ml-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+                                  trend.direction === "up"
+                                    ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                                    : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                                )}>
+                                  {trend.direction === "up" ? (
+                                    <TrendingUp className="h-3 w-3" />
+                                  ) : (
+                                    <TrendingDown className="h-3 w-3" />
+                                  )}
+                                  {Math.abs(trend.percentChange).toFixed(0)}%
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent side="bottom" className="text-xs">
+                                {trend.direction === "up"
+                                  ? "Ingredient costs trending up vs. average"
+                                  : "Ingredient costs trending down vs. average"}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                         </div>
                       </div>
 
@@ -1446,7 +1495,7 @@ export function MealsView() {
                         return (
                           <TableRow
                             key={ri.id}
-                            className={idx % 2 === 1 ? "bg-muted/30" : ""}
+                            className={`hover:bg-muted/50 transition-colors ${idx % 2 === 1 ? "bg-muted/30" : ""}`}
                           >
                             <TableCell className="font-medium">
                               <div className="flex flex-col">

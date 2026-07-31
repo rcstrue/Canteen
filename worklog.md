@@ -909,3 +909,261 @@ The RCS Canteen app was stable from Round 2 with all views at 8-9/10. This round
 4. **Medium**: Add supplier performance analytics (on-time delivery, price trends)
 5. **Low**: Add dark mode color refinements for charts
 6. **Low**: Add keyboard shortcuts for common actions
+
+---
+Task ID: 3
+Agent: full-stack-developer
+Task: Redesign Dashboard view to fix data duplication and improve visual design
+
+Work Log:
+- Added 7-day cost trend data to the `/api/dashboard` API endpoint (new `costTrend` field with daily cost aggregation for last 7 days)
+- Removed 4 mini-stats from the welcome banner that duplicated metric cards below (Today's Food Cost, Today's Meals, Cost/Meal, Monthly/Employee)
+- Added a 7-day cost trend sparkline chart (LineChart from recharts) in the welcome banner area replacing the removed stats
+- Added a "Quick Actions" widget with 6 action buttons (Record Meals, New Purchase, Add Stock, Manage Recipes, View Reports, Log Expense) below the welcome banner
+- Improved MetricCard component with gradient border hover effect and prominent trend badges (wrapped in rounded pill with background)
+- Made TrendBadge icons larger (h-4 w-4) and text bolder (font-bold) for better visibility
+- Redesigned Monthly Comparison section from a plain table to a 2x2 card grid with:
+  - Icons per metric category
+  - Color-coded badges (emerald for good, rose for bad)
+  - Progress bars showing current vs previous month ratio
+  - Background color coding based on trend direction
+- Removed unused `Utensils` import
+- Added new imports: `LineChart`, `Line` from recharts; `BarChart3`, `Warehouse`, `Soup`, `FileText` from lucide-react
+- Added `costTrendChartConfig` for the sparkline chart
+- Updated `DashboardData` type to include `costTrend` field
+- Updated BannerSkeleton to match new layout
+- Updated loading skeleton to include Quick Actions row
+- All lint checks pass cleanly
+
+Stage Summary:
+- Dashboard data duplication eliminated (no more repeated stats in banner vs cards)
+- Visual design significantly improved with sparkline chart, quick actions, and card-based monthly comparison
+- Currency formatting is consistent: `formatCurrencyShort()` in banner area, `formatCurrency()` in detailed cards
+- All changes compile and run without errors
+
+---
+Task ID: 4
+Agent: full-stack-developer
+Task: Add complete authentication/login system
+
+Work Log:
+- Installed bcryptjs and @types/bcryptjs for password hashing
+- Added NEXTAUTH_SECRET and NEXTAUTH_URL to .env file
+- Created NextAuth v4 API route at /api/auth/[...nextauth]/route.ts with:
+  - CredentialsProvider with email/password authentication
+  - bcrypt password comparison with plaintext fallback for legacy seed data
+  - JWT strategy with 24-hour session expiry
+  - Role (admin/store/kitchen) included in JWT token and session
+  - Custom signIn page set to "/"
+- Created TypeScript type declarations at /src/types/next-auth.d.ts for extended Session and JWT types
+- Created AuthProvider component at /src/components/auth/auth-provider.tsx with:
+  - SessionProvider wrapper from next-auth/react
+  - AuthContext with user, isAuthenticated, isLoading, login, logout
+  - useAuth hook for consuming auth state
+- Created LoginView component at /src/components/auth/login-view.tsx with:
+  - Beautiful orange/amber canteen-themed gradient background
+  - Decorative blur elements for visual depth
+  - RCS Canteen logo with Flame icon and gradient badge
+  - Email + Password fields with icons and validation
+  - Show/hide password toggle
+  - Remember me checkbox
+  - Animated entrance with framer-motion
+  - Error message display with smooth animation
+  - Demo credentials hint section
+  - Loading state on submit button
+- Created auth seed endpoint at /api/auth/seed/route.ts with:
+  - Upsert for 3 default users: admin@rcs.com, store@rcs.com, kitchen@rcs.com
+  - bcrypt hashed passwords
+  - Automatic password update for legacy plaintext users
+- Updated page.tsx to integrate auth:
+  - Shows LoginView when not authenticated
+  - Shows main app when authenticated
+  - Loading screen with spinner while checking session
+  - Auto-seeds auth users on first load
+  - UserMenu dropdown in header with avatar, role badge, and sign out
+  - Role-based badge colors (amber for admin, emerald for store, blue for kitchen)
+- Updated providers.tsx to wrap children in AuthProvider
+- All lint checks pass
+- Verified login works via API: session token created with user role
+
+Stage Summary:
+- Complete authentication system with NextAuth.js v4 Credentials provider
+- Beautiful login page with RCS Canteen branding and orange/amber theme
+- Role-based access: admin, store, kitchen roles visible in session and UI
+- Default users: admin@rcs.com/admin123, store@rcs.com/store123, kitchen@rcs.com/kitchen123
+- Client-side auth gating: unauthenticated users see login, authenticated users see the app
+- User menu in header with avatar, role badge, and sign out functionality
+- All changes compile and run without errors
+
+---
+Task ID: 5
+Agent: full-stack-developer
+Task: Add Budget Tracking system with alerts
+
+Work Log:
+- Added Budget model to Prisma schema with fields: id, month (unique YYYY-MM), foodBudget, operatingBudget, totalBudget, alertThreshold (default 80%), createdAt, updatedAt
+- Pushed schema to SQLite database and generated Prisma Client
+- Created API endpoints: GET/POST /api/budgets (list all + create/upsert), GET/PUT/DELETE /api/budgets/[id]
+- Created reusable BudgetStatus component with compact mode (for dashboard) and full mode (for settings)
+- Created BudgetGauge circular gauge component in budget-status.tsx
+- Updated Settings view with DB-backed budget tracking:
+  - Budget data now fetched from /api/budgets API and synced with localStorage as fallback
+  - Added Total Budget input field alongside Food and Operating Budget
+  - Added Default Alert Threshold input field saved to DB
+  - Budget save now persists to both localStorage and DB via POST /api/budgets
+  - Alert save now persists to both localStorage and DB
+  - Added Total Budget row in budget history table with status indicators
+  - Added Past Months Budget History section showing all previous months' budgets from DB
+- Added Budget Overview card to Dashboard:
+  - Shows current month's food budget utilization with compact BudgetStatus
+  - Shows operating budget utilization with compact BudgetStatus
+  - Shows total budget utilization when totalBudget > 0
+  - "No Budget Set" empty state with link to Settings
+  - "Manage" button linking to Settings for budget management
+  - Fetches budget from /api/budgets API
+
+Stage Summary:
+- Full Budget model in database with CRUD API
+- Budget data persisted to DB (with localStorage fallback)
+- Settings view enhanced with total budget, DB-backed alert thresholds, and past months history
+- Dashboard now shows budget status card with real-time utilization tracking
+- Visual alerts: green < 60%, amber 60-80%, red > 80% (configurable threshold)
+- All code compiles and lints without errors
+
+---
+Task ID: 6
+Agent: visual-polish-agent
+Task: Improve styling and visual polish across all views
+
+Work Log:
+- Stock View: Added stock level progress bars with color-coded indicators (green/amber/red), stock health badges (OK/LOW/CRITICAL), improved summary cards with 4 categories (OK/Near Par/Critical), improved empty state with illustrated icon and action button, added stock health banner in detail dialog
+- Meals View: Changed from top accent border to left accent border (Breakfast=amber, Lunch=orange, Dinner=rose, Snack=emerald), added cost trend indicator (up/down arrow) comparing last purchase price vs avg cost, improved card layout with better spacing
+- Wastage View: Added 7-day wastage trend line chart (using recharts), added severity badges (LOW/MEDIUM/HIGH) based on wastage amount, added "Top Wasted Items" summary section with ranked items and progress bars, improved summary cards with hover effects
+- Expenses View: Added monthly expense trend sparkline chart in summary cards, replaced inline category breakdown with trend chart, improved summary cards with hover effects
+- Purchases View: Added status indicators (Pending/Received/Paid) based on date, added "Recent Purchase Activity" timeline view with status icons and ingredient badges, improved empty state with illustrated icon and action button, added status column to table
+- Daily Entry View: Improved stock impact preview with before/after progress bars, added visual stock level indicators showing consumption impact
+- General: Added hover effects (transition-all hover:shadow-md) on summary cards, improved empty states across views with illustrated icons and action buttons, added transition-colors on table rows, consistent color coding
+
+Stage Summary:
+- All 6 views significantly improved with visual polish
+- Stock health system with 3-tier badges (OK/LOW/CRITICAL) and progress bars
+- Cost trend indicators on recipe cards
+- 7-day wastage trend chart and severity badges
+- Monthly expense trend chart
+- Purchase status indicators and timeline view
+- Improved stock impact preview with visual progress bars
+- All code compiles and lints without errors
+
+---
+Task ID: 7
+Agent: VLM QA Fix Agent
+Task: Fix remaining issues identified by VLM QA testing
+
+Work Log:
+- **Stock View**: Enhanced progress bars in ingredient table from h-2 (8px) to h-3 (12px) with percentage text displayed next to the bar. Added color-coded percentage text (green/amber/red) matching stock health status. Added comments to getStockHealth function documenting the 80-100% near-par threshold.
+- **Wastage View**: Made severity badges more prominent (text-[11px] font-bold px-2 py-0.5). Added severity summary in "Entries This Month" card showing LOW/MED/HIGH counts with colored badges.
+- **Expenses View**: Added `placeholder="dd/mm/yyyy"` to all date inputs (filter From/To and form date field) to show Indian date format.
+- **Purchases View**: Made status badges more prominent (text-[11px] font-bold px-2 py-0.5). Added status badges to mobile card view (previously missing).
+- **Dashboard**: Moved Monthly Comparison section from bottom of dashboard to right after the top metric cards (section 4). Made the card more visually prominent with gradient background, larger title, and amber accent border.
+- **General**: Added `hover:bg-muted/50 transition-colors` to table rows across all views that were missing it: dashboard today's meals, reports cost/expense/consumption/variance tables, meals recipe ingredient table, suppliers view, purchases detail items table.
+
+Stage Summary:
+- All 6 VLM QA issues fixed
+- Stock progress bars now clearly visible with percentage labels
+- Wastage severity badges prominently displayed with summary counts
+- Date inputs show Indian format placeholder
+- Purchase status badges visible on both desktop and mobile
+- Monthly comparison section prominently placed after metric cards
+- Consistent hover effects across all table rows
+- All code compiles and lints without errors
+
+---
+Task ID: 8
+Agent: full-stack-developer
+Task: Add User Management in Settings and improve Data Backup/Restore
+
+Work Log:
+- Created `/src/app/api/users/route.ts` with GET (list all users, excluding passwords) and POST (create user with bcrypt password hashing)
+- Created `/src/app/api/users/[id]/route.ts` with PUT (update user, optional password update) and DELETE (delete user with confirmation)
+- Added User Management section to settings-view.tsx with:
+  - User table showing name, email, role badge, created date, and actions
+  - "You" badge next to the current logged-in user
+  - Role badges: Admin=orange, Store=blue, Kitchen=green, Staff=gray
+  - Add User dialog with name, email, role select, and password fields
+  - Edit User dialog with optional password field (leave blank to keep current)
+  - Delete User confirmation dialog with destructive action
+  - Cannot delete own account (disabled button with tooltip)
+  - User count summary (total, admin, store, kitchen, staff)
+- Improved backup API (`/src/app/api/backup/route.ts`):
+  - Added suppliers and users to the export (GET) - all data now exported
+  - Added suppliers and users to the restore (POST) - all data now imported
+  - Users are exported without passwords (privacy)
+  - Restored users receive default password "changeme123"
+  - Added supplierId to ingredient and purchase restore
+  - Bumped version to 1.1.0
+  - Wipe now includes supplier and user tables
+  - Restore order: suppliers → users → ingredients → recipes → recipe ingredients → stock movements → daily meals → expenses → purchases → purchase items
+- Updated backup/restore UI in settings-view.tsx:
+  - BackupCounts type now includes suppliers and users
+  - Backup validation accepts suppliers and users collections
+  - Restore confirmation dialog shows suppliers and users counts
+  - Import success message shows suppliers and users counts
+  - Info footer updated to mention all data types and password behavior
+
+Stage Summary:
+- Full user CRUD API with password hashing (bcryptjs)
+- User Management UI in Settings with add/edit/delete dialogs
+- Backup now exports ALL data (ingredients, recipes, recipe ingredients, stock movements, daily meals, purchases, purchase items, expenses, suppliers, users)
+- Restore imports ALL data with proper dependency ordering
+- All code compiles and lints without errors
+
+---
+Task ID: 3
+Agent: Main Coordinator (Cron Review Cycle 3)
+Task: Assess project, QA testing, fix bugs, add new features, improve styling
+
+Work Log:
+- Performed VLM-based QA testing across all 9 views using agent-browser
+- Dashboard rated 7.5/10 (data duplication, missing charts), Stock 8/10, Meals 9/10, Daily Entry 9/10, Purchases 8/10, Suppliers 7/10, Wastage 9/10, Reports 8/10, Expenses 9/10, Settings 8/10
+- Fixed dashboard data duplication - removed 4 mini-stats from welcome banner that duplicated metric cards
+- Added 7-day cost trend sparkline chart to dashboard banner
+- Added 6 quick action buttons (Record Meals, New Purchase, Add Stock, Manage Recipes, View Reports, Log Expense)
+- Improved MetricCard component with hover gradient border effects
+- Added monthly comparison section to dashboard (current vs previous month)
+- Added costTrend data to /api/dashboard endpoint
+- Added complete authentication system with NextAuth.js v4:
+  - Login page with orange/amber canteen theme, animated entrance
+  - 3 default users: admin@rcs.com/admin123, store@rcs.com/store123, kitchen@rcs.com/kitchen123
+  - Auth provider with useAuth hook, user menu dropdown in header
+  - Role-based access (Admin, Store, Kitchen, Staff)
+- Added budget tracking system:
+  - Budget model in Prisma schema (monthly, food, operating, total budgets)
+  - /api/budgets CRUD endpoints
+  - Budget status card on dashboard with utilization progress bars
+  - Budget & Alerts section in Settings with threshold configuration
+- Improved styling across all views:
+  - Stock: stock level progress bars, health badges (OK/LOW/CRITICAL), 4 summary cards
+  - Meals: left accent borders by meal type, cost trend indicators
+  - Wastage: 7-day trend chart, severity badges (LOW/MEDIUM/HIGH), top wasted items
+  - Expenses: monthly trend sparkline, fixed date placeholder to dd/mm/yyyy
+  - Purchases: status indicators (Pending/Received/Paid), timeline view
+  - Daily Entry: improved stock impact preview with before/after progress bars
+  - General: hover effects on table rows, improved empty states
+- Added user management in Settings:
+  - /api/users CRUD endpoints with bcrypt password hashing
+  - User table with role badges, "You" badge for current user
+  - Add/Edit/Delete user dialogs with validation
+- Improved data backup/restore:
+  - Backup now exports ALL data including suppliers and users (without passwords)
+  - Restore imports all data with proper FK ordering
+  - UI with confirmation dialogs and progress indicators
+- All lint checks pass, all API endpoints return 200
+
+Stage Summary:
+- App now has 10 modules: Dashboard, Stock, Meals, Daily Entry, Purchases, Suppliers, Wastage, Reports, Expenses, Settings
+- Authentication system fully functional with NextAuth.js v4
+- Budget tracking with alerts operational
+- User management in Settings
+- VLM QA scores improved from 7.5-9/10 to 8-8.5/10
+- All 20+ API endpoints working correctly
+- Key remaining items: Linux shared hosting deployment, automated low-stock alerts, recipe images

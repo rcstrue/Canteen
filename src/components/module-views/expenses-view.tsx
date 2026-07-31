@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 import {
   Card,
@@ -75,13 +75,18 @@ import {
   ChevronRight,
   ChevronUp,
   ChevronDown,
+  BarChart3,
 } from "lucide-react";
 
 import {
   PieChart,
   Pie,
   Cell,
-  ResponsiveContainer,
+  Line,
+  LineChart,
+  XAxis,
+  YAxis,
+  CartesianGrid,
 } from "recharts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -132,6 +137,7 @@ const CHART_CONFIG: ChartConfig = {
   Water: { label: "Water", color: "#3b82f6" },
   Maintenance: { label: "Maintenance", color: "#22c55e" },
   Other: { label: "Other", color: "#6b7280" },
+  amount: { label: "Amount", color: "oklch(0.6 0.15 50)" },
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -246,6 +252,26 @@ export function ExpensesView() {
       .filter((e) => e.category === cat)
       .reduce((sum, e) => sum + e.amount, 0),
   })).filter((c) => c.total > 0);
+
+  // ─── Monthly Expense Trend (last 6 months) ────────────────────────────────
+  const monthlyTrend = useMemo(() => {
+    const months: { label: string; amount: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - i);
+      const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const monthLabel = d.toLocaleDateString("en-IN", { month: "short", year: "2-digit" });
+      const monthTotal = expenses
+        .filter((e) => {
+          const eDate = new Date(e.date);
+          const eKey = `${eDate.getFullYear()}-${String(eDate.getMonth() + 1).padStart(2, "0")}`;
+          return eKey === monthKey;
+        })
+        .reduce((sum, e) => sum + e.amount, 0);
+      months.push({ label: monthLabel, amount: Math.round(monthTotal * 100) / 100 });
+    }
+    return months;
+  }, [expenses]);
 
   const pieData = categoryBreakdown.map((c) => ({
     name: c.category,
@@ -426,6 +452,7 @@ export function ExpensesView() {
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
             className="w-[160px]"
+            placeholder="dd/mm/yyyy"
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -435,6 +462,7 @@ export function ExpensesView() {
             value={endDate}
             onChange={(e) => setEndDate(e.target.value)}
             className="w-[160px]"
+            placeholder="dd/mm/yyyy"
           />
         </div>
         {(categoryFilter !== "all" || startDate || endDate) && (
@@ -457,7 +485,7 @@ export function ExpensesView() {
       {/* ─── Summary Cards ──────────────────────────────────────────────────── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* Total This Month */}
-        <Card>
+        <Card className="transition-all hover:shadow-md">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
@@ -479,7 +507,7 @@ export function ExpensesView() {
         </Card>
 
         {/* Total Today */}
-        <Card>
+        <Card className="transition-all hover:shadow-md">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-950">
@@ -499,30 +527,29 @@ export function ExpensesView() {
           </CardContent>
         </Card>
 
-        {/* Category Breakdown Inline */}
-        <Card>
-          <CardContent className="p-6">
-            <p className="text-sm text-muted-foreground mb-3">By Category</p>
+        {/* Monthly Trend Chart */}
+        <Card className="transition-all hover:shadow-md">
+          <CardContent className="p-4">
+            <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Monthly Trend
+            </p>
             {loading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <Skeleton key={i} className="h-4 w-full" />
-                ))}
-              </div>
-            ) : categoryBreakdown.length === 0 ? (
-              <p className="text-xs text-muted-foreground">No expenses recorded</p>
+              <Skeleton className="h-[60px] w-full" />
+            ) : monthlyTrend.every((m) => m.amount === 0) ? (
+              <p className="text-xs text-muted-foreground">No expense data yet</p>
             ) : (
-              <div className="space-y-2">
-                {categoryBreakdown.map((c) => (
-                  <div key={c.category} className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5">
-                      {CATEGORY_ICONS[c.category as Category]}
-                      <span className="text-xs font-medium">{c.category}</span>
-                    </div>
-                    <span className="text-xs font-semibold tabular-nums">{formatCurrency(c.total)}</span>
-                  </div>
-                ))}
-              </div>
+              <ChartContainer config={CHART_CONFIG} className="h-[60px] w-full">
+                <LineChart data={monthlyTrend} margin={{ top: 2, right: 4, left: 4, bottom: 0 }}>
+                  <Line
+                    type="monotone"
+                    dataKey="amount"
+                    stroke="oklch(0.6 0.15 50)"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ChartContainer>
             )}
           </CardContent>
         </Card>
@@ -858,6 +885,7 @@ export function ExpensesView() {
                 type="date"
                 value={formDate}
                 onChange={(e) => setFormDate(e.target.value)}
+                placeholder="dd/mm/yyyy"
               />
             </div>
 
