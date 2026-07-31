@@ -441,3 +441,69 @@ Stage Summary:
 - Stock view now has two tabs (Inventory + Movement History) and CSV export buttons on both.
 - Movement History has live filters, summary cards, sortable table with color-coded type badges, pagination, and loading/empty states.
 - All previous functionality (ingredient CRUD, detail dialog, low-stock alerts) is unchanged.
+
+---
+Task ID: qa-review-1
+Agent: Cron Review Agent (webDevReview)
+Task: QA testing, bug fixes, styling improvements, and new features
+
+## Current Project Status Assessment
+
+The RCS Canteen app was functional with all 9 modules built and seeded data. Initial QA via agent-browser + VLM analysis identified several issues:
+
+### Critical Bugs Found & Fixed:
+1. **Sidebar footer overlap** — User avatar circle was overlapping copyright text at bottom of sidebar. FIXED: Redesigned sidebar footer with proper layout (avatar + text in a muted card, copyright below).
+2. **Chart rendering failure** — `hsl(var(--border))` and `hsl(var(--muted-foreground))` were invalid because CSS vars use `oklch()` format in Tailwind v4. FIXED: Changed to `var(--border)`, `var(--muted-foreground)`, `var(--foreground)` directly. This affected dashboard bar chart, gauge, and expenses pie chart.
+3. **Cost-per-meal labeling inconsistency** — Dashboard showed ₹1.46 (food cost/meals) while Reports showed ₹3.69 (operating cost/meals) without clear labels. FIXED: Reports now shows both "Food Cost / Meal" and "Operating Cost / Meal" as separate KPI cards.
+
+### Styling Improvements (all views):
+- **Dashboard** (7.5→9/10): Added welcome banner with quick actions, gradient metric cards with hover lift, trend indicators (TrendBadge component), stock health circular gauge, cost-per-employee card, donut chart with % labels, bar chart with value labels and category colors, framer-motion entrance animations.
+- **Meals/Recipes** (8/10): Fixed truncated text with line-clamp-2 + tooltip, icon-only action buttons, view toggle (grid/table), sort dropdown, stats summary, cost visualization bar, favorites (star) with localStorage, duplicate recipe feature, meal-type accent borders.
+- **Reports** (8/10): CSV export per tab, print button, report summary header, compare-to-previous-period toggle, chart type toggle (line/bar), pie chart % labels, DD/MM/YYYY date format, cohesive color palette.
+- **Daily Entry** (8/10): Removed redundant date column, conditional notes column, daily summary card with gradient, recent entries quick view, bulk entry mode, stock impact preview, month calendar with entry dots.
+- **Stock** (8/10, Movement History 10/10): Added Tabs (Inventory + Movement History), CSV export for both tabs, movement history with summary cards, filters (type/ingredient/date), color-coded type badges, pagination, sortable table.
+
+### New Features Added:
+1. CSV export utility (`/src/lib/export-utils.ts`) — used in Stock and Reports
+2. Stock Movement History tab — full transaction log with filters and summaries
+3. Dashboard trend indicators — real ratio comparisons (today vs week, week vs month)
+4. Stock health gauge — circular SVG showing % of ingredients above par level
+5. Dashboard quick actions — "Record Today's Meals" and "New Purchase" buttons with navigation
+6. Meals view toggle — grid/table switch with localStorage persistence
+7. Meals favorites — star recipes, persisted to localStorage
+8. Meals duplicate recipe — copy existing recipe with "(Copy)" suffix
+9. Reports compare mode — previous period comparison with % delta
+10. Reports chart type toggle — switch between line and bar charts
+11. Daily Entry bulk mode — record all meal types at once
+12. Daily Entry calendar — month view with dots on dates with entries
+13. Header status indicator — animated "Live · 600 Employees" badge
+14. Sticky header with backdrop blur
+
+## Verification Results
+- `bun run lint` — passes with 0 errors, 0 warnings
+- Dev server — no runtime errors in dev.log
+- All API endpoints return 200 OK
+- VLM ratings: Dashboard 9/10, Stock 8/10, Movement History 10/10, Meals 8/10, Reports 8/10, Daily Entry 8/10, Wastage 8/10, Expenses 8/10, Settings 8/10
+- Sidebar footer overlap — RESOLVED
+- Chart rendering — RESOLVED (bars, donut, gauge all visible)
+- Tab switching — WORKING (Movement History tab verified at 10/10)
+
+## Unresolved Issues / Risks
+1. **Minor**: Expenses date placeholders show `mm/dd/yyyy` format hint — should be `dd/mm/yyyy` for Indian context (low priority)
+2. **Minor**: Settings "Clear All Data" confirmation dialog exists in code but VLM couldn't see it without clicking (not a real issue)
+3. **Minor**: Some views could benefit from pagination (Expenses, Wastage) when data grows
+4. **Future**: No authentication/login flow yet — currently open access
+5. **Future**: No data backup/restore functionality
+6. **Future**: No multi-user role-based access control (schema has User model but no login UI)
+
+## Priority Recommendations for Next Phase
+1. **Low**: Fix date placeholder format in Expenses view
+2. **Medium**: Add pagination to Expenses and Wastage views
+3. **Medium**: Add print/export to Purchases and Wastage views
+4. **High**: Implement authentication (NextAuth.js) with role-based access (Admin/Store/Kitchen)
+5. **High**: Add data backup/restore (export/import SQLite DB)
+6. **Medium**: Add supplier management module (separate from ingredients)
+7. **Medium**: Add automated low-stock email/SMS alerts
+8. **Low**: Add recipe images (upload or AI-generated)
+9. **Medium**: Add budget tracking with alerts when spending exceeds threshold
+10. **Medium**: Add monthly cost comparison dashboard (this month vs last month)
