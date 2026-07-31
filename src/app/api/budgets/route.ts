@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/budgets - List all budgets (sorted by month desc)
@@ -55,6 +56,22 @@ export async function POST(request: NextRequest) {
         ...(operatingBudget !== undefined && { operatingBudget }),
         ...(totalBudget !== undefined && { totalBudget }),
         ...(alertThreshold !== undefined && { alertThreshold }),
+      },
+    })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'UPDATE',
+      entityType: 'Budget',
+      entityId: budget.id,
+      entityName: budget.month,
+      description: `Set budget for ${budget.month} (food: ₹${budget.foodBudget.toFixed(2)}, operating: ₹${budget.operatingBudget.toFixed(2)}, total: ₹${budget.totalBudget.toFixed(2)}, alert at ${budget.alertThreshold}%)`,
+      metadata: {
+        month: budget.month,
+        foodBudget: budget.foodBudget,
+        operatingBudget: budget.operatingBudget,
+        totalBudget: budget.totalBudget,
+        alertThreshold: budget.alertThreshold,
       },
     })
 

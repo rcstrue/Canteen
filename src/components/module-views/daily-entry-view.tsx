@@ -755,7 +755,7 @@ export function DailyEntryView() {
               className="space-y-4"
             >
               {/* Daily Summary Card — gradient amber/orange */}
-              <Card className="overflow-hidden border-amber-200/60 dark:border-amber-800/40">
+              <Card className="card-hover overflow-hidden border-amber-200/60 dark:border-amber-800/40">
                 <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50 dark:from-amber-950/30 dark:via-orange-950/20 dark:to-amber-950/30">
                   <CardContent className="p-6">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">

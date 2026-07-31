@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/suppliers - List all suppliers with ingredient + purchase stats
@@ -112,6 +113,22 @@ export async function POST(request: NextRequest) {
             purchases: true,
           },
         },
+      },
+    })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'CREATE',
+      entityType: 'Supplier',
+      entityId: supplier.id,
+      entityName: supplier.name,
+      description: `Created supplier "${supplier.name}"${supplier.category ? ` (${supplier.category})` : ''}`,
+      metadata: {
+        contactPerson: supplier.contactPerson,
+        phone: supplier.phone,
+        email: supplier.email,
+        gstin: supplier.gstin,
+        category: supplier.category,
       },
     })
 

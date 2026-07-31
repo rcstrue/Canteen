@@ -485,7 +485,7 @@ export function ExpensesView() {
       {/* ─── Summary Cards ──────────────────────────────────────────────────── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {/* Total This Month */}
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-hover">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
@@ -507,7 +507,7 @@ export function ExpensesView() {
         </Card>
 
         {/* Total Today */}
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-hover">
           <CardContent className="p-6">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-950">
@@ -528,7 +528,7 @@ export function ExpensesView() {
         </Card>
 
         {/* Monthly Trend Chart */}
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-hover">
           <CardContent className="p-4">
             <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5">
               <BarChart3 className="h-3.5 w-3.5" />

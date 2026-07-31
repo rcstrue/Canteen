@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/ingredients - List all ingredients
@@ -63,6 +64,23 @@ export async function POST(request: NextRequest) {
         lastPurchasePrice: lastPurchasePrice ?? 0,
         avgCost: avgCost ?? 0,
         supplier,
+      },
+    })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'CREATE',
+      entityType: 'Ingredient',
+      entityId: ingredient.id,
+      entityName: ingredient.name,
+      description: `Created ingredient "${ingredient.name}" (${ingredient.category}, ${ingredient.currentStock} ${ingredient.unit})`,
+      metadata: {
+        category: ingredient.category,
+        unit: ingredient.unit,
+        currentStock: ingredient.currentStock,
+        minStock: ingredient.minStock,
+        lastPurchasePrice: ingredient.lastPurchasePrice,
+        avgCost: ingredient.avgCost,
       },
     })
 

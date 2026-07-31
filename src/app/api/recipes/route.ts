@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/recipes - List all recipes with ingredients
@@ -82,6 +83,20 @@ export async function POST(request: NextRequest) {
             ingredient: true,
           },
         },
+      },
+    })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'CREATE',
+      entityType: 'Recipe',
+      entityId: recipe.id,
+      entityName: recipe.name,
+      description: `Created recipe "${recipe.name}" (${recipe.mealType}, ${recipe.baseServings} servings, ${ingredients.length} ingredients)`,
+      metadata: {
+        mealType: recipe.mealType,
+        baseServings: recipe.baseServings,
+        ingredientCount: ingredients.length,
       },
     })
 

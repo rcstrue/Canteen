@@ -520,7 +520,7 @@ export function WastageView() {
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
         {/* Total Wastage This Month */}
-        <Card className="border-red-200 dark:border-red-900/40 transition-all hover:shadow-md">
+        <Card className="card-hover border-red-200 dark:border-red-900/40">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Wastage This Month
@@ -544,7 +544,7 @@ export function WastageView() {
         </Card>
 
         {/* Total Wastage Today */}
-        <Card className="border-orange-200 dark:border-orange-900/40 transition-all hover:shadow-md">
+        <Card className="card-hover border-orange-200 dark:border-orange-900/40">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Wastage Today
@@ -568,7 +568,7 @@ export function WastageView() {
         </Card>
 
         {/* Wastage Entries This Month */}
-        <Card className="border-red-200 dark:border-red-900/40 transition-all hover:shadow-md">
+        <Card className="card-hover border-red-200 dark:border-red-900/40">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Entries This Month

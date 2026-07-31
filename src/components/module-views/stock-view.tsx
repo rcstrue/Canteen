@@ -62,6 +62,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { useToast } from "@/hooks/use-toast";
 import { downloadCSV } from "@/lib/export-utils";
+import { StockMovementsView } from "@/components/module-views/stock-movements-view";
 
 import {
   Package,
@@ -343,6 +344,15 @@ export function StockView() {
   const [detailItem, setDetailItem] = useState<IngredientDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
+  // Movement History dialog state
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyIngredientId, setHistoryIngredientId] = useState<
+    string | undefined
+  >(undefined);
+  const [historyIngredientName, setHistoryIngredientName] = useState<
+    string | undefined
+  >(undefined);
+
   // Sorting
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
@@ -620,6 +630,35 @@ export function StockView() {
     }
   };
 
+  // ─── Movement History Dialog ──────────────────────────────────────────
+
+  const openHistoryGlobal = () => {
+    setHistoryIngredientId(undefined);
+    setHistoryIngredientName(undefined);
+    setHistoryOpen(true);
+  };
+
+  const openHistoryForIngredient = (ingredient: {
+    id: string;
+    name: string;
+  }) => {
+    setHistoryIngredientId(ingredient.id);
+    setHistoryIngredientName(ingredient.name);
+    setDetailOpen(false);
+    setHistoryOpen(true);
+  };
+
+  const ingredientOptionsForHistory = useMemo(
+    () =>
+      ingredients.map((i) => ({
+        id: i.id,
+        name: i.name,
+        unit: i.unit,
+        category: i.category,
+      })),
+    [ingredients]
+  );
+
   // ─── Export Handlers ─────────────────────────────────────────────────────
 
   const handleExportInventory = () => {
@@ -719,24 +758,34 @@ export function StockView() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/40">
-          <Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/40">
+            <Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              Stock / Raw Materials
+            </h1>
+            <p className="text-muted-foreground">
+              Manage raw material inventory, track quantities, and monitor stock
+              levels
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            Stock / Raw Materials
-          </h1>
-          <p className="text-muted-foreground">
-            Manage raw material inventory, track quantities, and monitor stock
-            levels
-          </p>
-        </div>
+        <Button
+          variant="outline"
+          onClick={openHistoryGlobal}
+          className="shrink-0"
+        >
+          <History className="h-4 w-4" />
+          Movement History
+        </Button>
       </div>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-hover">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
@@ -749,7 +798,7 @@ export function StockView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-hover">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
@@ -764,7 +813,7 @@ export function StockView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-hover">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
@@ -779,7 +828,7 @@ export function StockView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-hover">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
@@ -827,6 +876,13 @@ export function StockView() {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                onClick={openHistoryGlobal}
+              >
+                <History className="h-4 w-4" />
+                Movement History
+              </Button>
               <Button
                 variant="outline"
                 onClick={handleExportInventory}
@@ -1145,7 +1201,7 @@ export function StockView() {
         <TabsContent value="movements" className="space-y-4">
           {/* Summary cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Card className="transition-all hover:shadow-md">
+            <Card className="card-hover">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
@@ -1162,7 +1218,7 @@ export function StockView() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="transition-all hover:shadow-md">
+            <Card className="card-hover">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
@@ -1179,7 +1235,7 @@ export function StockView() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="transition-all hover:shadow-md">
+            <Card className="card-hover">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 dark:bg-rose-900/40">
@@ -2047,6 +2103,20 @@ export function StockView() {
             </Button>
             {detailItem && (
               <Button
+                variant="outline"
+                onClick={() =>
+                  openHistoryForIngredient({
+                    id: detailItem.id,
+                    name: detailItem.name,
+                  })
+                }
+              >
+                <History className="h-4 w-4" />
+                View Movement History
+              </Button>
+            )}
+            {detailItem && (
+              <Button
                 onClick={() => {
                   setDetailOpen(false);
                   openEditDialog(detailItem);
@@ -2060,6 +2130,15 @@ export function StockView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ─── Movement History Dialog ──────────────────────────────────────── */}
+      <StockMovementsView
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        initialIngredientId={historyIngredientId}
+        initialIngredientName={historyIngredientName}
+        ingredients={ingredientOptionsForHistory}
+      />
     </div>
   );
 }

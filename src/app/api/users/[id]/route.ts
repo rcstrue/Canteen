@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { hash } from 'bcryptjs'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -78,6 +79,19 @@ export async function PUT(
       },
     })
 
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'UPDATE',
+      entityType: 'User',
+      entityId: user.id,
+      entityName: `${user.name} (${user.email})`,
+      description: `Updated user "${user.name}" (${user.email})${updateData.password ? ' (password changed)' : ''}`,
+      metadata: {
+        before: { name: existing.name, email: existing.email, role: existing.role },
+        after: { name: user.name, email: user.email, role: user.role, passwordChanged: !!updateData.password },
+      },
+    })
+
     return NextResponse.json(user)
   } catch (error) {
     console.error('Error updating user:', error)
@@ -91,7 +105,7 @@ export async function PUT(
 // ─── DELETE /api/users/[id] — Delete a user ───────────────────────────────────
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -106,6 +120,20 @@ export async function DELETE(
     }
 
     await db.user.delete({ where: { id } })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'DELETE',
+      entityType: 'User',
+      entityId: existing.id,
+      entityName: `${existing.name} (${existing.email})`,
+      description: `Deleted user "${existing.name}" (${existing.email}, role: ${existing.role})`,
+      metadata: {
+        name: existing.name,
+        email: existing.email,
+        role: existing.role,
+      },
+    })
 
     return NextResponse.json({
       success: true,

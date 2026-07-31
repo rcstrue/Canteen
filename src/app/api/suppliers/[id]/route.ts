@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/suppliers/[id] - Get a single supplier with full details
@@ -150,6 +151,16 @@ export async function PUT(
     const { purchases: _purchases, ...rest } = updated
     void _purchases
 
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'UPDATE',
+      entityType: 'Supplier',
+      entityId: updated.id,
+      entityName: updated.name,
+      description: `Updated supplier "${updated.name}"`,
+      metadata: { before: existing, after: { name: updated.name, contactPerson: updated.contactPerson, phone: updated.phone, email: updated.email, category: updated.category } },
+    })
+
     return NextResponse.json({
       ...rest,
       ingredientCount: updated._count.ingredients,
@@ -169,7 +180,7 @@ export async function PUT(
 // Note: this sets supplierId=null on related ingredients & purchases (no cascade),
 // so existing data stays intact.
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -196,6 +207,23 @@ export async function DELETE(
     })
 
     await db.supplier.delete({ where: { id } })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'DELETE',
+      entityType: 'Supplier',
+      entityId: existing.id,
+      entityName: existing.name,
+      description: `Deleted supplier "${existing.name}"${existing.category ? ` (${existing.category})` : ''}`,
+      metadata: {
+        name: existing.name,
+        contactPerson: existing.contactPerson,
+        phone: existing.phone,
+        email: existing.email,
+        gstin: existing.gstin,
+        category: existing.category,
+      },
+    })
 
     return NextResponse.json({
       message: 'Supplier deleted successfully',

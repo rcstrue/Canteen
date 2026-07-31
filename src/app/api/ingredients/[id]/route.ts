@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/ingredients/[id] - Get single ingredient
@@ -70,6 +71,16 @@ export async function PUT(
       },
     })
 
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'UPDATE',
+      entityType: 'Ingredient',
+      entityId: ingredient.id,
+      entityName: ingredient.name,
+      description: `Updated ingredient "${ingredient.name}"`,
+      metadata: { before: existing, after: ingredient },
+    })
+
     return NextResponse.json(ingredient)
   } catch (error) {
     console.error('Error updating ingredient:', error)
@@ -82,7 +93,7 @@ export async function PUT(
 
 // DELETE /api/ingredients/[id] - Delete ingredient
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -97,6 +108,21 @@ export async function DELETE(
     }
 
     await db.ingredient.delete({ where: { id } })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'DELETE',
+      entityType: 'Ingredient',
+      entityId: existing.id,
+      entityName: existing.name,
+      description: `Deleted ingredient "${existing.name}" (${existing.category})`,
+      metadata: {
+        name: existing.name,
+        category: existing.category,
+        unit: existing.unit,
+        currentStock: existing.currentStock,
+      },
+    })
 
     return NextResponse.json({ message: 'Ingredient deleted successfully' })
   } catch (error) {

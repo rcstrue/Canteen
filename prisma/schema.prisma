@@ -15,6 +15,31 @@ model User {
   password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  userName    String?  // denormalized for quick display
+  userRole    String?  // denormalized
+  action      String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, BULK_DELETE, etc.
+  entityType  String   // Ingredient, Recipe, Purchase, Supplier, Expense, User, Budget, DailyMeal, StockMovement
+  entityId    String?  // ID of affected entity
+  entityName  String?  // Human-readable name (e.g., "Rice (Basmati)", "PUR-001")
+  description String   // Human-readable description
+  metadata    String?  // JSON string with before/after values
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([action])
 }
 
 model Ingredient {
@@ -47,7 +72,11 @@ model Supplier {
   address        String?
   gstin          String?  // GST number for Indian businesses
   category       String?  // what they supply: Grains, Vegetables, etc.
-  notes          String?
+  rating         Int?     // 1-5 star rating (manual override)
+  onTimeRate     Float?   // 0-100 percentage (calculated or manual)
+  qualityScore   Int?     // 1-5 score (manual)
+  notes          String?  // internal notes about supplier
+  lastOrderDate  DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -118,6 +147,9 @@ model Purchase {
   invoiceNo   String?
   totalAmount Float    @default(0)
   notes       String?
+  deliveryDate DateTime?  // actual delivery date (if different from order date)
+  expectedDate DateTime?  // expected delivery date
+  status      String   @default("received") // received, pending, cancelled
   createdAt   DateTime @default(now())
 
   supplierLink Supplier? @relation(fields: [supplierId], references: [id])

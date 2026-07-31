@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/expenses - List expenses with filters
@@ -71,6 +72,21 @@ export async function POST(request: NextRequest) {
         category,
         amount,
         description,
+      },
+    })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'CREATE',
+      entityType: 'Expense',
+      entityId: expense.id,
+      entityName: `${expense.category} — ₹${expense.amount.toFixed(2)}`,
+      description: `Created expense "${expense.category}" of ₹${expense.amount.toFixed(2)}${expense.description ? ` (${expense.description})` : ''}`,
+      metadata: {
+        date: expense.date,
+        category: expense.category,
+        amount: expense.amount,
+        description: expense.description,
       },
     })
 

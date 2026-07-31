@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/daily-meals - List daily meals with filters
@@ -145,6 +146,23 @@ export async function POST(request: NextRequest) {
 
       stockMovements.push(movement)
     }
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'CREATE',
+      entityType: 'DailyMeal',
+      entityId: meal.id,
+      entityName: `${meal.mealType} — ${recipe.name} (${meal.mealsServed} servings)`,
+      description: `Recorded daily meal: ${meal.mealType} — ${recipe.name} for ${meal.mealsServed} servings (${recipe.ingredients.length} ingredients consumed)`,
+      metadata: {
+        date: meal.date,
+        mealType: meal.mealType,
+        mealsServed: meal.mealsServed,
+        recipeId: recipe.id,
+        recipeName: recipe.name,
+        ingredientCount: recipe.ingredients.length,
+      },
+    })
 
     return NextResponse.json(
       { meal, stockMovements },

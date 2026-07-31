@@ -1586,3 +1586,186 @@ Recommended next steps:
 - Implement recipe cost history tracking (track cost changes over time)
 - Add user activity audit log (who did what, when)
 - Consider migrating to PostgreSQL for >50 concurrent users
+
+---
+Task ID: R6-C
+Agent: full-stack-developer
+Task: Add a Stock Movement History Page with Filters, Pagination, and CSV Export
+
+Work Log:
+- Read previous worklog (1588 lines, through R5) to understand context — the project already had a basic "Movement History" tab inside the Stock view with client-side pagination and limited filtering (single type, single ingredient, date range). No summary cards, no search, no comma-separated type filter, no server-side pagination, and the existing GET /api/stock-movements endpoint used `startDate`/`endDate`/`offset`/`limit` and returned only `{ data, total }`.
+- Updated `/src/app/api/stock-movements/route.ts` GET handler:
+  * Added new query params: `page` (default 1), `limit` (default 50, capped at 500), `from`/`to` (with `startDate`/`endDate` aliases for backward compat), `search` (case-insensitive contains on notes + ingredient.name via Prisma OR + ingredient relation), and `type` now accepts a comma-separated list (e.g. `?type=PURCHASE,WASTAGE`) which is split + uppercased + validated against the 4 valid types, then passed as `{ in: [...] }`.
+  * Response now returns `{ data, total, page, limit, hasMore, summary: { totalIn, totalInValue, totalOut, totalOutValue, totalValue, count } }`.
+  * Sort order is `[{ date: 'desc' }, { createdAt: 'desc' }]` (date DESC, then createdAt DESC).
+  * Summary uses 3 parallel `aggregate` queries that each `AND` the type-specific filter onto the base `where` so that if the user filters by a specific type the OTHER aggregates correctly return 0 (e.g. `?type=PURCHASE` → totalOut=0, `?type=WASTAGE` → totalIn=0). Verified: PURCHASE+WASTAGE filter returns totalIn=1185.5 + totalOut=7.5 + count=32.
+  * `to` date is set to 23:59:59.999 local for inclusive end-of-day matching.
+  * Preserved the existing POST handler (including the audit-logging wrapper another agent had added — confirmed at lines 265-283).
+- Created `/src/components/module-views/stock-movements-view.tsx` (~720 lines):
+  * Dialog with `max-w-7xl max-h-[90vh]` and a `ScrollArea` body.
+  * Header: History icon in orange badge, title "Stock Movement History", subtitle "Complete audit trail of all stock transactions" (with ingredient name appended when pre-filtered, e.g. "· Chicken").
+  * 4 summary cards: Total IN (emerald bg, ArrowDownLeft icon, qty + ₹ value), Total OUT (rose bg, ArrowUpRight), Total Transactions (amber bg, Activity), Net Movement (stone bg, Sigma) — net shows +/− prefix and "Net stock added"/"Net stock used" subtitle, red text when negative.
+  * Filters bar: 4 toggle badges for movement types (each with its icon, emerald/blue/rose/amber color when active), Ingredient select dropdown (All + each ingredient sorted alphabetically), From/To date inputs, search input (applied on Enter or via "Apply Filters" button), Apply Filters (primary orange), Clear Filters (ghost), Export CSV (outline, with Download icon). Active filter chips below with X buttons.
+  * History table with columns: Date (DD/MM/YYYY, date-fns `format(parseISO(date), 'dd/MM/yyyy')`) | Type (colored badge with icon) | Ingredient (name + category subtitle) | Qty (with unit, +/- prefix, emerald/rose color) | Unit Price (₹) | Total (₹ bold) | Notes (truncated, shadcn Tooltip on hover) | Reference (badge if referenceId exists, truncated to 8 chars with tooltip).
+  * Type badge config: PURCHASE=emerald+ShoppingCart, CONSUMPTION=blue+UtensilsCrossed, WASTAGE=rose+Trash2, ADJUSTMENT=amber+Settings2.
+  * Loading state: 8 skeleton rows with pulse animation (Skeleton component).
+  * Empty state: centered History icon in orange circular badge, "No Movements Found" heading, contextual subtitle, Clear Filters button.
+  * Pagination: "Showing X to Y of Z entries" + page size selector (25/50/100) + Prev/Next buttons + page numbers with ellipsis (1 … 4 5 6 … 25).
+  * CSV export: fetches up to 5000 rows via the same API (with `forExport` override), then calls `downloadCSV('stock-movements-YYYY-MM-DD.csv', rows)` with columns: Date, Type, Ingredient Name, Category, Quantity, Unit, Unit Price, Total Amount, Notes, Reference ID. Sonner toast on success ("Export complete — N movement(s) exported as CSV.") and on empty ("Nothing to export") and on failure ("Export failed").
+  * Currency formatted via `new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })`.
+- Wired StockMovementsView into `/src/components/module-views/stock-view.tsx`:
+  * Imported the new component.
+  * Added 3 state vars: `historyOpen`, `historyIngredientId`, `historyIngredientName`.
+  * Added `openHistoryGlobal()` (clears ingredient filter, opens dialog) and `openHistoryForIngredient({id, name})` (sets both, closes detail dialog, opens history dialog).
+  * Added `ingredientOptionsForHistory` memo so the dialog doesn't need to re-fetch the ingredient list.
+  * Restructured the page-level header into a `flex sm:flex-row sm:items-center sm:justify-between` container with the existing icon+title on the left and a new "Movement History" outline button (History icon) on the right — entry point from anywhere on the page.
+  * Added a second "Movement History" outline button inside the Inventory card header, between the existing "Export CSV" and "Add Ingredient" buttons (as the task spec required "next to Add Ingredient").
+  * Added a "View Movement History" outline button in the ingredient detail dialog's footer (between Close and Edit) — calls `openHistoryForIngredient` so the dialog opens pre-filtered to that ingredient, with the ingredient name shown in the subtitle.
+  * Rendered `<StockMovementsView>` at the bottom of the component (after all other dialogs).
+- Verification:
+  * `bun run lint` passes with exit 0 on my files (`stock-view.tsx`, `stock-movements-view.tsx`, `stock-movements/route.ts`) AND on the full project (the pre-existing suppliers-view.tsx error from a parallel R6-A/B agent was resolved by them mid-session).
+  * Dev server stable on port 3000 (had to restart it once via `setsid bun run dev` because the auto-started instance had died; subsequent compiles were clean).
+  * API tests via curl:
+    - `?page=1&limit=5` → 5 rows, total=1243, hasMore=true, summary={totalIn:1185.5, totalOut:15425.841, totalValue:1368534.696, count:1243}
+    - `?type=PURCHASE,WASTAGE` → 32 rows, summary.totalIn=1185.5 + totalOut=7.5 (only WASTAGE among out types)
+    - `?type=PURCHASE` → 28 rows, summary.totalOut=0 (correctly 0 because no CONSUMPTION/WASTAGE match the filter)
+    - `?type=WASTAGE` → 4 rows, summary.totalIn=0 (correctly 0)
+    - `?search=rice` → 553 rows (matches "rice" in ingredient name)
+    - `?ingredientId=<rice id>` → 91 rows all for Rice (Basmati)
+    - `?from=2026-07-01&to=2026-07-31` → 410 rows in July
+  * agent-browser verification (8 screenshots saved to `/home/z/my-project/agent-ctx/r6c-*.png`):
+    - r6c-stock-view.png — Stock view with new page-level "Movement History" button in top-right.
+    - r6c-history-dialog-open.png + r6c-history-dialog-full.png — Dialog open with title, subtitle, 4 summary cards (Total IN 1,185.5 units ₹86,225.00 emerald; Total OUT 15,425.84 units ₹12,82,309.70 rose; Total Transactions 1,243 ₹13,68,534.70 amber; Net Movement −14,240.34 units stone), filter bar with type toggle badges, ingredient dropdown, date pickers, search input, Apply/Clear/Export buttons.
+    - r6c-history-dialog-table.png — Table scrolled to show rows: Date | Type (badges) | Ingredient (name + category) | Qty (with +/- color) | Unit Price | Total | Notes (truncated) | Reference (badge). Sample rows: 31/07/2026 | Adjustment (amber) | Rice (Basmati)/Grains | +150 kg | ₹0.00 | ₹0.00 | Stock adjustment after physical count | — ; 31/07/2026 | Consumption (blue) | Turmeric Powder/Spices | −0.42 kg | ₹380.00 | ₹160.36 | Dinner - Khichdi (422 servings) | cms8xtza…
+    - r6c-history-filtered-purchase.png — After clicking Purchase filter badge: summary shows totalOut=0, totalIn=1,185.5, count=28, "Showing 1–28 of 28 entries".
+    - r6c-history-per-ingredient.png — Opened from ingredient detail dialog "View Movement History" button for Chicken: subtitle shows "· Chicken", summary all about Chicken (IN 70 units ₹16,720, OUT 1,748.8 units ₹4,10,968, count 24, Net −1,678.8 units).
+    - r6c-history-search.png — Searched "khichdi" via Enter: returned 198 matching rows, summary totalIn=0 (no purchases match) + totalOut=2,151.02 units ₹1,66,442.04 (consumption of Khichdi ingredients), "Showing 1–50 of 198 entries". Active filter chip "Search: 'khichdi'" visible.
+  * VLM (glm-5v-turbo) verification of all screenshots confirms correct rendering of summary cards (right colors, icons, values), filter bar, type badges with icons, table rows with correct columns, and pagination controls.
+
+Stage Summary:
+- Stock Movement History feature is fully implemented end-to-end with three entry points: page-level header button, card-header button next to "Add Ingredient", and per-ingredient "View Movement History" button in the detail dialog.
+- GET /api/stock-movements endpoint now supports server-side pagination (page/limit), comma-separated multi-type filter, ingredient filter, date range (from/to + startDate/endDate aliases), and case-insensitive search across notes + ingredient name — returns `{ data, total, page, limit, hasMore, summary }` with summary aggregated across the FULL filtered set (not just the current page) using 3 parallel `aggregate` queries with proper AND-combination of type-specific filters.
+- New StockMovementsView dialog component (~720 lines) with 4 colored summary cards, multi-select type toggle badges, ingredient dropdown, date range, search input, Apply/Clear/Export buttons, history table with type badges (PURCHASE=emerald/ShoppingCart, CONSUMPTION=blue/UtensilsCrossed, WASTAGE=rose/Trash2, ADJUSTMENT=amber/Settings2), tooltip-truncated notes, reference badges, pagination with 25/50/100 page size selector + ellipsis page numbers, loading skeletons, empty state with Clear Filters button, and CSV export (reuses existing `downloadCSV` utility).
+- Pre-filtered view when opened from ingredient detail dialog: subtitle shows "· <IngredientName>" and the ingredient dropdown is preset to that ingredient.
+- All currency formatted with `new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' })` (₹ symbol, lakh/crore grouping); all dates formatted DD/MM/YYYY via date-fns.
+- Maintained orange/amber theme throughout; used existing shadcn/ui components (Dialog, Card, Badge, Button, Input, Select, Table, ScrollArea, Tooltip, Skeleton, Separator).
+- Lint passes (exit 0) on my files AND on the full project. Dev server stable on port 3000. No new dependencies added — all features built with the existing stack.
+- 8 verification screenshots saved to `/home/z/my-project/agent-ctx/r6c-*.png`.
+
+---
+Task ID: R6 (Round 6 - Cron Review)
+Agent: Main Coordinator (Round 6)
+Task: Assess project, QA via agent-browser, add audit log + supplier performance + stock movement history, polish styling
+
+Work Log:
+- Reviewed /home/z/my-project/worklog.md (1588 lines, R5 round complete with Cmd+K palette, recipe images, bulk actions, polished empty states)
+- Verified dev server running on port 3000, lint clean (0 errors)
+- Captured screenshots of all 10 views via agent-browser
+- Ran VLM (glm-5v-turbo) QA on all 10 views — scores 8-8.5/10 across the board (very stable)
+- Identified 3 high-value new features:
+  1. User Activity Audit Log (admin traceability)
+  2. Supplier Performance scoring (business value)
+  3. Stock Movement History page (currently movements only viewable via individual ingredient)
+
+- Dispatched 3 parallel subagents:
+  * Task R6-A: Audit Log System
+    - Added AuditLog model to Prisma schema (id, userId, userName, userRole, action, entityType, entityId, entityName, description, metadata, ipAddress, userAgent, createdAt) with indexes + User relation
+    - Created /src/lib/audit.ts with logAudit() helper (non-throwing, fails silently)
+    - Created 3 API endpoints:
+      - GET /api/audit-logs (paginated, filtered by user/entityType/action/date range, admin only)
+      - GET/DELETE /api/audit-logs/[id]
+      - GET /api/audit-logs/stats (today/week/month counts, top users, action/entity distribution)
+    - Wired logAudit() into ALL 9 API routes (ingredients, recipes, purchases, suppliers, expenses, users, budgets, daily-meals, stock-movements) for CREATE/UPDATE/DELETE operations
+    - Added Audit Log section to Settings view (admin-only):
+      - 4 stats cards (today/week/month/total)
+      - Filters bar (user, entity type, action, date range)
+      - Audit log table with colored action badges (CREATE=emerald, UPDATE=amber, DELETE=rose, LOGIN=blue, etc.)
+      - Pagination (50/page)
+      - Click row to view metadata in dialog
+      - CSV export
+      - Empty state
+    - Note: Subagent hit max turns but completed all code; verified via agent-browser
+    - VLM score: 9/10
+
+  * Task R6-B: Supplier Performance Scoring
+    - Added fields to Supplier model: rating (1-5), onTimeRate (0-100), qualityScore (1-5), notes, lastOrderDate
+    - Added fields to Purchase model: deliveryDate, expectedDate, status (default "received")
+    - Created 3 API endpoints:
+      - GET /api/suppliers/[id]/performance (total orders, spend, avg order, on-time rate, top ingredients, 6-month trend, recent orders, quality/rating)
+      - PUT /api/suppliers/[id]/performance (update rating, qualityScore, onTimeRate, notes)
+      - GET /api/suppliers/performance/overview (all suppliers summary, sortable by rating/spend/orders/onTime)
+    - Added "Performance" tab to suppliers view:
+      - 4 KPI cards (total suppliers, total spend, avg rating, top supplier)
+      - Performance table with sortable columns, star ratings, colored quality/on-time badges
+      - Rating dialog with star selectors (1-5) + quality score + on-time % + notes textarea
+      - Top 5 leaderboard with medals (🥇🥈🥉)
+      - Bar chart of top 5 suppliers by spend (recharts)
+    - Note: Subagent hit max turns but completed all code; verified via agent-browser
+    - VLM score: 9/10
+
+  * Task R6-C: Stock Movement History Page
+    - Updated GET /api/stock-movements with pagination + filters (type, ingredientId, date range, search) + summary (totalIn, totalOut, totalValue, count)
+    - Created /src/components/module-views/stock-movements-view.tsx (~720 lines):
+      - Dialog (max-w-7xl) with ScrollArea
+      - 4 summary cards: Total IN (emerald/ArrowDownLeft), Total OUT (rose/ArrowUpRight), Total Transactions (amber/Activity), Net Movement (stone/Sigma)
+      - Filters: 4 toggle type badges, ingredient select, date range, search, apply/clear/export buttons
+      - Table: Date | Type (colored badge with icon) | Ingredient | Qty | Unit Price | Total | Notes | Reference
+      - Type badges: PURCHASE=emerald/ShoppingCart, CONSUMPTION=blue/UtensilsCrossed, WASTAGE=rose/Trash2, ADJUSTMENT=amber/Settings2
+      - Pagination: 25/50/100 page sizes, page numbers, prev/next
+      - Empty state + loading skeletons
+      - CSV export (10 columns)
+    - Wired into stock-view.tsx:
+      - Page-level "Movement History" button in header
+      - Per-ingredient "View Movement History" button in detail dialog (pre-filters to that ingredient)
+    - VLM score: 9/10
+
+- Applied direct styling polish to remaining summary cards:
+  - Wastage view: 3 summary cards → card-hover class (Total Wastage Month, Today, Entries)
+  - Expenses view: 3 summary cards → card-hover class (Total Month, Today, Monthly Trend)
+  - Stock view: 7 cards → card-hover class (4 summary + 3 mobile cards)
+  - Meals view: 3 summary cards → card-hover class (Total Recipes, Avg Cost/Meal, Ingredients Used)
+  - Daily Entry view: Daily Summary card → card-hover class
+  - All cards now have consistent hover lift + shadow + border color transition
+
+- Final VLM QA results (round 6):
+  - Dashboard: 8.5/10
+  - Stock: 9/10 (improved from 8.5)
+  - Meals: 9/10 (improved from 8)
+  - Daily Entry: 8.5/10
+  - Purchases: 8.5/10
+  - Suppliers: 8.5/10 (Performance tab: 9/10)
+  - Wastage: 9/10 (improved from 8.5)
+  - Reports: 8/10
+  - Expenses: 9/10 (improved from 8.5)
+  - Settings: 9/10 (Audit Log section: 9/10)
+  - Stock Movement History dialog: 9/10
+  - Supplier Performance tab: 9/10
+
+Stage Summary:
+- 3 new major features added:
+  1. User Activity Audit Log (DB schema + helper + 3 API endpoints + wired into 9 routes + Settings UI with filters/pagination/CSV export)
+  2. Supplier Performance scoring (DB schema + 3 API endpoints + Performance tab with KPIs/table/rating dialog/leaderboard/bar chart)
+  3. Stock Movement History page (updated API with pagination/filters/summary + 720-line dialog component with 4 summary cards/filters/table/pagination/CSV export)
+- Styling polish: card-hover class applied to ~20 summary cards across 5 views (stock, meals, wastage, expenses, daily-entry)
+- VLM scores improved: 4 views went from 8/8.5 → 9/10
+- 2 new Prisma models/fields: AuditLog model, Supplier performance fields, Purchase status/dates
+- 6 new API endpoints: /api/audit-logs (GET list, GET [id], DELETE, /stats), /api/suppliers/[id]/performance (GET, PUT), /api/suppliers/performance/overview (GET)
+- All lint checks pass (0 errors, 0 warnings)
+- Dev server stable on port 3000
+- Version remains v1.1.0
+
+Known remaining minor issues:
+- Audit log seed data is limited (only fires on new operations) — will populate naturally with usage
+- Supplier performance metrics (onTimeRate, qualityScore) require manual entry via rating dialog — no automatic calculation from delivery dates yet
+- Stock movement history dialog is modal only — could be a dedicated view in future
+- Some VLM suggestions (right-align numbers, clear filters button on expenses) are minor polish items
+
+Recommended next steps:
+- Add automatic on-time rate calculation from Purchase.expectedDate vs deliveryDate
+- Build a dedicated Audit Log view (not just in Settings) with more advanced analytics
+- Add low-stock email/SMS notifications via cron
+- Build PWA manifest for offline access
+- Add recipe cost history tracking (track cost changes over time)
+- Consider migrating to PostgreSQL for >50 concurrent users
+- Add multi-currency support
+- Implement supplier contract management (track contract terms, renewal dates)

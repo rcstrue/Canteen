@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/purchases - List purchases with items
@@ -152,6 +153,22 @@ export async function POST(request: NextRequest) {
         },
       })
     }
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'CREATE',
+      entityType: 'Purchase',
+      entityId: purchase.id,
+      entityName: purchase.invoiceNo || `Purchase ${purchase.id.slice(-6)}`,
+      description: `Created purchase${purchase.invoiceNo ? ` (${purchase.invoiceNo})` : ''} from "${purchase.supplier || 'Unknown Supplier'}" — ${items.length} items, ₹${purchase.totalAmount.toFixed(2)}`,
+      metadata: {
+        date: purchase.date,
+        supplier: purchase.supplier,
+        invoiceNo: purchase.invoiceNo,
+        totalAmount: purchase.totalAmount,
+        itemCount: items.length,
+      },
+    })
 
     return NextResponse.json(purchase, { status: 201 })
   } catch (error) {

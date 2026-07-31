@@ -90,6 +90,7 @@ import {
   KeyRound,
 } from "lucide-react";
 import type { ViewId } from "@/components/app-sidebar";
+import { AuditLogSection } from "@/components/module-views/audit-log-section";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -2726,6 +2727,9 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* ─── Audit Log (admin-only) ─────────────────────────────────────── */}
+      {currentUser?.role === "admin" && <AuditLogSection />}
     </div>
   );
 }

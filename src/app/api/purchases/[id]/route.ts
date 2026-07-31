@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/purchases/[id] - Get single purchase with items
@@ -40,7 +41,7 @@ export async function GET(
 
 // DELETE /api/purchases/[id] - Delete purchase
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -63,6 +64,22 @@ export async function DELETE(
     // For now, we just delete the record and its items (cascade).
 
     await db.purchase.delete({ where: { id } })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'DELETE',
+      entityType: 'Purchase',
+      entityId: existing.id,
+      entityName: existing.invoiceNo || `Purchase ${existing.id.slice(-6)}`,
+      description: `Deleted purchase${existing.invoiceNo ? ` (${existing.invoiceNo})` : ''} from "${existing.supplier || 'Unknown'}" — ₹${existing.totalAmount.toFixed(2)}, ${existing.items.length} items`,
+      metadata: {
+        date: existing.date,
+        supplier: existing.supplier,
+        invoiceNo: existing.invoiceNo,
+        totalAmount: existing.totalAmount,
+        itemCount: existing.items.length,
+      },
+    })
 
     return NextResponse.json({ message: 'Purchase deleted successfully' })
   } catch (error) {

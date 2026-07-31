@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { hash } from 'bcryptjs'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -80,6 +81,20 @@ export async function POST(request: NextRequest) {
         role: true,
         createdAt: true,
         updatedAt: true,
+      },
+    })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'CREATE',
+      entityType: 'User',
+      entityId: user.id,
+      entityName: `${user.name} (${user.email})`,
+      description: `Created user "${user.name}" (${user.email}) with role "${user.role}"`,
+      metadata: {
+        name: user.name,
+        email: user.email,
+        role: user.role,
       },
     })
 

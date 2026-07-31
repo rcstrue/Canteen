@@ -802,7 +802,7 @@ export function MealsView() {
 
       {/* Stats Summary */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="overflow-hidden">
+        <Card className="card-hover overflow-hidden">
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
               <ChefHat className="h-5 w-5 text-orange-600 dark:text-orange-400" />
@@ -813,7 +813,7 @@ export function MealsView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="overflow-hidden">
+        <Card className="card-hover overflow-hidden">
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
               <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
@@ -826,7 +826,7 @@ export function MealsView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="overflow-hidden">
+        <Card className="card-hover overflow-hidden">
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30">
               <Layers className="h-5 w-5 text-violet-600 dark:text-violet-400" />

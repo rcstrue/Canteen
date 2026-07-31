@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { logAudit, getAuditContext } from '@/lib/audit'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/recipes/[id] - Get single recipe with ingredients
@@ -95,6 +96,16 @@ export async function PUT(
       },
     })
 
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'UPDATE',
+      entityType: 'Recipe',
+      entityId: recipe.id,
+      entityName: recipe.name,
+      description: `Updated recipe "${recipe.name}"`,
+      metadata: { before: existing, after: { name: recipe.name, mealType: recipe.mealType, baseServings: recipe.baseServings } },
+    })
+
     return NextResponse.json(recipe)
   } catch (error) {
     console.error('Error updating recipe:', error)
@@ -107,7 +118,7 @@ export async function PUT(
 
 // DELETE /api/recipes/[id] - Delete recipe
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -122,6 +133,20 @@ export async function DELETE(
     }
 
     await db.recipe.delete({ where: { id } })
+
+    await logAudit({
+      ...(await getAuditContext(request)),
+      action: 'DELETE',
+      entityType: 'Recipe',
+      entityId: existing.id,
+      entityName: existing.name,
+      description: `Deleted recipe "${existing.name}" (${existing.mealType})`,
+      metadata: {
+        name: existing.name,
+        mealType: existing.mealType,
+        baseServings: existing.baseServings,
+      },
+    })
 
     return NextResponse.json({ message: 'Recipe deleted successfully' })
   } catch (error) {
