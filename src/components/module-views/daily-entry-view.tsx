@@ -83,6 +83,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
+  Zap,
+  Copy,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -163,13 +165,13 @@ type MealType = (typeof MEAL_TYPES)[number];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
+const formatCurrency = (amount: number) => {
+  const formatted = new Intl.NumberFormat('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(amount || 0);
+  return `₹${formatted}`;
+};
 
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr);
@@ -698,7 +700,7 @@ export function DailyEntryView() {
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 view-enter">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -755,7 +757,7 @@ export function DailyEntryView() {
               className="space-y-4"
             >
               {/* Daily Summary Card — gradient amber/orange */}
-              <Card className="card-hover overflow-hidden border-amber-200/60 dark:border-amber-800/40">
+              <Card className="card-hover card-elevated overflow-hidden border-amber-200/60 dark:border-amber-800/40">
                 <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50 dark:from-amber-950/30 dark:via-orange-950/20 dark:to-amber-950/30">
                   <CardContent className="p-6">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -873,6 +875,50 @@ export function DailyEntryView() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          const yesterday = new Date(selectedDate);
+                          yesterday.setDate(yesterday.getDate() - 1);
+                          const yDate = formatDateISO(yesterday);
+                          try {
+                            const res = await fetch(`/api/daily-meals?date=${yDate}&limit=50`);
+                            if (res.ok) {
+                              const json = await res.json();
+                              const yMeals: DailyMeal[] = json.data || [];
+                              if (yMeals.length === 0) {
+                                alert('No entries found for yesterday (' + format(yesterday, 'dd/MM/yyyy') + ')');
+                                return;
+                              }
+                              let created = 0;
+                              for (const m of yMeals) {
+                                const createRes = await fetch('/api/daily-meals', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    date: formatDateISO(selectedDate),
+                                    mealType: m.mealType,
+                                    mealsServed: m.mealsServed,
+                                    recipeId: m.recipeId,
+                                    notes: `Copied from ${format(yesterday, 'dd/MM/yyyy')}`,
+                                  }),
+                                });
+                                if (createRes.ok) created++;
+                              }
+                              fetchMeals();
+                              fetchRecentMeals();
+                              fetchEntryDates();
+                              alert(`Copied ${created} meal entries from yesterday`);
+                            }
+                          } catch {
+                            alert('Failed to copy from yesterday');
+                          }
+                        }}
+                        className="gap-2"
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copy Yesterday
+                      </Button>
                       <Button
                         variant="outline"
                         onClick={() => setShowBulkDialog(true)}
@@ -1303,9 +1349,12 @@ export function DailyEntryView() {
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
-            {/* Date */}
-            <div className="grid gap-2">
-              <Label htmlFor="meal-date">Date</Label>
+            {/* ─── Date & Meal Type Group ──────────────────────────── */}
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">When & What</p>
+              {/* Date */}
+              <div className="grid gap-2">
+                <Label htmlFor="meal-date">Date</Label>
               <Popover open={mealCalendarOpen} onOpenChange={setMealCalendarOpen}>
                 <PopoverTrigger asChild>
                   <Button
@@ -1360,6 +1409,11 @@ export function DailyEntryView() {
                 </SelectContent>
               </Select>
             </div>
+            </div>
+
+            {/* ─── Recipe & Servings Group ──────────────────────────── */}
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-4">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Recipe & Servings</p>
 
             {/* Recipe */}
             <div className="grid gap-2">
@@ -1400,7 +1454,21 @@ export function DailyEntryView() {
 
             {/* Meals Served */}
             <div className="grid gap-2">
-              <Label htmlFor="meals-served">Meals Served *</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="meals-served">Meals Served *</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1.5 text-xs text-amber-600 hover:text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/20"
+                  onClick={() =>
+                    setMealForm((prev) => ({ ...prev, mealsServed: '600' }))
+                  }
+                >
+                  <Zap className="h-3 w-3" />
+                  Quick Fill (600)
+                </Button>
+              </div>
               <Input
                 id="meals-served"
                 type="number"
@@ -1414,6 +1482,7 @@ export function DailyEntryView() {
                   }))
                 }
               />
+            </div>
             </div>
 
             {/* ─── Stock Impact Preview (live) ──────────────────────────── */}

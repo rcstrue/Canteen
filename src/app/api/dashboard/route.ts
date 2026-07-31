@@ -2,13 +2,31 @@ import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
 // GET /api/dashboard - Aggregated dashboard stats
-export async function GET(_request: NextRequest) {
+// Supports optional startDate & endDate query params for date range filtering.
+// When provided, the "today" and "week" metrics are computed relative to the
+// custom range, while "month" always uses the calendar month of the endDate.
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const startDateParam = searchParams.get('startDate')
+    const endDateParam = searchParams.get('endDate')
+
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const weekStart = new Date(todayStart)
     weekStart.setDate(weekStart.getDate() - weekStart.getDay()) // Start of week (Sunday)
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    // Custom date range overrides
+    const customStart = startDateParam ? new Date(startDateParam + 'T00:00:00') : null
+    const customEnd = endDateParam ? new Date(endDateParam + 'T23:59:59.999') : null
+
+    // For cost trend: use custom range if provided
+    const trendStart = customStart ?? (() => {
+      const d = new Date(todayStart)
+      d.setDate(d.getDate() - 6)
+      return d
+    })()
 
     // 1. Total food cost: today, this week, this month
     const [costToday, costWeek, costMonth] = await Promise.all([
@@ -147,14 +165,11 @@ export async function GET(_request: NextRequest) {
       ([category, amount]) => ({ category, amount })
     )
 
-    // 10. 7-day cost trend (daily food cost for last 7 days)
-    const sevenDaysAgo = new Date(todayStart)
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6) // inclusive of today
-
+    // 10. Cost trend (daily food cost for the selected range or last 7 days)
     const last7DaysMovements = await db.stockMovement.findMany({
       where: {
         type: 'PURCHASE',
-        date: { gte: sevenDaysAgo },
+        date: { gte: trendStart },
       },
       select: {
         date: true,
@@ -164,11 +179,22 @@ export async function GET(_request: NextRequest) {
 
     // Aggregate by day
     const costByDay = new Map<string, number>()
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(todayStart)
-      d.setDate(d.getDate() - i)
-      const key = d.toISOString().split('T')[0]
-      costByDay.set(key, 0)
+    if (customStart && customEnd) {
+      // Fill all days in the custom range
+      const d = new Date(customStart)
+      while (d <= customEnd) {
+        const key = d.toISOString().split('T')[0]
+        costByDay.set(key, 0)
+        d.setDate(d.getDate() + 1)
+      }
+    } else {
+      // Default: last 7 days
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(todayStart)
+        d.setDate(d.getDate() - i)
+        const key = d.toISOString().split('T')[0]
+        costByDay.set(key, 0)
+      }
     }
 
     for (const m of last7DaysMovements) {

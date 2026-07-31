@@ -103,6 +103,7 @@ import {
 } from "recharts";
 import { downloadCSV } from "@/lib/export-utils";
 import { useToast } from "@/hooks/use-toast";
+import { formatINR } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -236,12 +237,7 @@ type PerfSortKey = "name" | "category" | "orders" | "spend" | "avgOrder" | "rati
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatINR(amount);
 }
 
 function formatCurrencyShort(amount: number): string {
@@ -864,7 +860,7 @@ export function SuppliersView() {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="view-enter space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -925,45 +921,45 @@ export function SuppliersView() {
         <TabsContent value="directory" className="space-y-6 outline-none">
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card className="card-hover border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-elevated metric-card border-amber-200/60 dark:border-amber-800/30">
           <CardContent className="flex items-center gap-4 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
               <Building2 className="h-6 w-6 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-2xl font-bold">{summary.total}</p>
-              <p className="text-xs text-muted-foreground">Total Suppliers</p>
+              <p className="text-2xl font-bold tabular-nums">{summary.total}</p>
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Suppliers</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="card-hover border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-elevated metric-card border-amber-200/60 dark:border-amber-800/30">
           <CardContent className="flex items-center gap-4 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
               <IndianRupee className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-2xl font-bold">{formatCurrencyShort(summary.totalPurchaseValue)}</p>
-              <p className="text-xs text-muted-foreground">Total Purchase Value</p>
+              <p className="text-2xl font-bold tabular-nums">{formatCurrencyShort(summary.totalPurchaseValue)}</p>
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Purchase Value</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="card-hover border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-elevated metric-card border-amber-200/60 dark:border-amber-800/30">
           <CardContent className="flex items-center gap-4 p-4">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
               <Package className="h-6 w-6 text-green-600 dark:text-green-400" />
             </div>
             <div className="min-w-0">
-              <p className="text-2xl font-bold">{summary.active}</p>
-              <p className="text-xs text-muted-foreground">Active Suppliers</p>
+              <p className="text-2xl font-bold tabular-nums">{summary.active}</p>
+              <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Active Suppliers</p>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Filters */}
-      <Card className="border-amber-200/60 dark:border-amber-800/30">
+      <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
         <CardContent className="p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="relative flex-1">
@@ -996,7 +992,7 @@ export function SuppliersView() {
       </Card>
 
       {/* Table / Loading / Empty States */}
-      <Card className="border-amber-200/60 dark:border-amber-800/30">
+      <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Truck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -1076,7 +1072,7 @@ export function SuppliersView() {
                     {sortedSuppliers.map((supplier) => (
                       <TableRow
                         key={supplier.id}
-                        className="cursor-pointer hover:bg-amber-50/60 dark:hover:bg-amber-900/10 transition-colors"
+                        className="table-row-interactive"
                         onClick={() => handleViewDetail(supplier)}
                       >
                         <TableCell>
@@ -1173,7 +1169,7 @@ export function SuppliersView() {
                 {sortedSuppliers.map((supplier) => (
                   <Card
                     key={supplier.id}
-                    className="cursor-pointer border-amber-200/60 dark:border-amber-800/30"
+                    className="card-elevated card-hover cursor-pointer border-amber-200/60 dark:border-amber-800/30"
                     onClick={() => handleViewDetail(supplier)}
                   >
                     <CardContent className="p-4">
@@ -1200,16 +1196,16 @@ export function SuppliersView() {
                       <Separator className="my-3" />
                       <div className="grid grid-cols-2 gap-2 text-xs">
                         <div>
-                          <p className="text-muted-foreground">Phone</p>
+                          <p className="text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" /> Phone</p>
                           <p className="font-mono truncate">{supplier.phone || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground flex items-center gap-1"><Mail className="h-3 w-3" /> Email</p>
+                          <p className="truncate">{supplier.email || "—"}</p>
                         </div>
                         <div>
                           <p className="text-muted-foreground">GSTIN</p>
                           <p className="font-mono truncate">{supplier.gstin || "—"}</p>
-                        </div>
-                        <div>
-                          <p className="text-muted-foreground">Ingredients</p>
-                          <p className="font-mono">{supplier.ingredientCount}</p>
                         </div>
                         <div>
                           <p className="text-muted-foreground">Purchase Value</p>

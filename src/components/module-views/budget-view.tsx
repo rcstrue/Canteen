@@ -66,9 +66,12 @@ import {
   ArrowDownRight,
   RefreshCw,
   Loader2,
+  Settings2,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { downloadCSV } from '@/lib/export-utils';
+import { formatINR as formatINRUtil } from '@/lib/utils';
 import type { ViewId } from '@/components/app-sidebar';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -138,23 +141,6 @@ interface BudgetViewProps {
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-
-const inrFmt = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  maximumFractionDigits: 0,
-});
-
-const inrFmt2 = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
-const numFmt = new Intl.NumberFormat('en-IN', {
-  maximumFractionDigits: 0,
-});
 
 const dailyTrendConfig: ChartConfig = {
   foodCost: { label: 'Food Cost', color: '#f59e0b' },
@@ -234,8 +220,17 @@ function getUtilBand(pct: number): {
   };
 }
 
+/** Format INR using the shared utility for consistent formatting. */
 function formatINR(amount: number, withDecimals = false): string {
-  return withDecimals ? inrFmt2.format(amount) : inrFmt.format(amount);
+  if (withDecimals) {
+    return formatINRUtil(amount);
+  }
+  // For compact display (no decimals), use Intl directly
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(amount || 0);
 }
 
 function formatINRShort(amount: number): string {
@@ -262,6 +257,11 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
   // Set Budget dialog
   const [setBudgetOpen, setSetBudgetOpen] = useState(false);
   const [savingBudget, setSavingBudget] = useState(false);
+
+  // Threshold settings dialog
+  const [thresholdOpen, setThresholdOpen] = useState(false);
+  const [thresholdValue, setThresholdValue] = useState<string>('80');
+  const [savingThreshold, setSavingThreshold] = useState(false);
 
   const fetchData = useCallback(async (targetMonth: string) => {
     setLoading(true);
@@ -359,7 +359,7 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="space-y-6"
+      className="view-enter space-y-6"
     >
       {/* ─── Header ─────────────────────────────────────────────────────── */}
       <motion.div variants={itemVariants}>
@@ -441,6 +441,7 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
                 ? {
                     text: `${data.utilization.totalPct.toFixed(1)}% used`,
                     tone: getUtilBand(data.utilization.totalPct).text,
+                    variant: getUtilBand(data.utilization.totalPct).label === 'Over Budget' ? 'danger' : getUtilBand(data.utilization.totalPct).label === 'Critical' ? 'warning' : 'success',
                   }
                 : undefined
             }
@@ -460,13 +461,19 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
             iconBg="bg-orange-100 dark:bg-orange-900/30"
             iconColor="text-orange-600 dark:text-orange-400"
             subtitle={`Day ${data.daysElapsed} of ${data.daysInMonth} · ${formatINR(data.actuals.foodCost)} food`}
+            momIndicator={(() => {
+              const lastMonth = data.history.length >= 2 ? data.history[data.history.length - 2] : null;
+              if (!lastMonth || lastMonth.actual <= 0) return undefined;
+              const pct = ((data.actuals.totalSpend - lastMonth.actual) / lastMonth.actual) * 100;
+              return { pct, label: 'vs last month' };
+            })()}
           />
         </motion.div>
 
         <motion.div variants={itemVariants} className="h-full">
           <KpiCard
-            title="Projected Spend"
-            value={formatINR(data.projectedSpend)}
+            title={data.daysElapsed >= data.daysInMonth ? 'Final Spend' : 'Projected Spend'}
+            value={formatINR(data.daysElapsed >= data.daysInMonth ? data.actuals.totalSpend : data.projectedSpend)}
             icon={<TrendingUp className="h-5 w-5" />}
             iconBg={
               data.utilization.projectedPct > 100
@@ -481,18 +488,21 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
             badge={
               data.budget
                 ? {
-                    text: `${data.utilization.projectedPct.toFixed(1)}% of budget`,
+                    text: data.daysElapsed >= data.daysInMonth
+                      ? `${data.utilization.totalPct.toFixed(1)}% of budget`
+                      : `${data.utilization.projectedPct.toFixed(1)}% of budget`,
                     tone:
-                      data.utilization.projectedPct > 100
+                      (data.daysElapsed >= data.daysInMonth ? data.utilization.totalPct : data.utilization.projectedPct) > 100
                         ? 'text-red-600 dark:text-red-400'
                         : 'text-emerald-600 dark:text-emerald-400',
+                    variant: (data.daysElapsed >= data.daysInMonth ? data.utilization.totalPct : data.utilization.projectedPct) > 100 ? 'danger' : 'success',
                   }
                 : undefined
             }
             subtitle={
-              data.daysElapsed < data.daysInMonth
-                ? `Estimated end-of-month · ${data.daysInMonth - data.daysElapsed} days left`
-                : 'Final spend for the month'
+              data.daysElapsed >= data.daysInMonth
+                ? 'Month complete — final spend'
+                : `Estimated end-of-month · ${data.daysInMonth - data.daysElapsed} days left`
             }
           />
         </motion.div>
@@ -529,11 +539,25 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
                 (data.budget?.totalBudget ?? 0) - data.actuals.totalSpend >= 0
                   ? 'text-emerald-600 dark:text-emerald-400'
                   : 'text-red-600 dark:text-red-400',
+              variant: (data.budget?.totalBudget ?? 0) - data.actuals.totalSpend >= 0 ? 'success' : 'danger',
             }}
             subtitle={
-              data.budget
-                ? `Threshold alert at ${data.budget.alertThreshold}%`
-                : 'Set a budget to track variance'
+              data.budget ? (
+                <span className="inline-flex items-center gap-1">
+                  Threshold alert at {data.budget.alertThreshold}%
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setThresholdValue(String(data.budget?.alertThreshold ?? 80));
+                      setThresholdOpen(true);
+                    }}
+                    className="inline-flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-amber-600 transition-colors"
+                    aria-label="Configure threshold"
+                  >
+                    <Settings2 className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : 'Set a budget to track variance'
             }
           />
         </motion.div>
@@ -541,7 +565,7 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
 
       {/* ─── Budget Utilization Progress ────────────────────────────────── */}
       <motion.div variants={itemVariants}>
-        <Card className="shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
+        <Card className="card-elevated shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
@@ -628,7 +652,7 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
       >
         {/* Daily Spend Trend */}
         <motion.div variants={itemVariants} className="h-full">
-          <Card className="chart-card-accent h-full shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
+          <Card className="chart-card-accent card-elevated h-full border-amber-200/60 dark:border-amber-900/40">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
                 <TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -653,7 +677,7 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
 
         {/* Category Breakdown */}
         <motion.div variants={itemVariants} className="h-full">
-          <Card className="h-full shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
+          <Card className="card-elevated h-full border-amber-200/60 dark:border-amber-900/40">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div>
@@ -672,7 +696,7 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
             </CardHeader>
             <CardContent>
               {data.categoryBreakdown.length > 0 ? (
-                <div className="max-h-[320px] overflow-y-auto pr-1">
+                <div className="max-h-[320px] overflow-y-auto pr-1 custom-scrollbar">
                   <Table>
                     <TableHeader className="sticky top-0 bg-background">
                       <TableRow>
@@ -681,11 +705,12 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
                         <TableHead className="text-right text-xs">Budget</TableHead>
                         <TableHead className="text-right text-xs">Variance</TableHead>
                         <TableHead className="text-right text-xs">%</TableHead>
+                        <TableHead className="w-8" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {data.categoryBreakdown.slice(0, 10).map((c) => (
-                        <TableRow key={c.category}>
+                        <TableRow key={c.category} className="table-row-interactive" onClick={() => onNavigate?.('expenses')}>
                           <TableCell className="py-2 text-sm font-medium">
                             {c.category}
                           </TableCell>
@@ -702,8 +727,8 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
                               variant="outline"
                               className={`text-xs ${
                                 c.variance >= 0
-                                  ? 'border-emerald-200 text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400'
-                                  : 'border-red-200 text-red-700 dark:border-red-900/50 dark:text-red-400'
+                                  ? 'badge-success'
+                                  : 'badge-danger'
                               }`}
                             >
                               {c.variance >= 0 ? '+' : ''}
@@ -715,6 +740,12 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
                               ? ((c.actual / data.budget.totalBudget) * 100).toFixed(1)
                               : '—'}
                             %
+                          </TableCell>
+                          <TableCell className="py-2 text-right">
+                            <span className="inline-flex items-center text-xs text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300">
+                              View
+                              <ChevronRight className="h-3 w-3 ml-0.5" />
+                            </span>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -734,7 +765,7 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
 
       {/* ─── 6-Month Budget History (full-width) ────────────────────────── */}
       <motion.div variants={itemVariants}>
-        <Card className="chart-card-accent shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
+        <Card className="chart-card-accent card-elevated border-amber-200/60 dark:border-amber-900/40">
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <div>
@@ -880,7 +911,7 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
                     </TableHeader>
                     <TableBody>
                       {data.history.map((h) => (
-                        <TableRow key={h.monthCode} className={h.hasData === false ? 'opacity-60' : ''}>
+                        <TableRow key={h.monthCode} className={`table-row-interactive ${h.hasData === false ? 'opacity-60' : ''}`}>
                           <TableCell className="py-2 text-sm font-medium">
                             {h.monthFull}
                           </TableCell>
@@ -916,8 +947,8 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
                                 variant="outline"
                                 className={`text-xs ${
                                   h.variance >= 0
-                                    ? 'border-emerald-200 text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400'
-                                    : 'border-red-200 text-red-700 dark:border-red-900/50 dark:text-red-400'
+                                    ? 'badge-success'
+                                    : 'badge-danger'
                                 }`}
                               >
                                 {h.variance >= 0 ? 'Under' : 'Over'}
@@ -941,6 +972,81 @@ export function BudgetView({ onNavigate }: BudgetViewProps) {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* ─── Threshold Settings Dialog ───────────────────────────────────── */}
+      <Dialog open={thresholdOpen} onOpenChange={setThresholdOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              Budget Threshold Settings
+            </DialogTitle>
+            <DialogDescription>
+              Set the alert threshold percentage. You will be notified when spend crosses this level.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="threshold-value">Alert Threshold (%)</Label>
+              <Input
+                id="threshold-value"
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                value={thresholdValue}
+                onChange={(e) => setThresholdValue(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Current: {data.budget?.alertThreshold ?? 80}% — Trigger a utilization alert once spend crosses this percentage.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setThresholdOpen(false)} disabled={savingThreshold}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+              disabled={savingThreshold || !thresholdValue || Number(thresholdValue) < 1 || Number(thresholdValue) > 100}
+              onClick={async () => {
+                if (!data.budget) return;
+                setSavingThreshold(true);
+                try {
+                  const res = await fetch(`/api/budgets/${data.budget.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      month: data.budget.month,
+                      foodBudget: data.budget.foodBudget,
+                      operatingBudget: data.budget.operatingBudget,
+                      totalBudget: data.budget.totalBudget,
+                      alertThreshold: Number(thresholdValue),
+                    }),
+                  });
+                  if (!res.ok) throw new Error('Failed to update threshold');
+                  toast.success(`Threshold updated to ${thresholdValue}%`);
+                  setThresholdOpen(false);
+                  await fetchData(month);
+                } catch (e) {
+                  toast.error('Failed to update threshold', {
+                    description: e instanceof Error ? e.message : 'Unknown error',
+                  });
+                } finally {
+                  setSavingThreshold(false);
+                }
+              }}
+            >
+              {savingThreshold ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : 'Save Threshold'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Set Budget Dialog ──────────────────────────────────────────── */}
       <SetBudgetDialog
@@ -1053,17 +1159,27 @@ function KpiCard({
   iconColor,
   subtitle,
   badge,
+  momIndicator,
 }: {
   title: string;
   value: string;
   icon: React.ReactNode;
   iconBg: string;
   iconColor: string;
-  subtitle?: string;
-  badge?: { text: string; tone: string };
+  subtitle?: React.ReactNode;
+  badge?: { text: string; tone: string; variant?: 'success' | 'warning' | 'danger' };
+  momIndicator?: { pct: number; label: string };
 }) {
+  const badgeClass = badge?.variant === 'success'
+    ? 'badge-success'
+    : badge?.variant === 'danger'
+      ? 'badge-danger'
+      : badge?.variant === 'warning'
+        ? 'badge-warning'
+        : '';
+
   return (
-    <Card className="h-full shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+    <Card className="metric-card card-elevated h-full">
       <CardContent className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -1074,8 +1190,13 @@ function KpiCard({
               {value}
             </p>
             {badge && (
-              <p className={`mt-1 text-xs font-semibold ${badge.tone}`}>
+              <span className={`mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-semibold ${badgeClass} ${!badgeClass ? badge.tone : ''}`}>
                 {badge.text}
+              </span>
+            )}
+            {momIndicator && (
+              <p className={`mt-1 text-xs font-medium ${momIndicator.pct >= 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                {momIndicator.pct >= 0 ? '+' : ''}{momIndicator.pct.toFixed(1)}% {momIndicator.label}
               </p>
             )}
           </div>

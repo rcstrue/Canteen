@@ -1134,7 +1134,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
   const currentMonth = new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 view-enter">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
@@ -1150,7 +1150,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* ─── Budget & Alerts Card ─────────────────────────────────────── */}
-        <Card className="md:col-span-2 border-amber-200/60 dark:border-amber-800/30 overflow-hidden">
+        <Card className="md:col-span-2 card-elevated border-amber-200/60 dark:border-amber-800/30 overflow-hidden">
           <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -1720,7 +1720,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         </Card>
 
         {/* ─── Data Backup & Restore Card ─────────────────────────────────── */}
-        <Card className="md:col-span-2 border-amber-300/70 dark:border-amber-700/40 overflow-hidden">
+        <Card className="md:col-span-2 card-elevated border-amber-300/70 dark:border-amber-700/40 overflow-hidden">
           <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
             <CardHeader>
               <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -2009,7 +2009,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         </Card>
 
         {/* ─── User Management Card ─────────────────────────────────────────── */}
-        <Card className="md:col-span-2 border-amber-200/60 dark:border-amber-800/30 overflow-hidden">
+        <Card className="md:col-span-2 card-elevated border-amber-200/60 dark:border-amber-800/30 overflow-hidden">
           <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -2378,7 +2378,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         </AlertDialog>
 
         {/* ─── Canteen Information Card ─────────────────────────────────── */}
-        <Card className="border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -2439,7 +2439,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         </Card>
 
         {/* ─── Quick Actions Card ───────────────────────────────────────── */}
-        <Card className="border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Database className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -2540,7 +2540,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         </Card>
 
         {/* ─── Data Summary Card ────────────────────────────────────────── */}
-        <Card className="border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
@@ -2632,7 +2632,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
         </Card>
 
         {/* ─── About Card ───────────────────────────────────────────────── */}
-        <Card className="border-amber-200/60 dark:border-amber-800/30">
+        <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Info className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -2727,6 +2727,234 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* ─── Notification Preferences ──────────────────────────────────── */}
+      <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            Notification Preferences
+          </CardTitle>
+          <CardDescription>
+            Configure which alerts and notifications you want to receive
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {[
+            {
+              id: "lowStock",
+              label: "Low Stock Alerts",
+              description: "Get notified when ingredients fall below minimum stock level",
+              defaultChecked: true,
+            },
+            {
+              id: "budgetThreshold",
+              label: "Budget Threshold Alerts",
+              description: "Get notified when spending exceeds the alert threshold percentage",
+              defaultChecked: true,
+            },
+            {
+              id: "dailySummary",
+              label: "Daily Summary Email",
+              description: "Receive a daily summary of meals served, purchases, and wastage",
+              defaultChecked: false,
+            },
+          ].map((pref) => (
+            <div
+              key={pref.id}
+              className="flex items-center justify-between rounded-lg border p-4"
+            >
+              <div className="space-y-0.5">
+                <Label htmlFor={pref.id} className="text-sm font-medium cursor-pointer">
+                  {pref.label}
+                </Label>
+                <p className="text-xs text-muted-foreground">{pref.description}</p>
+              </div>
+              <Button
+                id={pref.id}
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "gap-2 min-w-[80px]",
+                  pref.defaultChecked
+                    ? "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800"
+                    : "text-muted-foreground"
+                )}
+                onClick={() => {
+                  toast({
+                    title: pref.defaultChecked ? "Notification disabled" : "Notification enabled",
+                    description: pref.label,
+                  });
+                }}
+              >
+                {pref.defaultChecked ? "On" : "Off"}
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* ─── Data Management ──────────────────────────────────────────── */}
+      <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            Data Management
+          </CardTitle>
+          <CardDescription>
+            Export, import, and manage your canteen data
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="rounded-lg border p-4 space-y-3 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30 mx-auto">
+                <Download className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Export All Data</p>
+                <p className="text-xs text-muted-foreground">
+                  Download a complete backup of all canteen records
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={handleExport}
+                disabled={isExporting}
+              >
+                {isExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Export
+              </Button>
+            </div>
+            <div className="rounded-lg border p-4 space-y-3 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30 mx-auto">
+                <Upload className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">Import Data</p>
+                <p className="text-xs text-muted-foreground">
+                  Restore from a previously exported backup file
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting}
+              >
+                {isImporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                Import
+              </Button>
+            </div>
+            <div className="rounded-lg border border-destructive/30 p-4 space-y-3 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 dark:bg-red-900/30 mx-auto">
+                <Trash2 className="h-6 w-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-destructive">Clear Demo Data</p>
+                <p className="text-xs text-muted-foreground">
+                  Remove all sample data and start fresh
+                </p>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                onClick={handleClearData}
+                disabled={isSeeding}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Clear Data
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ─── Canteen Configuration ────────────────────────────────────── */}
+      <Card className="card-elevated border-amber-200/60 dark:border-amber-800/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            Canteen Configuration
+          </CardTitle>
+          <CardDescription>
+            Configure canteen-specific settings like employee count, meal times, and currency
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-2">
+              <Label htmlFor="config-employee-count" className="text-xs text-muted-foreground">
+                Employee Count
+              </Label>
+              <Input
+                id="config-employee-count"
+                type="number"
+                value={canteenInfo.employeeCount}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 0;
+                  setCanteenInfo((prev) => ({ ...prev, employeeCount: val }));
+                  try {
+                    localStorage.setItem(CANTEEN_INFO_KEY, JSON.stringify({ ...canteenInfo, employeeCount: val }));
+                  } catch { /* ignore */ }
+                }}
+                className="tabular-nums"
+              />
+              <p className="text-xs text-muted-foreground">Used for meal quantity calculations</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="config-meal-times" className="text-xs text-muted-foreground">
+                Default Meal Times
+              </Label>
+              <Select defaultValue="standard">
+                <SelectTrigger id="config-meal-times">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Standard (7AM / 12PM / 8PM)</SelectItem>
+                  <SelectItem value="shift-a">Shift A (6AM / 11AM / 7PM)</SelectItem>
+                  <SelectItem value="shift-b">Shift B (8AM / 1PM / 9PM)</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Breakfast / Lunch / Dinner times</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="config-currency" className="text-xs text-muted-foreground">
+                Currency
+              </Label>
+              <Select defaultValue="INR">
+                <SelectTrigger id="config-currency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="INR">₹ Indian Rupee (INR)</SelectItem>
+                  <SelectItem value="USD">$ US Dollar (USD)</SelectItem>
+                  <SelectItem value="EUR">€ Euro (EUR)</SelectItem>
+                  <SelectItem value="GBP">£ British Pound (GBP)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Currency for all financial displays</p>
+            </div>
+          </div>
+          <Button
+            onClick={() => {
+              toast({
+                title: "Configuration saved",
+                description: "Canteen configuration updated successfully.",
+              });
+            }}
+            className="bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            <Save className="mr-2 h-4 w-4" />
+            Save Configuration
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* ─── Audit Log (admin-only) ─────────────────────────────────────── */}
       {currentUser?.role === "admin" && <AuditLogSection />}

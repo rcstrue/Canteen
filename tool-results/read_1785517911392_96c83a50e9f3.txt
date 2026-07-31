@@ -1,0 +1,902 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback, useMemo } from "react";
+     4→
+     5→import {
+     6→  Card,
+     7→  CardContent,
+     8→  CardDescription,
+     9→  CardHeader,
+    10→  CardTitle,
+    11→} from "@/components/ui/card";
+    12→import {
+    13→  Table,
+    14→  TableBody,
+    15→  TableCell,
+    16→  TableHead,
+    17→  TableHeader,
+    18→  TableRow,
+    19→} from "@/components/ui/table";
+    20→import {
+    21→  Dialog,
+    22→  DialogContent,
+    23→  DialogDescription,
+    24→  DialogFooter,
+    25→  DialogHeader,
+    26→  DialogTitle,
+    27→} from "@/components/ui/dialog";
+    28→import {
+    29→  Select,
+    30→  SelectContent,
+    31→  SelectItem,
+    32→  SelectTrigger,
+    33→  SelectValue,
+    34→} from "@/components/ui/select";
+    35→import { Input } from "@/components/ui/input";
+    36→import { Button } from "@/components/ui/button";
+    37→import { Badge } from "@/components/ui/badge";
+    38→import { Label } from "@/components/ui/label";
+    39→import { Textarea } from "@/components/ui/textarea";
+    40→import { Separator } from "@/components/ui/separator";
+    41→import { Skeleton } from "@/components/ui/skeleton";
+    42→import {
+    43→  ChartContainer,
+    44→  ChartTooltip,
+    45→  ChartTooltipContent,
+    46→  type ChartConfig,
+    47→} from "@/components/ui/chart";
+    48→
+    49→import {
+    50→  Trash2,
+    51→  Plus,
+    52→  ArrowUpDown,
+    53→  IndianRupee,
+    54→  CalendarDays,
+    55→  AlertTriangle,
+    56→  TrendingDown,
+    57→  Loader2,
+    58→  X,
+    59→  AlertCircle,
+    60→  Flame,
+    61→  Download,
+    62→  BarChart3,
+    63→  Trophy,
+    64→} from "lucide-react";
+    65→import { Line, LineChart, XAxis, YAxis, CartesianGrid } from "recharts";
+    66→import { downloadCSV } from "@/lib/export-utils";
+    67→import { useToast } from "@/hooks/use-toast";
+    68→
+    69→// ─── Types ───────────────────────────────────────────────────────────────────
+    70→
+    71→interface Ingredient {
+    72→  id: string;
+    73→  name: string;
+    74→  unit: string;
+    75→  category: string;
+    76→  currentStock: number;
+    77→  minStock: number;
+    78→  lastPurchasePrice: number;
+    79→  avgCost: number;
+    80→  supplier: string | null;
+    81→}
+    82→
+    83→interface WastageEntry {
+    84→  id: string;
+    85→  ingredientId: string;
+    86→  type: string;
+    87→  quantity: number;
+    88→  unitPrice: number;
+    89→  totalAmount: number;
+    90→  date: string;
+    91→  notes: string | null;
+    92→  createdAt: string;
+    93→  ingredient: {
+    94→    id: string;
+    95→    name: string;
+    96→    unit: string;
+    97→    category: string;
+    98→  };
+    99→}
+   100→
+   101→// ─── Constants ───────────────────────────────────────────────────────────────
+   102→
+   103→const CATEGORIES = [
+   104→  "All",
+   105→  "Vegetables",
+   106→  "Grains",
+   107→  "Oil",
+   108→  "Spices",
+   109→  "Dairy",
+   110→  "Meat",
+   111→  "Pulses",
+   112→  "Other",
+   113→];
+   114→
+   115→const COMMON_REASONS = [
+   116→  "Spoiled",
+   117→  "Expired",
+   118→  "Dropped",
+   119→  "Overcooked",
+   120→  "Burnt",
+   121→  "Spillage",
+   122→  "Contamination",
+   123→  "Pest damage",
+   124→];
+   125→
+   126→const CATEGORY_COLORS: Record<string, string> = {
+   127→  Vegetables: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+   128→  Grains: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
+   129→  Oil: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+   130→  Spices: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+   131→  Dairy: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+   132→  Meat: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400",
+   133→  Pulses: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
+   134→  Other: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
+   135→};
+   136→
+   137→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   138→
+   139→function formatCurrency(amount: number): string {
+   140→  return new Intl.NumberFormat("en-IN", {
+   141→    style: "currency",
+   142→    currency: "INR",
+   143→    minimumFractionDigits: 2,
+   144→    maximumFractionDigits: 2,
+   145→  }).format(amount);
+   146→}
+   147→
+   148→function formatDate(dateStr: string): string {
+   149→  const d = new Date(dateStr);
+   150→  const day = String(d.getDate()).padStart(2, "0");
+   151→  const month = String(d.getMonth() + 1).padStart(2, "0");
+   152→  const year = d.getFullYear();
+   153→  return `${day}/${month}/${year}`;
+   154→}
+   155→
+   156→function getTodayStr(): string {
+   157→  const d = new Date();
+   158→  return d.toISOString().split("T")[0];
+   159→}
+   160→
+   161→function getMonthStartStr(): string {
+   162→  const d = new Date();
+   163→  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0];
+   164→}
+   165→
+   166→type Severity = "LOW" | "MEDIUM" | "HIGH";
+   167→
+   168→function getWastageSeverity(amount: number): Severity {
+   169→  if (amount < 100) return "LOW";
+   170→  if (amount < 500) return "MEDIUM";
+   171→  return "HIGH";
+   172→}
+   173→
+   174→function getSeverityConfig(severity: Severity): { label: string; badgeClass: string } {
+   175→  switch (severity) {
+   176→    case "HIGH":
+   177→      return {
+   178→        label: "HIGH",
+   179→        badgeClass: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800",
+   180→      };
+   181→    case "MEDIUM":
+   182→      return {
+   183→        label: "MEDIUM",
+   184→        badgeClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+   185→      };
+   186→    case "LOW":
+   187→    default:
+   188→      return {
+   189→        label: "LOW",
+   190→        badgeClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+   191→      };
+   192→  }
+   193→}
+   194→
+   195→const WASTAGE_CHART_CONFIG: ChartConfig = {
+   196→  wastageCost: {
+   197→    label: "Wastage Cost",
+   198→    color: "oklch(0.6 0.15 30)",
+   199→  },
+   200→};
+   201→
+   202→// ─── Component ───────────────────────────────────────────────────────────────
+   203→
+   204→export function WastageView() {
+   205→  const { toast } = useToast();
+   206→  // Data state
+   207→  const [wastageEntries, setWastageEntries] = useState<WastageEntry[]>([]);
+   208→  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+   209→  const [loading, setLoading] = useState(true);
+   210→  const [submitting, setSubmitting] = useState(false);
+   211→
+   212→  // Filter state
+   213→  const [dateFilter, setDateFilter] = useState<string>("");
+   214→  const [categoryFilter, setCategoryFilter] = useState<string>("All");
+   215→  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+   216→
+   217→  // Dialog state
+   218→  const [dialogOpen, setDialogOpen] = useState(false);
+   219→
+   220→  // Form state
+   221→  const [formIngredientId, setFormIngredientId] = useState<string>("");
+   222→  const [formQuantity, setFormQuantity] = useState<string>("");
+   223→  const [formUnitPrice, setFormUnitPrice] = useState<string>("");
+   224→  const [formDate, setFormDate] = useState<string>(getTodayStr());
+   225→  const [formNotes, setFormNotes] = useState<string>("");
+   226→  const [formError, setFormError] = useState<string>("");
+   227→
+   228→  // ─── Data Fetching ─────────────────────────────────────────────────────────
+   229→
+   230→  const fetchWastage = useCallback(async () => {
+   231→    setLoading(true);
+   232→    try {
+   233→      const params = new URLSearchParams({ type: "WASTAGE", limit: "200" });
+   234→      if (dateFilter) {
+   235→        params.set("startDate", dateFilter);
+   236→        params.set("endDate", dateFilter);
+   237→      }
+   238→      const res = await fetch(`/api/stock-movements?${params.toString()}`);
+   239→      if (res.ok) {
+   240→        const json = await res.json();
+   241→        let data: WastageEntry[] = json.data || [];
+   242→        if (categoryFilter !== "All") {
+   243→          data = data.filter((e) => e.ingredient?.category === categoryFilter);
+   244→        }
+   245→        setWastageEntries(data);
+   246→      }
+   247→    } catch (err) {
+   248→      console.error("Error fetching wastage:", err);
+   249→    } finally {
+   250→      setLoading(false);
+   251→    }
+   252→  }, [dateFilter, categoryFilter]);
+   253→
+   254→  const fetchIngredients = useCallback(async () => {
+   255→    try {
+   256→      const res = await fetch("/api/ingredients");
+   257→      if (res.ok) {
+   258→        const data = await res.json();
+   259→        setIngredients(Array.isArray(data) ? data : []);
+   260→      }
+   261→    } catch (err) {
+   262→      console.error("Error fetching ingredients:", err);
+   263→    }
+   264→  }, []);
+   265→
+   266→  useEffect(() => {
+   267→    fetchWastage();
+   268→  }, [fetchWastage]);
+   269→
+   270→  useEffect(() => {
+   271→    fetchIngredients();
+   272→  }, [fetchIngredients]);
+   273→
+   274→  // ─── Derived Data ──────────────────────────────────────────────────────────
+   275→
+   276→  const today = getTodayStr();
+   277→  const monthStart = getMonthStartStr();
+   278→
+   279→  const todayEntries = wastageEntries.filter((e) => {
+   280→    const entryDate = new Date(e.date).toISOString().split("T")[0];
+   281→    return entryDate === today;
+   282→  });
+   283→
+   284→  const monthEntries = wastageEntries.filter((e) => {
+   285→    const entryDate = new Date(e.date).toISOString().split("T")[0];
+   286→    return entryDate >= monthStart;
+   287→  });
+   288→
+   289→  const totalWastageMonth = monthEntries.reduce((sum, e) => sum + e.totalAmount, 0);
+   290→  const totalWastageToday = todayEntries.reduce((sum, e) => sum + e.totalAmount, 0);
+   291→  const wastageCountMonth = monthEntries.length;
+   292→
+   293→  // Sorted entries
+   294→  const sortedEntries = [...wastageEntries].sort((a, b) => {
+   295→    const dateA = new Date(a.date).getTime();
+   296→    const dateB = new Date(b.date).getTime();
+   297→    return sortDir === "desc" ? dateB - dateA : dateA - dateB;
+   298→  });
+   299→
+   300→  // ─── 7-Day Wastage Trend Chart Data ────────────────────────────────────────
+   301→  const sevenDayTrend = useMemo(() => {
+   302→    const days: { date: string; label: string; wastageCost: number }[] = [];
+   303→    for (let i = 6; i >= 0; i--) {
+   304→      const d = new Date();
+   305→      d.setDate(d.getDate() - i);
+   306→      const dateStr = d.toISOString().split("T")[0];
+   307→      const dayLabel = d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric" });
+   308→      const dayTotal = wastageEntries
+   309→        .filter((e) => e.date.split("T")[0] === dateStr)
+   310→        .reduce((sum, e) => sum + e.totalAmount, 0);
+   311→      days.push({ date: dateStr, label: dayLabel, wastageCost: Math.round(dayTotal * 100) / 100 });
+   312→    }
+   313→    return days;
+   314→  }, [wastageEntries]);
+   315→
+   316→  // ─── Top Wasted Items ─────────────────────────────────────────────────────
+   317→  const topWastedItems = useMemo(() => {
+   318→    const byItem: Record<string, { name: string; category: string; totalLoss: number; totalQty: number; unit: string }> = {};
+   319→    wastageEntries.forEach((e) => {
+   320→      const key = e.ingredientId;
+   321→      if (!byItem[key]) {
+   322→        byItem[key] = {
+   323→          name: e.ingredient?.name || "Unknown",
+   324→          category: e.ingredient?.category || "Other",
+   325→          totalLoss: 0,
+   326→          totalQty: 0,
+   327→          unit: e.ingredient?.unit || "",
+   328→        };
+   329→      }
+   330→      byItem[key].totalLoss += e.totalAmount;
+   331→      byItem[key].totalQty += e.quantity;
+   332→    });
+   333→    return Object.values(byItem)
+   334→      .sort((a, b) => b.totalLoss - a.totalLoss)
+   335→      .slice(0, 5);
+   336→  }, [wastageEntries]);
+   337→
+   338→  // ─── Form Logic ────────────────────────────────────────────────────────────
+   339→
+   340→  const selectedIngredient = ingredients.find((i) => i.id === formIngredientId);
+   341→
+   342→  const totalLossPreview =
+   343→    (parseFloat(formQuantity) || 0) * (parseFloat(formUnitPrice) || 0);
+   344→
+   345→  function handleIngredientChange(id: string) {
+   346→    setFormIngredientId(id);
+   347→    const ing = ingredients.find((i) => i.id === id);
+   348→    if (ing) {
+   349→      setFormUnitPrice(ing.avgCost > 0 ? String(ing.avgCost) : String(ing.lastPurchasePrice));
+   350→    } else {
+   351→      setFormUnitPrice("");
+   352→    }
+   353→  }
+   354→
+   355→  function handleReasonSelect(reason: string) {
+   356→    setFormNotes((prev) => {
+   357→      const parts = prev.split("; ").filter(Boolean);
+   358→      if (parts.includes(reason)) return prev;
+   359→      return prev ? `${prev}; ${reason}` : reason;
+   360→    });
+   361→  }
+   362→
+   363→  function resetForm() {
+   364→    setFormIngredientId("");
+   365→    setFormQuantity("");
+   366→    setFormUnitPrice("");
+   367→    setFormDate(getTodayStr());
+   368→    setFormNotes("");
+   369→    setFormError("");
+   370→  }
+   371→
+   372→  async function handleSubmit() {
+   373→    setFormError("");
+   374→
+   375→    if (!formIngredientId) {
+   376→      setFormError("Please select an ingredient.");
+   377→      return;
+   378→    }
+   379→    const qty = parseFloat(formQuantity);
+   380→    if (!qty || qty <= 0) {
+   381→      setFormError("Please enter a valid quantity greater than 0.");
+   382→      return;
+   383→    }
+   384→    const price = parseFloat(formUnitPrice);
+   385→    if (isNaN(price) || price < 0) {
+   386→      setFormError("Please enter a valid unit price.");
+   387→      return;
+   388→    }
+   389→    if (!formDate) {
+   390→      setFormError("Please select a date.");
+   391→      return;
+   392→    }
+   393→
+   394→    setSubmitting(true);
+   395→    try {
+   396→      const res = await fetch("/api/stock-movements", {
+   397→        method: "POST",
+   398→        headers: { "Content-Type": "application/json" },
+   399→        body: JSON.stringify({
+   400→          ingredientId: formIngredientId,
+   401→          type: "WASTAGE",
+   402→          quantity: qty,
+   403→          unitPrice: price,
+   404→          totalAmount: qty * price,
+   405→          date: formDate,
+   406→          notes: formNotes || null,
+   407→        }),
+   408→      });
+   409→
+   410→      if (res.ok) {
+   411→        setDialogOpen(false);
+   412→        resetForm();
+   413→        fetchWastage();
+   414→      } else {
+   415→        const json = await res.json();
+   416→        setFormError(json.error || "Failed to record wastage.");
+   417→      }
+   418→    } catch {
+   419→      setFormError("Network error. Please try again.");
+   420→    } finally {
+   421→      setSubmitting(false);
+   422→    }
+   423→  }
+   424→
+   425→  // ─── Render ────────────────────────────────────────────────────────────────
+   426→
+   427→  return (
+   428→    <div className="space-y-6">
+   429→      {/* Header */}
+   430→      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   431→        <div className="flex items-center gap-3">
+   432→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/30">
+   433→            <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" />
+   434→          </div>
+   435→          <div>
+   436→            <h1 className="text-2xl font-bold tracking-tight">Wastage Tracking</h1>
+   437→            <p className="text-muted-foreground">
+   438→              Record spoilage and waste, analyze cost impact
+   439→            </p>
+   440→          </div>
+   441→        </div>
+   442→
+   443→        <div className="flex flex-wrap items-center gap-3">
+   444→          {/* Date Filter */}
+   445→          <div className="flex items-center gap-2">
+   446→            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+   447→            <Input
+   448→              type="date"
+   449→              value={dateFilter}
+   450→              onChange={(e) => setDateFilter(e.target.value)}
+   451→              className="h-9 w-[150px]"
+   452→              placeholder="Filter by date"
+   453→            />
+   454→            {dateFilter && (
+   455→              <Button
+   456→                variant="ghost"
+   457→                size="icon"
+   458→                className="h-8 w-8"
+   459→                onClick={() => setDateFilter("")}
+   460→              >
+   461→                <X className="h-4 w-4" />
+   462→              </Button>
+   463→            )}
+   464→          </div>
+   465→
+   466→          {/* Category Filter */}
+   467→          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   468→            <SelectTrigger className="h-9 w-[150px]">
+   469→              <SelectValue placeholder="Category" />
+   470→            </SelectTrigger>
+   471→            <SelectContent>
+   472→              {CATEGORIES.map((cat) => (
+   473→                <SelectItem key={cat} value={cat}>
+   474→                  {cat}
+   475→                </SelectItem>
+   476→              ))}
+   477→            </SelectContent>
+   478→          </Select>
+   479→
+   480→          {/* Export CSV Button */}
+   481→          <Button
+   482→            variant="outline"
+   483→            onClick={() => {
+   484→              const rows = sortedEntries.map((e) => ({
+   485→                Date: formatDate(e.date),
+   486→                Ingredient: e.ingredient?.name ?? "—",
+   487→                Category: e.ingredient?.category ?? "—",
+   488→                Quantity: String(e.quantity),
+   489→                Unit: e.ingredient?.unit ?? "—",
+   490→                "Unit Cost": String(e.unitPrice),
+   491→                "Total Loss": String(e.totalAmount),
+   492→                Reason: e.notes || "—",
+   493→              }));
+   494→              downloadCSV("wastage.csv", rows);
+   495→              toast({
+   496→                title: "Export successful",
+   497→                description: `${rows.length} wastage entr${rows.length === 1 ? "y" : "ies"} exported as CSV.`,
+   498→              });
+   499→            }}
+   500→            disabled={wastageEntries.length === 0}
+   501→          >
+   502→            <Download className="mr-2 h-4 w-4" />
+   503→            Export CSV
+   504→          </Button>
+   505→
+   506→          {/* Record Wastage Button */}
+   507→          <Button
+   508→            onClick={() => {
+   509→              resetForm();
+   510→              setDialogOpen(true);
+   511→            }}
+   512→            className="bg-red-600 hover:bg-red-700 text-white"
+   513→          >
+   514→            <Plus className="mr-2 h-4 w-4" />
+   515→            Record Wastage
+   516→          </Button>
+   517→        </div>
+   518→      </div>
+   519→
+   520→      {/* Summary Cards */}
+   521→      <div className="grid gap-4 sm:grid-cols-3">
+   522→        {/* Total Wastage This Month */}
+   523→        <Card className="card-hover border-red-200 dark:border-red-900/40">
+   524→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   525→            <CardTitle className="text-sm font-medium text-muted-foreground">
+   526→              Total Wastage This Month
+   527→            </CardTitle>
+   528→            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-red-100 dark:bg-red-900/30">
+   529→              <IndianRupee className="h-4 w-4 text-red-600 dark:text-red-400" />
+   530→            </div>
+   531→          </CardHeader>
+   532→          <CardContent>
+   533→            {loading ? (
+   534→              <Skeleton className="h-8 w-32" />
+   535→            ) : (
+   536→              <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+   537→                {formatCurrency(totalWastageMonth)}
+   538→              </p>
+   539→            )}
+   540→            <p className="mt-1 text-xs text-muted-foreground">
+   541→              Financial loss from wastage
+   542→            </p>
+   543→          </CardContent>
+   544→        </Card>
+   545→
+   546→        {/* Total Wastage Today */}
+   547→        <Card className="card-hover border-orange-200 dark:border-orange-900/40">
+   548→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   549→            <CardTitle className="text-sm font-medium text-muted-foreground">
+   550→              Total Wastage Today
+   551→            </CardTitle>
+   552→            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-orange-100 dark:bg-orange-900/30">
+   553→              <Flame className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   554→            </div>
+   555→          </CardHeader>
+   556→          <CardContent>
+   557→            {loading ? (
+   558→              <Skeleton className="h-8 w-32" />
+   559→            ) : (
+   560→              <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+   561→                {formatCurrency(totalWastageToday)}
+   562→              </p>
+   563→            )}
+   564→            <p className="mt-1 text-xs text-muted-foreground">
+   565→              Today&apos;s waste cost
+   566→            </p>
+   567→          </CardContent>
+   568→        </Card>
+   569→
+   570→        {/* Wastage Entries This Month */}
+   571→        <Card className="card-hover border-red-200 dark:border-red-900/40">
+   572→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   573→            <CardTitle className="text-sm font-medium text-muted-foreground">
+   574→              Entries This Month
+   575→            </CardTitle>
+   576→            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-red-100 dark:bg-red-900/30">
+   577→              <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+   578→            </div>
+   579→          </CardHeader>
+   580→          <CardContent>
+   581→            {loading ? (
+   582→              <Skeleton className="h-8 w-16" />
+   583→            ) : (
+   584→              <>
+   585→                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+   586→                  {wastageCountMonth}
+   587→                </p>
+   588→                <p className="mt-1 text-xs text-muted-foreground">
+   589→                  Wastage incidents recorded
+   590→                </p>
+   591→                {wastageCountMonth > 0 && (
+   592→                  <div className="mt-3 flex items-center gap-2 flex-wrap">
+   593→                    <Badge variant="outline" className="gap-1 text-[10px] font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
+   594→                      {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "LOW").length} LOW
+   595→                    </Badge>
+   596→                    <Badge variant="outline" className="gap-1 text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+   597→                      {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "MEDIUM").length} MED
+   598→                    </Badge>
+   599→                    <Badge variant="outline" className="gap-1 text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800">
+   600→                      {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "HIGH").length} HIGH
+   601→                    </Badge>
+   602→                  </div>
+   603→                )}
+   604→              </>
+   605→            )}
+   606→          </CardContent>
+   607→        </Card>
+   608→      </div>
+   609→
+   610→      {/* 7-Day Wastage Trend + Top Wasted Items */}
+   611→      <div className="grid gap-4 lg:grid-cols-2">
+   612→        {/* 7-Day Trend Chart */}
+   613→        <Card>
+   614→          <CardHeader className="pb-3">
+   615→            <CardTitle className="flex items-center gap-2 text-lg">
+   616→              <BarChart3 className="h-5 w-5 text-red-500" />
+   617→              7-Day Wastage Trend
+   618→            </CardTitle>
+   619→            <CardDescription>
+   620→              Daily wastage cost over the last 7 days
+   621→            </CardDescription>
+   622→          </CardHeader>
+   623→          <CardContent>
+   624→            {loading ? (
+   625→              <Skeleton className="h-[180px] w-full" />
+   626→            ) : sevenDayTrend.every((d) => d.wastageCost === 0) ? (
+   627→              <div className="flex h-[180px] flex-col items-center justify-center text-center">
+   628→                <BarChart3 className="h-8 w-8 text-muted-foreground/40 mb-2" />
+   629→                <p className="text-sm text-muted-foreground">No wastage in the last 7 days</p>
+   630→              </div>
+   631→            ) : (
+   632→              <ChartContainer config={WASTAGE_CHART_CONFIG} className="h-[180px] w-full">
+   633→                <LineChart data={sevenDayTrend} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+   634→                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+   635→                  <XAxis
+   636→                    dataKey="label"
+   637→                    tickLine={false}
+   638→                    axisLine={false}
+   639→                    fontSize={11}
+   640→                    tickMargin={8}
+   641→                  />
+   642→                  <YAxis
+   643→                    tickLine={false}
+   644→                    axisLine={false}
+   645→                    fontSize={11}
+   646→                    tickFormatter={(v: number) => `₹${v}`}
+   647→                  />
+   648→                  <ChartTooltip
+   649→                    content={<ChartTooltipContent />}
+   650→                    formatter={(value: number) => [formatCurrency(value), "Wastage Cost"]}
+   651→                  />
+   652→                  <Line
+   653→                    type="monotone"
+   654→                    dataKey="wastageCost"
+   655→                    stroke="oklch(0.6 0.15 30)"
+   656→                    strokeWidth={2}
+   657→                    dot={{ r: 4, fill: "oklch(0.6 0.15 30)" }}
+   658→                    activeDot={{ r: 6 }}
+   659→                  />
+   660→                </LineChart>
+   661→              </ChartContainer>
+   662→            )}
+   663→          </CardContent>
+   664→        </Card>
+   665→
+   666→        {/* Top Wasted Items */}
+   667→        <Card>
+   668→          <CardHeader className="pb-3">
+   669→            <CardTitle className="flex items-center gap-2 text-lg">
+   670→              <Trophy className="h-5 w-5 text-amber-500" />
+   671→              Top Wasted Items
+   672→            </CardTitle>
+   673→            <CardDescription>
+   674→              Items with highest total wastage loss
+   675→            </CardDescription>
+   676→          </CardHeader>
+   677→          <CardContent>
+   678→            {loading ? (
+   679→              <div className="space-y-3">
+   680→                {Array.from({ length: 3 }).map((_, i) => (
+   681→                  <Skeleton key={i} className="h-8 w-full" />
+   682→                ))}
+   683→              </div>
+   684→            ) : topWastedItems.length === 0 ? (
+   685→              <div className="flex h-[180px] flex-col items-center justify-center text-center">
+   686→                <Trash2 className="h-8 w-8 text-muted-foreground/40 mb-2" />
+   687→                <p className="text-sm text-muted-foreground">No wastage data to rank</p>
+   688→              </div>
+   689→            ) : (
+   690→              <div className="space-y-3">
+   691→                {topWastedItems.map((item, idx) => {
+   692→                  const maxLoss = topWastedItems[0]?.totalLoss || 1;
+   693→                  const barWidth = Math.max(5, (item.totalLoss / maxLoss) * 100);
+   694→                  return (
+   695→                    <div key={item.name} className="space-y-1">
+   696→                      <div className="flex items-center justify-between gap-2">
+   697→                        <div className="flex items-center gap-2 min-w-0">
+   698→                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30 text-[10px] font-bold text-red-600 dark:text-red-400 shrink-0">
+   699→                            {idx + 1}
+   700→                          </span>
+   701→                          <span className="text-sm font-medium truncate">{item.name}</span>
+   702→                          <Badge
+   703→                            variant="secondary"
+   704→                            className={`text-[10px] px-1.5 py-0 ${CATEGORY_COLORS[item.category] || ""}`}
+   705→                          >
+   706→                            {item.category}
+   707→                          </Badge>
+   708→                        </div>
+   709→                        <span className="text-sm font-semibold text-red-600 dark:text-red-400 tabular-nums whitespace-nowrap">
+   710→                          {formatCurrency(item.totalLoss)}
+   711→                        </span>
+   712→                      </div>
+   713→                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+   714→                        <div
+   715→                          className="h-full rounded-full bg-red-400 transition-all duration-500"
+   716→                          style={{ width: `${barWidth}%` }}
+   717→                        />
+   718→                      </div>
+   719→                    </div>
+   720→                  );
+   721→                })}
+   722→              </div>
+   723→            )}
+   724→          </CardContent>
+   725→        </Card>
+   726→      </div>
+   727→
+   728→      {/* Wastage Table */}
+   729→      <Card>
+   730→        <CardHeader>
+   731→          <CardTitle className="flex items-center gap-2">
+   732→            <TrendingDown className="h-5 w-5 text-red-500" />
+   733→            Wastage Log
+   734→          </CardTitle>
+   735→          <CardDescription>
+   736→            All recorded wastage entries sorted by date
+   737→          </CardDescription>
+   738→        </CardHeader>
+   739→        <CardContent>
+   740→          {loading ? (
+   741→            <div className="space-y-3">
+   742→              {Array.from({ length: 5 }).map((_, i) => (
+   743→                <Skeleton key={i} className="h-12 w-full" />
+   744→              ))}
+   745→            </div>
+   746→          ) : sortedEntries.length === 0 ? (
+   747→            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-muted-foreground/25 py-12">
+   748→              <Trash2 className="mb-3 h-10 w-10 text-muted-foreground/40" />
+   749→              <p className="text-sm font-medium text-muted-foreground">
+   750→                No wastage entries found
+   751→              </p>
+   752→              <p className="mt-1 text-xs text-muted-foreground">
+   753→                {dateFilter || categoryFilter !== "All"
+   754→                  ? "Try adjusting your filters"
+   755→                  : "Click \"Record Wastage\" to add your first entry"}
+   756→              </p>
+   757→            </div>
+   758→          ) : (
+   759→            <div className="overflow-x-auto">
+   760→              <Table>
+   761→                <TableHeader>
+   762→                  <TableRow>
+   763→                    <TableHead
+   764→                      className="cursor-pointer select-none"
+   765→                      onClick={() => setSortDir((d) => (d === "desc" ? "asc" : "desc"))}
+   766→                    >
+   767→                      <div className="flex items-center gap-1">
+   768→                        Date
+   769→                        <ArrowUpDown className="h-3.5 w-3.5" />
+   770→                      </div>
+   771→                    </TableHead>
+   772→                    <TableHead>Ingredient</TableHead>
+   773→                    <TableHead className="text-right">Quantity</TableHead>
+   774→                    <TableHead>Unit</TableHead>
+   775→                    <TableHead className="text-right">Unit Cost</TableHead>
+   776→                    <TableHead className="text-right">Total Loss</TableHead>
+   777→                    <TableHead>Severity</TableHead>
+   778→                    <TableHead>Reason / Notes</TableHead>
+   779→                  </TableRow>
+   780→                </TableHeader>
+   781→                <TableBody>
+   782→                  {sortedEntries.map((entry) => {
+   783→                    const severity = getWastageSeverity(entry.totalAmount);
+   784→                    const severityConfig = getSeverityConfig(severity);
+   785→                    return (
+   786→                    <TableRow
+   787→                      key={entry.id}
+   788→                      className="hover:bg-red-50/50 dark:hover:bg-red-950/20 transition-colors"
+   789→                    >
+   790→                      <TableCell className="font-medium whitespace-nowrap">
+   791→                        {formatDate(entry.date)}
+   792→                      </TableCell>
+   793→                      <TableCell>
+   794→                        <div className="flex items-center gap-2">
+   795→                          <span>{entry.ingredient?.name || "Unknown"}</span>
+   796→                          {entry.ingredient?.category && (
+   797→                            <Badge
+   798→                              variant="secondary"
+   799→                              className={`text-[10px] px-1.5 py-0 ${
+   800→                                CATEGORY_COLORS[entry.ingredient.category] || ""
+   801→                              }`}
+   802→                            >
+   803→                              {entry.ingredient.category}
+   804→                            </Badge>
+   805→                          )}
+   806→                        </div>
+   807→                      </TableCell>
+   808→                      <TableCell className="text-right font-mono">
+   809→                        {entry.quantity}
+   810→                      </TableCell>
+   811→                      <TableCell className="text-muted-foreground">
+   812→                        {entry.ingredient?.unit || "-"}
+   813→                      </TableCell>
+   814→                      <TableCell className="text-right">
+   815→                        {formatCurrency(entry.unitPrice)}
+   816→                      </TableCell>
+   817→                      <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">
+   818→                        {formatCurrency(entry.totalAmount)}
+   819→                      </TableCell>
+   820→                      <TableCell>
+   821→                        <Badge
+   822→                          variant="outline"
+   823→                          className={`gap-1 text-[11px] font-bold px-2 py-0.5 ${severityConfig.badgeClass}`}
+   824→                        >
+   825→                          {severityConfig.label}
+   826→                        </Badge>
+   827→                      </TableCell>
+   828→                      <TableCell className="max-w-[200px] truncate text-muted-foreground">
+   829→                        {entry.notes || "-"}
+   830→                      </TableCell>
+   831→                    </TableRow>
+   832→                    );
+   833→                  })}
+   834→                </TableBody>
+   835→              </Table>
+   836→            </div>
+   837→          )}
+   838→        </CardContent>
+   839→      </Card>
+   840→
+   841→      {/* Record Wastage Dialog */}
+   842→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   843→        <DialogContent className="sm:max-w-[520px]">
+   844→          <DialogHeader>
+   845→            <DialogTitle className="flex items-center gap-2 text-red-700 dark:text-red-400">
+   846→              <Trash2 className="h-5 w-5" />
+   847→              Record Wastage
+   848→            </DialogTitle>
+   849→            <DialogDescription>
+   850→              Log spoilage, expired items, or other waste to track losses and
+   851→              update stock levels automatically.
+   852→            </DialogDescription>
+   853→          </DialogHeader>
+   854→
+   855→          <div className="grid gap-4 py-4">
+   856→            {/* Ingredient */}
+   857→            <div className="grid gap-2">
+   858→              <Label htmlFor="wastage-ingredient">Ingredient *</Label>
+   859→              <Select
+   860→                value={formIngredientId}
+   861→                onValueChange={handleIngredientChange}
+   862→              >
+   863→                <SelectTrigger id="wastage-ingredient">
+   864→                  <SelectValue placeholder="Select ingredient" />
+   865→                </SelectTrigger>
+   866→                <SelectContent className="max-h-60">
+   867→                  {ingredients.map((ing) => (
+   868→                    <SelectItem key={ing.id} value={ing.id}>
+   869→                      {ing.name} ({ing.unit}) — Stock: {ing.currentStock} {ing.unit}
+   870→                    </SelectItem>
+   871→                  ))}
+   872→                </SelectContent>
+   873→              </Select>
+   874→              {selectedIngredient && (
+   875→                <p className="text-xs text-muted-foreground">
+   876→                  Current stock:{" "}
+   877→                  <span className="font-medium">
+   878→                    {selectedIngredient.currentStock} {selectedIngredient.unit}
+   879→                  </span>{" "}
+   880→                  | Avg cost:{" "}
+   881→                  <span className="font-medium">
+   882→                    {formatCurrency(selectedIngredient.avgCost)}/{selectedIngredient.unit}
+   883→                  </span>
+   884→                </p>
+   885→              )}
+   886→            </div>
+   887→
+   888→            {/* Quantity & Unit Price */}
+   889→            <div className="grid grid-cols-2 gap-4">
+   890→              <div className="grid gap-2">
+   891→                <Label htmlFor="wastage-quantity">Quantity *</Label>
+   892→                <Input
+   893→                  id="wastage-quantity"
+   894→                  type="number"
+   895→                  step="0.01"
+   896→                  min="0"
+   897→                  placeholder="0"
+   898→                  value={formQuantity}
+   899→                  onChange={(e) => setFormQuantity(e.target.value)}
+   900→                />
+
+[showing lines 1-900 of 1033; use offset=901 with limit to continue reading]

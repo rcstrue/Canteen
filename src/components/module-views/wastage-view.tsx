@@ -65,6 +65,7 @@ import {
 import { Line, LineChart, XAxis, YAxis, CartesianGrid } from "recharts";
 import { downloadCSV } from "@/lib/export-utils";
 import { useToast } from "@/hooks/use-toast";
+import { formatINR } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -136,14 +137,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
+// formatINR from @/lib/utils is used for currency formatting
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
@@ -425,7 +419,7 @@ export function WastageView() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 view-enter">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -520,7 +514,7 @@ export function WastageView() {
       {/* Summary Cards */}
       <div className="grid gap-4 sm:grid-cols-3">
         {/* Total Wastage This Month */}
-        <Card className="card-hover border-red-200 dark:border-red-900/40">
+        <Card className="card-hover card-elevated border-red-200 dark:border-red-900/40">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Wastage This Month
@@ -534,7 +528,7 @@ export function WastageView() {
               <Skeleton className="h-8 w-32" />
             ) : (
               <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                {formatCurrency(totalWastageMonth)}
+                {formatINR(totalWastageMonth)}
               </p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
@@ -544,7 +538,7 @@ export function WastageView() {
         </Card>
 
         {/* Total Wastage Today */}
-        <Card className="card-hover border-orange-200 dark:border-orange-900/40">
+        <Card className="card-hover card-elevated border-orange-200 dark:border-orange-900/40">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Total Wastage Today
@@ -558,7 +552,7 @@ export function WastageView() {
               <Skeleton className="h-8 w-32" />
             ) : (
               <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                {formatCurrency(totalWastageToday)}
+                {formatINR(totalWastageToday)}
               </p>
             )}
             <p className="mt-1 text-xs text-muted-foreground">
@@ -568,7 +562,7 @@ export function WastageView() {
         </Card>
 
         {/* Wastage Entries This Month */}
-        <Card className="card-hover border-red-200 dark:border-red-900/40">
+        <Card className="card-hover card-elevated border-red-200 dark:border-red-900/40">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Entries This Month
@@ -607,10 +601,52 @@ export function WastageView() {
         </Card>
       </div>
 
+      {/* Total Wastage Value Highlight Card */}
+      <Card className="card-elevated border-red-300/60 dark:border-red-800/40 overflow-hidden">
+        <div className="bg-gradient-to-r from-red-500/10 via-orange-500/10 to-red-500/5 dark:from-red-500/20 dark:via-orange-500/15 dark:to-red-500/10">
+          <CardContent className="p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-200/60 dark:bg-red-800/40 shrink-0">
+                  <AlertTriangle className="h-6 w-6 text-red-700 dark:text-red-300" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-red-700 dark:text-red-400">
+                    Total Wastage Value
+                  </p>
+                  <div className="mt-1 flex items-baseline gap-3 flex-wrap">
+                    <span className="text-4xl font-bold tabular-nums text-red-900 dark:text-red-100">
+                      {loading ? "—" : formatINR(totalWastageMonth)}
+                    </span>
+                    <span className="text-sm text-red-700 dark:text-red-400">
+                      this month
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm text-red-800 dark:text-red-300">
+                    Today: <span className="font-semibold tabular-nums">{loading ? "—" : formatINR(totalWastageToday)}</span> · {wastageCountMonth} incidents
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="gap-1 text-xs bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800">
+                  {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "HIGH").length} High
+                </Badge>
+                <Badge variant="outline" className="gap-1 text-xs bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
+                  {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "MEDIUM").length} Medium
+                </Badge>
+                <Badge variant="outline" className="gap-1 text-xs bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800">
+                  {monthEntries.filter((e) => getWastageSeverity(e.totalAmount) === "LOW").length} Low
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </div>
+      </Card>
+
       {/* 7-Day Wastage Trend + Top Wasted Items */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* 7-Day Trend Chart */}
-        <Card>
+        <Card className="card-elevated">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <BarChart3 className="h-5 w-5 text-red-500" />
@@ -647,7 +683,7 @@ export function WastageView() {
                   />
                   <ChartTooltip
                     content={<ChartTooltipContent />}
-                    formatter={(value: number) => [formatCurrency(value), "Wastage Cost"]}
+                    formatter={(value: number) => [formatINR(value), "Wastage Cost"]}
                   />
                   <Line
                     type="monotone"
@@ -664,7 +700,7 @@ export function WastageView() {
         </Card>
 
         {/* Top Wasted Items */}
-        <Card>
+        <Card className="card-elevated">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <Trophy className="h-5 w-5 text-amber-500" />
@@ -707,7 +743,7 @@ export function WastageView() {
                           </Badge>
                         </div>
                         <span className="text-sm font-semibold text-red-600 dark:text-red-400 tabular-nums whitespace-nowrap">
-                          {formatCurrency(item.totalLoss)}
+                          {formatINR(item.totalLoss)}
                         </span>
                       </div>
                       <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
@@ -812,10 +848,10 @@ export function WastageView() {
                         {entry.ingredient?.unit || "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(entry.unitPrice)}
+                        {formatINR(entry.unitPrice)}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-red-600 dark:text-red-400">
-                        {formatCurrency(entry.totalAmount)}
+                        {formatINR(entry.totalAmount)}
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -879,7 +915,7 @@ export function WastageView() {
                   </span>{" "}
                   | Avg cost:{" "}
                   <span className="font-medium">
-                    {formatCurrency(selectedIngredient.avgCost)}/{selectedIngredient.unit}
+                    {formatINR(selectedIngredient.avgCost)}/{selectedIngredient.unit}
                   </span>
                 </p>
               )}
@@ -934,6 +970,27 @@ export function WastageView() {
               />
             </div>
 
+            {/* Wastage Reason Dropdown */}
+            <div className="grid gap-2">
+              <Label htmlFor="wastage-reason">Wastage Reason</Label>
+              <Select
+                value=""
+                onValueChange={(val) => {
+                  if (val) handleReasonSelect(val);
+                }}
+              >
+                <SelectTrigger id="wastage-reason">
+                  <SelectValue placeholder="Select a reason..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Spoilage">Spoilage</SelectItem>
+                  <SelectItem value="Overcooking">Overcooking</SelectItem>
+                  <SelectItem value="Excess">Excess</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Quick Reason Buttons */}
             <div className="grid gap-2">
               <Label>Quick Reason</Label>
@@ -981,12 +1038,12 @@ export function WastageView() {
                   </span>
                 </div>
                 <span className="text-xl font-bold text-red-600 dark:text-red-400">
-                  {formatCurrency(totalLossPreview)}
+                  {formatINR(totalLossPreview)}
                 </span>
               </div>
               <p className="mt-1 text-xs text-red-600/70 dark:text-red-400/70">
                 {parseFloat(formQuantity) || 0} {selectedIngredient?.unit || "units"} ×{" "}
-                {formatCurrency(parseFloat(formUnitPrice) || 0)} per unit
+                {formatINR(parseFloat(formUnitPrice) || 0)} per unit
               </p>
             </div>
 

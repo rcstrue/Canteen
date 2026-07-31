@@ -76,6 +76,7 @@ import {
   ChevronUp,
   ChevronDown,
   BarChart3,
+  TrendingDown,
 } from "lucide-react";
 
 import {
@@ -88,6 +89,8 @@ import {
   YAxis,
   CartesianGrid,
 } from "recharts";
+
+import { formatINR } from "@/lib/utils";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -110,7 +113,7 @@ type Category = (typeof CATEGORIES)[number];
 const CATEGORY_COLORS: Record<Category, string> = {
   Gas: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 border-orange-200 dark:border-orange-800",
   Electricity: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800",
-  Water: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+  Water: "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-300 border-teal-200 dark:border-teal-800",
   Maintenance: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300 border-green-200 dark:border-green-800",
   Other: "bg-gray-100 text-gray-800 dark:bg-gray-950 dark:text-gray-300 border-gray-200 dark:border-gray-800",
 };
@@ -118,7 +121,7 @@ const CATEGORY_COLORS: Record<Category, string> = {
 const CATEGORY_PIE_COLORS: Record<Category, string> = {
   Gas: "#f97316",
   Electricity: "#eab308",
-  Water: "#3b82f6",
+  Water: "#14b8a6",
   Maintenance: "#22c55e",
   Other: "#6b7280",
 };
@@ -134,7 +137,7 @@ const CATEGORY_ICONS: Record<Category, React.ReactNode> = {
 const CHART_CONFIG: ChartConfig = {
   Gas: { label: "Gas", color: "#f97316" },
   Electricity: { label: "Electricity", color: "#eab308" },
-  Water: { label: "Water", color: "#3b82f6" },
+  Water: { label: "Water", color: "#14b8a6" },
   Maintenance: { label: "Maintenance", color: "#22c55e" },
   Other: { label: "Other", color: "#6b7280" },
   amount: { label: "Amount", color: "oklch(0.6 0.15 50)" },
@@ -143,12 +146,7 @@ const CHART_CONFIG: ChartConfig = {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatINR(amount);
 }
 
 function formatDate(dateStr: string): string {
@@ -409,7 +407,7 @@ export function ExpensesView() {
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="view-enter space-y-6">
       {/* ─── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -483,43 +481,64 @@ export function ExpensesView() {
       </div>
 
       {/* ─── Summary Cards ──────────────────────────────────────────────────── */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {/* Total This Month */}
-        <Card className="card-hover">
-          <CardContent className="p-6">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Monthly Total */}
+        <Card className="card-elevated metric-card">
+          <CardContent className="p-5">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
                 <CalendarDays className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               </div>
               <div className="flex-1">
-                <p className="text-sm text-muted-foreground">Total This Month</p>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Monthly Total</p>
                 {loading ? (
-                  <Skeleton className="h-7 w-32" />
+                  <Skeleton className="h-7 w-32 mt-1" />
                 ) : (
                   <p className="text-2xl font-bold tabular-nums text-orange-600 dark:text-orange-400">
-                    {formatCurrency(totalThisMonth)}
+                    {formatINR(totalThisMonth)}
                   </p>
                 )}
               </div>
-              <TrendingUp className="h-5 w-5 text-orange-400" />
             </div>
           </CardContent>
         </Card>
 
-        {/* Total Today */}
-        <Card className="card-hover">
-          <CardContent className="p-6">
+        {/* Total This Month */}
+        <Card className="card-elevated metric-card">
+          <CardContent className="p-5">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-950">
                 <IndianRupee className="h-5 w-5 text-amber-600 dark:text-amber-400" />
               </div>
               <div className="flex-1">
-                <p className="text-sm text-muted-foreground">Total Today</p>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total This Month</p>
                 {loading ? (
-                  <Skeleton className="h-7 w-32" />
+                  <Skeleton className="h-7 w-32 mt-1" />
                 ) : (
                   <p className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                    {formatCurrency(totalToday)}
+                    {formatINR(totalThisMonth)}
+                  </p>
+                )}
+              </div>
+              <TrendingUp className="h-5 w-5 text-amber-400" />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Total Today */}
+        <Card className="card-elevated metric-card">
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-950">
+                <Receipt className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Today</p>
+                {loading ? (
+                  <Skeleton className="h-7 w-32 mt-1" />
+                ) : (
+                  <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                    {formatINR(totalToday)}
                   </p>
                 )}
               </div>
@@ -528,9 +547,9 @@ export function ExpensesView() {
         </Card>
 
         {/* Monthly Trend Chart */}
-        <Card className="card-hover">
+        <Card className="card-elevated metric-card">
           <CardContent className="p-4">
-            <p className="text-sm text-muted-foreground mb-2 flex items-center gap-1.5">
+            <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2 flex items-center gap-1.5">
               <BarChart3 className="h-3.5 w-3.5" />
               Monthly Trend
             </p>
@@ -558,7 +577,7 @@ export function ExpensesView() {
       {/* ─── Main Content: Table + Pie Chart ─────────────────────────────────── */}
       <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
         {/* Expenses Table */}
-        <Card>
+        <Card className="card-elevated">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -672,7 +691,7 @@ export function ExpensesView() {
                       {paginatedExpenses.map((expense) => (
                         <TableRow
                           key={expense.id}
-                          className="hover:bg-muted/50 transition-colors"
+                          className="table-row-interactive"
                         >
                           <TableCell className="font-medium whitespace-nowrap">
                             {formatDate(expense.date)}
@@ -790,7 +809,7 @@ export function ExpensesView() {
         </Card>
 
         {/* Category Breakdown Pie Chart */}
-        <Card>
+        <Card className="card-elevated">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">Category Breakdown</CardTitle>
             <CardDescription>Expense distribution by category</CardDescription>

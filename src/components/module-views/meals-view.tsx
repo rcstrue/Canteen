@@ -56,7 +56,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
+import { cn, formatINR } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
 import {
@@ -91,6 +91,7 @@ import {
   Loader2,
   History,
   Camera,
+  Flame,
 } from "lucide-react";
 import {
   AreaChart,
@@ -267,15 +268,7 @@ function getMealTypeStyle(mealType: string) {
   return MEAL_TYPE_STYLES[mealType] ?? MEAL_TYPE_STYLES.default;
 }
 
-function formatRupee(amount: number): string {
-  return (
-    "₹" +
-    amount.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-  );
-}
+// formatINR from @/lib/utils is used instead of local formatINR
 
 function calcTotalIngredientCost(ingredients: RecipeIngredient[]): number {
   return ingredients.reduce((sum, ri) => sum + ri.quantity * ri.ingredient.avgCost, 0);
@@ -464,10 +457,10 @@ function LatestCostVarianceBadge({
   const isUp = variance.percentage > 0;
   const tooltipText =
     variance.previous != null
-      ? `Cost changed from ${formatRupee(variance.previous)} to ${formatRupee(
+      ? `Cost changed from ${formatINR(variance.previous)} to ${formatINR(
           variance.current
         )} on ${formatDateShort(variance.recordedAt)}`
-      : `Cost recorded at ${formatRupee(variance.current)} on ${formatDateShort(
+      : `Cost recorded at ${formatINR(variance.current)} on ${formatDateShort(
           variance.recordedAt
         )}`;
 
@@ -576,8 +569,8 @@ function CostHistorySection({
                   since last snapshot
                 </p>
                 <p className="text-xs text-amber-700 dark:text-amber-300">
-                  {formatRupee(previousSnapshot.costPerServing)} →{" "}
-                  {formatRupee(currentSnapshot.costPerServing)} per serving.
+                  {formatINR(previousSnapshot.costPerServing)} →{" "}
+                  {formatINR(currentSnapshot.costPerServing)} per serving.
                   Review ingredient prices.
                 </p>
               </div>
@@ -617,7 +610,7 @@ function CostHistorySection({
             </p>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold text-orange-600 dark:text-orange-400">
-                {formatRupee(currentCostPerServing)}
+                {formatINR(currentCostPerServing)}
               </span>
               {showVarianceBadge && (
                 <span
@@ -632,7 +625,7 @@ function CostHistorySection({
                     <TrendingDown className="h-3 w-3" />
                   )}
                   {variance.absolute >= 0 ? "+" : "−"}
-                  {formatRupee(Math.abs(variance.absolute))} (
+                  {formatINR(Math.abs(variance.absolute))} (
                   {variance.percentage >= 0 ? "+" : "−"}
                   {Math.abs(variance.percentage).toFixed(1)}%)
                 </span>
@@ -648,7 +641,7 @@ function CostHistorySection({
             <div className="text-right text-[11px] text-muted-foreground">
               <p>Previous snapshot</p>
               <p className="font-semibold text-foreground">
-                {formatRupee(previousSnapshot.costPerServing)}
+                {formatINR(previousSnapshot.costPerServing)}
               </p>
               <p>{formatDateTime(previousSnapshot.recordedAt)}</p>
             </div>
@@ -704,7 +697,7 @@ function CostHistorySection({
                   }}
                   labelStyle={{ fontWeight: 600 }}
                   formatter={(value: number, _name: string, item: { payload?: { rawDate?: string } }) => [
-                    formatRupee(value),
+                    formatINR(value),
                     `Cost / serving · ${item?.payload?.rawDate ? formatDateTime(item.payload.rawDate) : ""}`,
                   ]}
                 />
@@ -762,10 +755,10 @@ function CostHistorySection({
                         {formatDateTime(entry.createdAt)}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-orange-600 dark:text-orange-400">
-                        {formatRupee(entry.costPerServing)}
+                        {formatINR(entry.costPerServing)}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">
-                        {formatRupee(entry.cost)}
+                        {formatINR(entry.cost)}
                       </TableCell>
                       <TableCell className="text-right text-muted-foreground">
                         {entry.servings}
@@ -1322,7 +1315,7 @@ export function MealsView() {
   const SortIcon = currentSort.icon;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 view-enter">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-100 dark:bg-orange-900/30 ring-1 ring-orange-200/60 dark:ring-orange-800/40">
@@ -1338,7 +1331,7 @@ export function MealsView() {
 
       {/* Stats Summary */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="card-hover overflow-hidden">
+        <Card className="card-hover card-elevated overflow-hidden">
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
               <ChefHat className="h-5 w-5 text-orange-600 dark:text-orange-400" />
@@ -1349,7 +1342,7 @@ export function MealsView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="card-hover overflow-hidden">
+        <Card className="card-hover card-elevated overflow-hidden">
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
               <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
@@ -1357,12 +1350,12 @@ export function MealsView() {
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">Avg Cost / Meal</p>
               <p className="text-2xl font-bold leading-tight text-orange-600 dark:text-orange-400">
-                {formatRupee(stats.avgCost)}
+                {formatINR(stats.avgCost)}
               </p>
             </div>
           </CardContent>
         </Card>
-        <Card className="card-hover overflow-hidden">
+        <Card className="card-hover card-elevated overflow-hidden">
           <CardContent className="flex items-center gap-4 p-5">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-900/30">
               <Layers className="h-5 w-5 text-violet-600 dark:text-violet-400" />
@@ -1379,6 +1372,129 @@ export function MealsView() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Recipe Cost History Summary Chart */}
+      {recipes.length > 0 && (
+        <Card className="card-elevated overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <History className="h-5 w-5 text-orange-500" />
+                  Recipe Cost History
+                </CardTitle>
+                <CardDescription>
+                  Cost trends over time across all recipes
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {(() => {
+              const chartData = recipes
+                .filter((r) => r.latestCostVariance && r.latestCostVariance.direction !== "none")
+                .map((r) => ({
+                  name: r.name.length > 12 ? r.name.slice(0, 12) + "…" : r.name,
+                  current: r.latestCostVariance?.current ?? 0,
+                  previous: r.latestCostVariance?.previous ?? 0,
+                  change: r.latestCostVariance?.percentage ?? 0,
+                }))
+                .slice(0, 8);
+
+              if (chartData.length === 0) {
+                return (
+                  <div className="flex h-[160px] flex-col items-center justify-center text-center">
+                    <History className="h-8 w-8 text-muted-foreground/40 mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      No cost history snapshots yet
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Record snapshots from recipe details to see cost trends
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={chartData}
+                      margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="costHistFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f97316" stopOpacity={0.4} />
+                          <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="currentColor"
+                        className="text-muted-foreground/20"
+                      />
+                      <XAxis
+                        dataKey="name"
+                        tick={{ fontSize: 10 }}
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                        tickLine={false}
+                        axisLine={false}
+                        interval={0}
+                        angle={-20}
+                        textAnchor="end"
+                        height={50}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        stroke="currentColor"
+                        className="text-muted-foreground"
+                        tickLine={false}
+                        axisLine={false}
+                        width={48}
+                        tickFormatter={(v: number) =>
+                          "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 0 })
+                        }
+                      />
+                      <RechartsTooltip
+                        contentStyle={{
+                          borderRadius: 8,
+                          border: "1px solid var(--border, #e5e7eb)",
+                          background: "var(--background, #fff)",
+                          fontSize: 12,
+                        }}
+                        labelStyle={{ fontWeight: 600 }}
+                        formatter={(value: number, name: string) => [
+                          formatINR(value),
+                          name === "current" ? "Current" : "Previous",
+                        ]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="current"
+                        stroke="#f97316"
+                        strokeWidth={2}
+                        fill="url(#costHistFill)"
+                        dot={{ r: 3, fill: "#f97316", strokeWidth: 0 }}
+                        activeDot={{ r: 5, fill: "#ea580c", strokeWidth: 0 }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="previous"
+                        stroke="#a3a3a3"
+                        strokeWidth={1.5}
+                        strokeDasharray="4 2"
+                        fill="none"
+                        dot={{ r: 2, fill: "#a3a3a3", strokeWidth: 0 }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1574,7 +1690,7 @@ export function MealsView() {
                 >
                   <Card
                     className={cn(
-                      "group relative h-full flex flex-col overflow-hidden cursor-pointer",
+                      "card-hover group relative h-full flex flex-col overflow-hidden cursor-pointer",
                       "border-l-4 transition-all duration-200",
                       style.borderLeft,
                       "hover:shadow-lg hover:-translate-y-0.5 hover:border-primary/30"
@@ -1712,7 +1828,7 @@ export function MealsView() {
                           <span>
                             600 meals:{" "}
                             <span className="font-medium text-foreground">
-                              {formatRupee(costFor600)}
+                              {formatINR(costFor600)}
                             </span>
                           </span>
                         </div>
@@ -1763,7 +1879,7 @@ export function MealsView() {
                                 >
                                   <p className="font-medium">{e.category}</p>
                                   <p className="text-muted-foreground">
-                                    {formatRupee(e.amount)} ·{" "}
+                                    {formatINR(e.amount)} ·{" "}
                                     {e.percent.toFixed(0)}%
                                   </p>
                                 </TooltipContent>
@@ -1986,12 +2102,12 @@ export function MealsView() {
                         </TableCell>
                         <TableCell className="text-right">
                           <span className="font-bold text-orange-600 dark:text-orange-400">
-                            {formatRupee(costPerMeal)}
+                            {formatINR(costPerMeal)}
                           </span>
                         </TableCell>
                         <TableCell className="text-right text-sm text-muted-foreground">
                           <div className="flex items-center justify-end gap-1.5">
-                            <span>{formatRupee(costFor600)}</span>
+                            <span>{formatINR(costFor600)}</span>
                             <LatestCostVarianceBadge variance={recipe.latestCostVariance} />
                           </div>
                         </TableCell>
@@ -2173,7 +2289,7 @@ export function MealsView() {
                             >
                               <p className="font-medium">{e.category}</p>
                               <p className="text-muted-foreground">
-                                {formatRupee(e.amount)} · {e.percent.toFixed(1)}%
+                                {formatINR(e.amount)} · {e.percent.toFixed(1)}%
                               </p>
                             </TooltipContent>
                           </Tooltip>
@@ -2196,7 +2312,7 @@ export function MealsView() {
                             </div>
                             <div className="text-right shrink-0">
                               <span className="font-semibold">
-                                {formatRupee(e.amount)}
+                                {formatINR(e.amount)}
                               </span>
                               <span className="text-muted-foreground ml-1">
                                 {e.percent.toFixed(0)}%
@@ -2243,10 +2359,10 @@ export function MealsView() {
                             </TableCell>
                             <TableCell>{ri.unit}</TableCell>
                             <TableCell className="text-right">
-                              {formatRupee(unitCost)}
+                              {formatINR(unitCost)}
                             </TableCell>
                             <TableCell className="text-right font-medium">
-                              {formatRupee(totalCost)}
+                              {formatINR(totalCost)}
                             </TableCell>
                           </TableRow>
                         );
@@ -2263,7 +2379,7 @@ export function MealsView() {
                         Total Ingredient Cost
                       </p>
                       <p className="text-lg font-bold">
-                        {formatRupee(
+                        {formatINR(
                           calcTotalIngredientCost(detailRecipe.ingredients)
                         )}
                       </p>
@@ -2275,7 +2391,7 @@ export function MealsView() {
                         Cost per Meal
                       </p>
                       <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-                        {formatRupee(
+                        {formatINR(
                           calcCostPerMeal(
                             detailRecipe.ingredients,
                             detailRecipe.baseServings
@@ -2290,7 +2406,7 @@ export function MealsView() {
                         Cost for 600
                       </p>
                       <p className="text-lg font-bold">
-                        {formatRupee(
+                        {formatINR(
                           calcCostFor600(
                             detailRecipe.ingredients,
                             detailRecipe.baseServings
@@ -2313,6 +2429,38 @@ export function MealsView() {
                   recording={recordingSnapshot}
                   onRecord={() => handleRecordSnapshot(detailRecipe.id)}
                 />
+
+                {/* ─── Nutrition Info Placeholder ──────────────────────── */}
+                <div className="rounded-lg border p-4 space-y-3">
+                  <p className="text-sm font-medium flex items-center gap-2">
+                    <Flame className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+                    Nutrition Info
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                      { label: "Calories", value: "—", unit: "kcal", color: "text-orange-600 dark:text-orange-400" },
+                      { label: "Protein", value: "—", unit: "g", color: "text-emerald-600 dark:text-emerald-400" },
+                      { label: "Carbs", value: "—", unit: "g", color: "text-amber-600 dark:text-amber-400" },
+                      { label: "Fat", value: "—", unit: "g", color: "text-rose-600 dark:text-rose-400" },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-md border bg-muted/30 px-3 py-2 text-center"
+                      >
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          {item.label}
+                        </p>
+                        <p className={`text-lg font-bold ${item.color}`}>
+                          {item.value}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">{item.unit}/serving</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground italic">
+                    Nutrition data will be available when ingredient nutrition info is configured.
+                  </p>
+                </div>
 
                 {/* Scaling Section */}
                 <div className="rounded-lg border p-4">
@@ -2338,7 +2486,7 @@ export function MealsView() {
                     <div className="text-sm">
                       <span className="text-muted-foreground">Total Cost: </span>
                       <span className="font-bold text-orange-600 dark:text-orange-400">
-                        {formatRupee(
+                        {formatINR(
                           calcCostPerMeal(
                             detailRecipe.ingredients,
                             detailRecipe.baseServings
@@ -2661,13 +2809,13 @@ export function MealsView() {
                   <div>
                     <span className="text-muted-foreground">Total Cost: </span>
                     <span className="font-semibold">
-                      {formatRupee(formTotalCost)}
+                      {formatINR(formTotalCost)}
                     </span>
                   </div>
                   <div>
                     <span className="text-muted-foreground">Per Meal: </span>
                     <span className="font-semibold text-orange-600 dark:text-orange-400">
-                      {formatRupee(
+                      {formatINR(
                         formBaseServingsNum > 0
                           ? formTotalCost / formBaseServingsNum
                           : 0
@@ -2677,7 +2825,7 @@ export function MealsView() {
                   <div>
                     <span className="text-muted-foreground">For 600: </span>
                     <span className="font-semibold">
-                      {formatRupee(
+                      {formatINR(
                         formBaseServingsNum > 0
                           ? (formTotalCost / formBaseServingsNum) * 600
                           : 0

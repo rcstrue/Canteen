@@ -62,6 +62,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { useToast } from "@/hooks/use-toast";
 import { downloadCSV } from "@/lib/export-utils";
+import { formatINR } from "@/lib/utils";
 import { StockMovementsView } from "@/components/module-views/stock-movements-view";
 
 import {
@@ -252,10 +253,6 @@ type IngredientFormValues = z.infer<typeof ingredientSchema>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatCurrency(value: number): string {
-  return `₹${value.toFixed(2)}`;
-}
-
 function formatStockWithUnit(quantity: number, unit: string): string {
   return `${quantity} ${unit}`;
 }
@@ -269,9 +266,9 @@ type StockHealth = "OK" | "LOW" | "CRITICAL";
 function getStockHealth(item: Ingredient): StockHealth {
   if (item.minStock === 0) return "OK";
   const ratio = item.currentStock / item.minStock;
-  if (ratio < 1) return "CRITICAL";    // currentStock < minStock → red
-  if (ratio < 1.2) return "LOW";       // 80-100% of minStock (near par) → amber
-  return "OK";                          // currentStock >= minStock → green
+  if (ratio < 1) return "CRITICAL";      // currentStock < minStock → red
+  if (ratio < 1.5) return "LOW";         // between minStock and 1.5× minStock → amber
+  return "OK";                            // currentStock > 1.5× minStock → green
 }
 
 function getStockHealthConfig(health: StockHealth): {
@@ -283,7 +280,7 @@ function getStockHealthConfig(health: StockHealth): {
   switch (health) {
     case "CRITICAL":
       return {
-        label: "CRITICAL",
+        label: "Critical",
         badgeClass:
           "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800",
         Icon: ShieldAlert,
@@ -291,10 +288,10 @@ function getStockHealthConfig(health: StockHealth): {
       };
     case "LOW":
       return {
-        label: "LOW",
+        label: "Low",
         badgeClass:
           "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
-        Icon: CircleAlert,
+        Icon: AlertTriangle,
         barColor: "bg-amber-500",
       };
     case "OK":
@@ -317,14 +314,6 @@ function formatDateDDMMYYYY(dateStr: string): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
-}
-
-function formatINR(value: number): string {
-  const formatted = new Intl.NumberFormat("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value || 0);
-  return `₹${formatted}`;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -1013,9 +1002,8 @@ export function StockView() {
                       const health = getStockHealth(item);
                       const healthConfig = getStockHealthConfig(health);
                       const HealthIcon = healthConfig.Icon;
-                      const stockPercent = item.minStock > 0
-                        ? Math.min(Math.round((item.currentStock / item.minStock) * 100), 100)
-                        : item.currentStock > 0 ? 100 : 0;
+                      const maxStock = item.minStock > 0 ? item.minStock * 3 : item.currentStock > 0 ? item.currentStock : 1;
+                      const stockPercent = Math.min(Math.round((item.currentStock / maxStock) * 100), 100);
                       return (
                         <TableRow
                           key={item.id}
@@ -1081,13 +1069,13 @@ export function StockView() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {formatCurrency(item.lastPurchasePrice)}
+                            {formatINR(item.lastPurchasePrice)}
                           </TableCell>
                           <TableCell className="text-right font-mono">
-                            {formatCurrency(item.avgCost)}
+                            {formatINR(item.avgCost)}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
-                            {item.supplier || "—"}
+                            {item.supplier || <span className="text-muted-foreground/60 italic text-xs">Not Set</span>}
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -1900,9 +1888,8 @@ export function StockView() {
                 const health = getStockHealth(detailItem);
                 const config = getStockHealthConfig(health);
                 const HIcon = config.Icon;
-                const pct = detailItem.minStock > 0
-                  ? Math.min(Math.round((detailItem.currentStock / detailItem.minStock) * 100), 100)
-                  : detailItem.currentStock > 0 ? 100 : 0;
+                const maxStock = detailItem.minStock > 0 ? detailItem.minStock * 3 : detailItem.currentStock > 0 ? detailItem.currentStock : 1;
+                const pct = Math.min(Math.round((detailItem.currentStock / maxStock) * 100), 100);
                 return (
                   <div className={`rounded-lg border p-3 ${
                     health === "CRITICAL"
@@ -1978,19 +1965,19 @@ export function StockView() {
                     Last Purchase Price
                   </p>
                   <p className="font-medium">
-                    {formatCurrency(detailItem.lastPurchasePrice)}
+                    {formatINR(detailItem.lastPurchasePrice)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Avg Cost</p>
                   <p className="font-medium">
-                    {formatCurrency(detailItem.avgCost)}
+                    {formatINR(detailItem.avgCost)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Supplier</p>
                   <p className="font-medium">
-                    {detailItem.supplier || "—"}
+                    {detailItem.supplier || <span className="text-muted-foreground/60 italic text-xs">Not Set</span>}
                   </p>
                 </div>
               </div>

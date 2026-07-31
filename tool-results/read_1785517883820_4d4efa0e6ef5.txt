@@ -1,0 +1,1502 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback, useMemo } from 'react';
+     4→import { motion } from 'framer-motion';
+     5→import {
+     6→  Card,
+     7→  CardContent,
+     8→  CardDescription,
+     9→  CardHeader,
+    10→  CardTitle,
+    11→} from '@/components/ui/card';
+    12→import {
+    13→  Table,
+    14→  TableBody,
+    15→  TableCell,
+    16→  TableHead,
+    17→  TableHeader,
+    18→  TableRow,
+    19→} from '@/components/ui/table';
+    20→import {
+    21→  Dialog,
+    22→  DialogContent,
+    23→  DialogDescription,
+    24→  DialogFooter,
+    25→  DialogHeader,
+    26→  DialogTitle,
+    27→  DialogTrigger,
+    28→} from '@/components/ui/dialog';
+    29→import { Button } from '@/components/ui/button';
+    30→import { Input } from '@/components/ui/input';
+    31→import { Label } from '@/components/ui/label';
+    32→import { Badge } from '@/components/ui/badge';
+    33→import { Skeleton } from '@/components/ui/skeleton';
+    34→import {
+    35→  ChartContainer,
+    36→  ChartTooltip,
+    37→  ChartTooltipContent,
+    38→  type ChartConfig,
+    39→} from '@/components/ui/chart';
+    40→import {
+    41→  ComposedChart,
+    42→  Bar,
+    43→  Line,
+    44→  XAxis,
+    45→  YAxis,
+    46→  CartesianGrid,
+    47→  Tooltip as RechartsTooltip,
+    48→  Legend,
+    49→  ResponsiveContainer,
+    50→  ReferenceLine,
+    51→  Cell,
+    52→} from 'recharts';
+    53→import {
+    54→  Wallet,
+    55→  TrendingUp,
+    56→  TrendingDown,
+    57→  AlertTriangle,
+    58→  CheckCircle2,
+    59→  Calendar,
+    60→  Download,
+    61→  Plus,
+    62→  PiggyBank,
+    63→  Target,
+    64→  IndianRupee,
+    65→  ArrowUpRight,
+    66→  ArrowDownRight,
+    67→  RefreshCw,
+    68→  Loader2,
+    69→} from 'lucide-react';
+    70→import { toast } from 'sonner';
+    71→import { downloadCSV } from '@/lib/export-utils';
+    72→import type { ViewId } from '@/components/app-sidebar';
+    73→
+    74→// ─── Types ──────────────────────────────────────────────────────────────────
+    75→
+    76→interface BudgetRow {
+    77→  id: string;
+    78→  month: string;
+    79→  foodBudget: number;
+    80→  operatingBudget: number;
+    81→  totalBudget: number;
+    82→  alertThreshold: number;
+    83→  createdAt: string;
+    84→  updatedAt: string;
+    85→}
+    86→
+    87→interface CategoryRow {
+    88→  category: string;
+    89→  budgeted: number;
+    90→  actual: number;
+    91→  variance: number;
+    92→  pct: number;
+    93→}
+    94→
+    95→interface DailySpendRow {
+    96→  day: number;
+    97→  date: string;
+    98→  foodCost: number;
+    99→  operatingCost: number;
+   100→}
+   101→
+   102→interface HistoryRow {
+   103→  month: string;
+   104→  monthFull: string;
+   105→  monthCode: string;
+   106→  budget: number;
+   107→  actual: number;
+   108→  variance: number;
+   109→  hasData?: boolean;
+   110→}
+   111→
+   112→interface AnalysisResponse {
+   113→  month: string;
+   114→  monthLabel: string;
+   115→  budget: BudgetRow | null;
+   116→  actuals: {
+   117→    foodCost: number;
+   118→    expenseTotal: number;
+   119→    operatingCost: number;
+   120→    totalSpend: number;
+   121→  };
+   122→  projectedSpend: number;
+   123→  daysElapsed: number;
+   124→  daysInMonth: number;
+   125→  utilization: {
+   126→    foodPct: number;
+   127→    operatingPct: number;
+   128→    totalPct: number;
+   129→    projectedPct: number;
+   130→  };
+   131→  categoryBreakdown: CategoryRow[];
+   132→  dailySpend: DailySpendRow[];
+   133→  history: HistoryRow[];
+   134→}
+   135→
+   136→interface BudgetViewProps {
+   137→  onNavigate?: (view: ViewId) => void;
+   138→}
+   139→
+   140→// ─── Constants ──────────────────────────────────────────────────────────────
+   141→
+   142→const inrFmt = new Intl.NumberFormat('en-IN', {
+   143→  style: 'currency',
+   144→  currency: 'INR',
+   145→  maximumFractionDigits: 0,
+   146→});
+   147→
+   148→const inrFmt2 = new Intl.NumberFormat('en-IN', {
+   149→  style: 'currency',
+   150→  currency: 'INR',
+   151→  minimumFractionDigits: 2,
+   152→  maximumFractionDigits: 2,
+   153→});
+   154→
+   155→const numFmt = new Intl.NumberFormat('en-IN', {
+   156→  maximumFractionDigits: 0,
+   157→});
+   158→
+   159→const dailyTrendConfig: ChartConfig = {
+   160→  foodCost: { label: 'Food Cost', color: '#f59e0b' },
+   161→  operatingCost: { label: 'Operating Cost', color: '#f97316' },
+   162→};
+   163→
+   164→const historyConfig: ChartConfig = {
+   165→  budget: { label: 'Budget', color: '#fbbf24' },
+   166→  actual: { label: 'Actual', color: '#ef4444' },
+   167→};
+   168→
+   169→const containerVariants = {
+   170→  hidden: { opacity: 0 },
+   171→  visible: {
+   172→    opacity: 1,
+   173→    transition: { staggerChildren: 0.06, delayChildren: 0.04 },
+   174→  },
+   175→};
+   176→
+   177→const itemVariants = {
+   178→  hidden: { opacity: 0, y: 16 },
+   179→  visible: {
+   180→    opacity: 1,
+   181→    y: 0,
+   182→    transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const },
+   183→  },
+   184→};
+   185→
+   186→// ─── Helpers ────────────────────────────────────────────────────────────────
+   187→
+   188→function getCurrentMonthStr(): string {
+   189→  const d = new Date();
+   190→  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+   191→}
+   192→
+   193→/** Utilization color band — emerald / amber / orange / red. */
+   194→function getUtilBand(pct: number): {
+   195→  color: string;
+   196→  bg: string;
+   197→  text: string;
+   198→  ring: string;
+   199→  label: string;
+   200→} {
+   201→  if (pct > 100) {
+   202→    return {
+   203→      color: '#ef4444',
+   204→      bg: 'bg-red-500',
+   205→      text: 'text-red-600 dark:text-red-400',
+   206→      ring: 'ring-red-200 dark:ring-red-900/40',
+   207→      label: 'Over Budget',
+   208→    };
+   209→  }
+   210→  if (pct >= 80) {
+   211→    return {
+   212→      color: '#f97316',
+   213→      bg: 'bg-orange-500',
+   214→      text: 'text-orange-600 dark:text-orange-400',
+   215→      ring: 'ring-orange-200 dark:ring-orange-900/40',
+   216→      label: 'Critical',
+   217→    };
+   218→  }
+   219→  if (pct >= 60) {
+   220→    return {
+   221→      color: '#f59e0b',
+   222→      bg: 'bg-amber-500',
+   223→      text: 'text-amber-600 dark:text-amber-400',
+   224→      ring: 'ring-amber-200 dark:ring-amber-900/40',
+   225→      label: 'Caution',
+   226→    };
+   227→  }
+   228→  return {
+   229→    color: '#10b981',
+   230→    bg: 'bg-emerald-500',
+   231→    text: 'text-emerald-600 dark:text-emerald-400',
+   232→    ring: 'ring-emerald-200 dark:ring-emerald-900/40',
+   233→    label: 'On Track',
+   234→  };
+   235→}
+   236→
+   237→function formatINR(amount: number, withDecimals = false): string {
+   238→  return withDecimals ? inrFmt2.format(amount) : inrFmt.format(amount);
+   239→}
+   240→
+   241→function formatINRShort(amount: number): string {
+   242→  if (Math.abs(amount) >= 10000000) {
+   243→    return `₹${(amount / 10000000).toFixed(2)}Cr`;
+   244→  }
+   245→  if (Math.abs(amount) >= 100000) {
+   246→    return `₹${(amount / 100000).toFixed(2)}L`;
+   247→  }
+   248→  if (Math.abs(amount) >= 1000) {
+   249→    return `₹${(amount / 1000).toFixed(1)}k`;
+   250→  }
+   251→  return `₹${amount.toFixed(0)}`;
+   252→}
+   253→
+   254→// ─── Component ──────────────────────────────────────────────────────────────
+   255→
+   256→export function BudgetView({ onNavigate }: BudgetViewProps) {
+   257→  const [month, setMonth] = useState<string>(getCurrentMonthStr());
+   258→  const [data, setData] = useState<AnalysisResponse | null>(null);
+   259→  const [loading, setLoading] = useState<boolean>(true);
+   260→  const [error, setError] = useState<string>('');
+   261→
+   262→  // Set Budget dialog
+   263→  const [setBudgetOpen, setSetBudgetOpen] = useState(false);
+   264→  const [savingBudget, setSavingBudget] = useState(false);
+   265→
+   266→  const fetchData = useCallback(async (targetMonth: string) => {
+   267→    setLoading(true);
+   268→    setError('');
+   269→    try {
+   270→      const res = await fetch(`/api/budgets/analysis?month=${targetMonth}`);
+   271→      if (!res.ok) throw new Error('Failed to fetch budget analysis');
+   272→      const json = (await res.json()) as AnalysisResponse;
+   273→      setData(json);
+   274→    } catch {
+   275→      setError('Failed to load budget analysis. Please retry.');
+   276→    } finally {
+   277→      setLoading(false);
+   278→    }
+   279→  }, []);
+   280→
+   281→  useEffect(() => {
+   282→    fetchData(month);
+   283→  }, [month, fetchData]);
+   284→
+   285→  const handleMonthChange = (value: string) => {
+   286→    if (value) setMonth(value);
+   287→  };
+   288→
+   289→  const handleExportCSV = () => {
+   290→    if (!data) return;
+   291→    const rows = data.categoryBreakdown.map((c) => ({
+   292→      Month: data.month,
+   293→      Category: c.category,
+   294→      Budgeted: c.budgeted.toFixed(2),
+   295→      Actual: c.actual.toFixed(2),
+   296→      Variance: c.variance.toFixed(2),
+   297→      'Utilization%': data.budget && data.budget.totalBudget > 0
+   298→        ? ((c.actual / data.budget.totalBudget) * 100).toFixed(2)
+   299→        : '0.00',
+   300→    }));
+   301→    if (rows.length === 0) {
+   302→      // Still export a single summary row so the file isn't empty
+   303→      rows.push({
+   304→        Month: data.month,
+   305→        Category: '— (no spend this month)',
+   306→        Budgeted: '0.00',
+   307→        Actual: '0.00',
+   308→        Variance: '0.00',
+   309→        'Utilization%': '0.00',
+   310→      });
+   311→    }
+   312→    downloadCSV(`budget-analysis-${data.month}.csv`, rows);
+   313→    toast.success('Budget analysis exported to CSV.');
+   314→  };
+   315→
+   316→  // ─── Set Budget dialog handlers ─────────────────────────────────────────
+   317→  const openSetBudget = () => {
+   318→    setSetBudgetOpen(true);
+   319→  };
+   320→
+   321→  if (loading) {
+   322→    return <BudgetSkeleton />;
+   323→  }
+   324→
+   325→  if (error) {
+   326→    return (
+   327→      <div className="space-y-6">
+   328→        <Header
+   329→          month={month}
+   330→          onMonthChange={handleMonthChange}
+   331→          onExport={handleExportCSV}
+   332→          onSetBudget={openSetBudget}
+   333→        />
+   334→        <Card className="border-red-200 dark:border-red-900/40">
+   335→          <CardContent className="flex flex-col items-center justify-center gap-3 py-12 text-center">
+   336→            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
+   337→              <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
+   338→            </div>
+   339→            <div>
+   340→              <p className="font-semibold">{error}</p>
+   341→              <p className="text-sm text-muted-foreground">
+   342→                The analysis endpoint could not be reached.
+   343→              </p>
+   344→            </div>
+   345→            <Button onClick={() => fetchData(month)} variant="outline" size="sm">
+   346→              <RefreshCw className="mr-2 h-4 w-4" />
+   347→              Retry
+   348→            </Button>
+   349→          </CardContent>
+   350→        </Card>
+   351→      </div>
+   352→    );
+   353→  }
+   354→
+   355→  if (!data) return null;
+   356→
+   357→  return (
+   358→    <motion.div
+   359→      variants={containerVariants}
+   360→      initial="hidden"
+   361→      animate="visible"
+   362→      className="space-y-6"
+   363→    >
+   364→      {/* ─── Header ─────────────────────────────────────────────────────── */}
+   365→      <motion.div variants={itemVariants}>
+   366→        <Header
+   367→          month={month}
+   368→          onMonthChange={handleMonthChange}
+   369→          onExport={handleExportCSV}
+   370→          onSetBudget={openSetBudget}
+   371→        />
+   372→      </motion.div>
+   373→
+   374→      {/* ─── Empty state: no budget set ─────────────────────────────────── */}
+   375→      {!data.budget && (
+   376→        <motion.div variants={itemVariants}>
+   377→          <Card className="border-amber-300 bg-gradient-to-br from-amber-50 via-orange-50 to-amber-100/40 dark:border-amber-900/40 dark:from-amber-950/30 dark:via-orange-950/20 dark:to-amber-900/10">
+   378→            <CardContent className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+   379→              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 shadow-lg shadow-amber-500/30">
+   380→                <PiggyBank className="h-8 w-8 text-white" />
+   381→              </div>
+   382→              <div className="space-y-1">
+   383→                <p className="text-lg font-semibold">
+   384→                  No budget set for {data.monthLabel}
+   385→                </p>
+   386→                <p className="text-sm text-muted-foreground">
+   387→                  Set a monthly budget to track spend against target, get
+   388→                  utilization alerts, and view projections.
+   389→                </p>
+   390→              </div>
+   391→              <div className="flex flex-wrap items-center justify-center gap-2">
+   392→                <Button onClick={openSetBudget} className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white">
+   393→                  <Plus className="h-4 w-4" />
+   394→                  Set Budget for {data.monthLabel}
+   395→                </Button>
+   396→                {onNavigate && (
+   397→                  <Button
+   398→                    variant="outline"
+   399→                    onClick={() => onNavigate('purchases')}
+   400→                    className="gap-1.5"
+   401→                  >
+   402→                    <ArrowUpRight className="h-4 w-4" />
+   403→                    View Purchases
+   404→                  </Button>
+   405→                )}
+   406→              </div>
+   407→              {/* Show actual spend even without budget */}
+   408→              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+   409→                <MiniStat
+   410→                  label="Food Cost (Actual)"
+   411→                  value={formatINR(data.actuals.foodCost)}
+   412→                />
+   413→                <MiniStat
+   414→                  label="Expenses"
+   415→                  value={formatINR(data.actuals.expenseTotal)}
+   416→                />
+   417→                <MiniStat
+   418→                  label="Total Spend"
+   419→                  value={formatINR(data.actuals.totalSpend)}
+   420→                />
+   421→              </div>
+   422→            </CardContent>
+   423→          </Card>
+   424→        </motion.div>
+   425→      )}
+   426→
+   427→      {/* ─── KPI Summary Cards (4) ──────────────────────────────────────── */}
+   428→      <motion.div
+   429→        variants={containerVariants}
+   430→        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+   431→      >
+   432→        <motion.div variants={itemVariants} className="h-full">
+   433→          <KpiCard
+   434→            title="Total Budget"
+   435→            value={formatINR(data.budget?.totalBudget ?? 0)}
+   436→            icon={<Wallet className="h-5 w-5" />}
+   437→            iconBg="bg-amber-100 dark:bg-amber-900/30"
+   438→            iconColor="text-amber-600 dark:text-amber-400"
+   439→            badge={
+   440→              data.budget
+   441→                ? {
+   442→                    text: `${data.utilization.totalPct.toFixed(1)}% used`,
+   443→                    tone: getUtilBand(data.utilization.totalPct).text,
+   444→                  }
+   445→                : undefined
+   446→            }
+   447→            subtitle={
+   448→              data.budget
+   449→                ? `${formatINR(data.actuals.totalSpend)} spent so far`
+   450→                : 'No budget set'
+   451→            }
+   452→          />
+   453→        </motion.div>
+   454→
+   455→        <motion.div variants={itemVariants} className="h-full">
+   456→          <KpiCard
+   457→            title="Actual Spend"
+   458→            value={formatINR(data.actuals.totalSpend)}
+   459→            icon={<IndianRupee className="h-5 w-5" />}
+   460→            iconBg="bg-orange-100 dark:bg-orange-900/30"
+   461→            iconColor="text-orange-600 dark:text-orange-400"
+   462→            subtitle={`Day ${data.daysElapsed} of ${data.daysInMonth} · ${formatINR(data.actuals.foodCost)} food`}
+   463→          />
+   464→        </motion.div>
+   465→
+   466→        <motion.div variants={itemVariants} className="h-full">
+   467→          <KpiCard
+   468→            title="Projected Spend"
+   469→            value={formatINR(data.projectedSpend)}
+   470→            icon={<TrendingUp className="h-5 w-5" />}
+   471→            iconBg={
+   472→              data.utilization.projectedPct > 100
+   473→                ? 'bg-red-100 dark:bg-red-900/30'
+   474→                : 'bg-emerald-100 dark:bg-emerald-900/30'
+   475→            }
+   476→            iconColor={
+   477→              data.utilization.projectedPct > 100
+   478→                ? 'text-red-600 dark:text-red-400'
+   479→                : 'text-emerald-600 dark:text-emerald-400'
+   480→            }
+   481→            badge={
+   482→              data.budget
+   483→                ? {
+   484→                    text: `${data.utilization.projectedPct.toFixed(1)}% of budget`,
+   485→                    tone:
+   486→                      data.utilization.projectedPct > 100
+   487→                        ? 'text-red-600 dark:text-red-400'
+   488→                        : 'text-emerald-600 dark:text-emerald-400',
+   489→                  }
+   490→                : undefined
+   491→            }
+   492→            subtitle={
+   493→              data.daysElapsed < data.daysInMonth
+   494→                ? `Estimated end-of-month · ${data.daysInMonth - data.daysElapsed} days left`
+   495→                : 'Final spend for the month'
+   496→            }
+   497→          />
+   498→        </motion.div>
+   499→
+   500→        <motion.div variants={itemVariants} className="h-full">
+   501→          <KpiCard
+   502→            title="Variance"
+   503→            value={formatINR(
+   504→              (data.budget?.totalBudget ?? 0) - data.actuals.totalSpend
+   505→            )}
+   506→            icon={
+   507→              (data.budget?.totalBudget ?? 0) - data.actuals.totalSpend >= 0 ? (
+   508→                <TrendingDown className="h-5 w-5" />
+   509→              ) : (
+   510→                <ArrowUpRight className="h-5 w-5" />
+   511→              )
+   512→            }
+   513→            iconBg={
+   514→              (data.budget?.totalBudget ?? 0) - data.actuals.totalSpend >= 0
+   515→                ? 'bg-emerald-100 dark:bg-emerald-900/30'
+   516→                : 'bg-red-100 dark:bg-red-900/30'
+   517→            }
+   518→            iconColor={
+   519→              (data.budget?.totalBudget ?? 0) - data.actuals.totalSpend >= 0
+   520→                ? 'text-emerald-600 dark:text-emerald-400'
+   521→                : 'text-red-600 dark:text-red-400'
+   522→            }
+   523→            badge={{
+   524→              text:
+   525→                (data.budget?.totalBudget ?? 0) - data.actuals.totalSpend >= 0
+   526→                  ? 'Under budget'
+   527→                  : 'Over budget',
+   528→              tone:
+   529→                (data.budget?.totalBudget ?? 0) - data.actuals.totalSpend >= 0
+   530→                  ? 'text-emerald-600 dark:text-emerald-400'
+   531→                  : 'text-red-600 dark:text-red-400',
+   532→            }}
+   533→            subtitle={
+   534→              data.budget
+   535→                ? `Threshold alert at ${data.budget.alertThreshold}%`
+   536→                : 'Set a budget to track variance'
+   537→            }
+   538→          />
+   539→        </motion.div>
+   540→      </motion.div>
+   541→
+   542→      {/* ─── Budget Utilization Progress ────────────────────────────────── */}
+   543→      <motion.div variants={itemVariants}>
+   544→        <Card className="shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
+   545→          <CardHeader className="pb-3">
+   546→            <div className="flex items-center justify-between">
+   547→              <div>
+   548→                <CardTitle className="flex items-center gap-2 text-base">
+   549→                  <Target className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   550→                  Budget Utilization
+   551→                </CardTitle>
+   552→                <CardDescription>
+   553→                  Food, Operating, and Total budget vs actual for {data.monthLabel}
+   554→                </CardDescription>
+   555→              </div>
+   556→              {data.budget && (
+   557→                <Badge
+   558→                  variant="outline"
+   559→                  className={`ring-1 ${getUtilBand(data.utilization.totalPct).ring} ${getUtilBand(data.utilization.totalPct).text}`}
+   560→                >
+   561→                  {getUtilBand(data.utilization.totalPct).label}
+   562→                </Badge>
+   563→              )}
+   564→            </div>
+   565→          </CardHeader>
+   566→          <CardContent className="space-y-5">
+   567→            {data.budget ? (
+   568→              <>
+   569→                <UtilBar
+   570→                  label="Food Budget"
+   571→                  budget={data.budget.foodBudget}
+   572→                  actual={data.actuals.foodCost}
+   573→                  pct={data.utilization.foodPct}
+   574→                  projectedPct={undefined}
+   575→                />
+   576→                <UtilBar
+   577→                  label="Operating Budget"
+   578→                  budget={data.budget.operatingBudget}
+   579→                  actual={data.actuals.operatingCost}
+   580→                  pct={data.utilization.operatingPct}
+   581→                  projectedPct={undefined}
+   582→                />
+   583→                <UtilBar
+   584→                  label="Total Budget"
+   585→                  budget={data.budget.totalBudget}
+   586→                  actual={data.actuals.totalSpend}
+   587→                  pct={data.utilization.totalPct}
+   588→                  projectedPct={data.utilization.projectedPct}
+   589→                />
+   590→                {/* Legend */}
+   591→                <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-muted-foreground">
+   592→                  <span className="flex items-center gap-1.5">
+   593→                    <span className="h-2 w-3 rounded-sm bg-emerald-500" />
+   594→                    On Track (0–60%)
+   595→                  </span>
+   596→                  <span className="flex items-center gap-1.5">
+   597→                    <span className="h-2 w-3 rounded-sm bg-amber-500" />
+   598→                    Caution (60–80%)
+   599→                  </span>
+   600→                  <span className="flex items-center gap-1.5">
+   601→                    <span className="h-2 w-3 rounded-sm bg-orange-500" />
+   602→                    Critical (80–100%)
+   603→                  </span>
+   604→                  <span className="flex items-center gap-1.5">
+   605→                    <span className="h-2 w-3 rounded-sm bg-red-500" />
+   606→                    Over Budget (&gt;100%)
+   607→                  </span>
+   608→                  <span className="flex items-center gap-1.5">
+   609→                    <span className="h-0 w-3 border-t-2 border-dashed border-foreground/60" />
+   610→                    Projected marker
+   611→                  </span>
+   612→                </div>
+   613→              </>
+   614→            ) : (
+   615→              <div className="rounded-lg border border-dashed bg-muted/30 p-8 text-center text-sm text-muted-foreground">
+   616→                No budget set for this month — set a budget to see utilization
+   617→                bars.
+   618→              </div>
+   619→            )}
+   620→          </CardContent>
+   621→        </Card>
+   622→      </motion.div>
+   623→
+   624→      {/* ─── Daily Spend Trend + Category Breakdown (2-col) ─────────────── */}
+   625→      <motion.div
+   626→        variants={containerVariants}
+   627→        className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+   628→      >
+   629→        {/* Daily Spend Trend */}
+   630→        <motion.div variants={itemVariants} className="h-full">
+   631→          <Card className="chart-card-accent h-full shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
+   632→            <CardHeader className="pb-2">
+   633→              <CardTitle className="flex items-center gap-2 text-base">
+   634→                <TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   635→                Daily Spend Trend
+   636→              </CardTitle>
+   637→              <CardDescription>
+   638→                Food cost (bar) vs operating cost (line) for {data.monthLabel}
+   639→              </CardDescription>
+   640→            </CardHeader>
+   641→            <CardContent>
+   642→              {data.dailySpend.length > 0 ? (
+   643→                <DailySpendChart data={data.dailySpend} />
+   644→              ) : (
+   645→                <div className="flex h-[280px] flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+   646→                  <Calendar className="h-8 w-8 opacity-40" />
+   647→                  <p>No spend recorded yet for {data.monthLabel}.</p>
+   648→                </div>
+   649→              )}
+   650→            </CardContent>
+   651→          </Card>
+   652→        </motion.div>
+   653→
+   654→        {/* Category Breakdown */}
+   655→        <motion.div variants={itemVariants} className="h-full">
+   656→          <Card className="h-full shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
+   657→            <CardHeader className="pb-2">
+   658→              <div className="flex items-center justify-between">
+   659→                <div>
+   660→                  <CardTitle className="flex items-center gap-2 text-base">
+   661→                    <Wallet className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   662→                    Category Breakdown
+   663→                  </CardTitle>
+   664→                  <CardDescription>
+   665→                    Top 10 categories by actual spend
+   666→                  </CardDescription>
+   667→                </div>
+   668→                <Badge variant="secondary" className="text-xs">
+   669→                  {data.categoryBreakdown.length} categories
+   670→                </Badge>
+   671→              </div>
+   672→            </CardHeader>
+   673→            <CardContent>
+   674→              {data.categoryBreakdown.length > 0 ? (
+   675→                <div className="max-h-[320px] overflow-y-auto pr-1">
+   676→                  <Table>
+   677→                    <TableHeader className="sticky top-0 bg-background">
+   678→                      <TableRow>
+   679→                        <TableHead className="text-xs">Category</TableHead>
+   680→                        <TableHead className="text-right text-xs">Actual</TableHead>
+   681→                        <TableHead className="text-right text-xs">Budget</TableHead>
+   682→                        <TableHead className="text-right text-xs">Variance</TableHead>
+   683→                        <TableHead className="text-right text-xs">%</TableHead>
+   684→                      </TableRow>
+   685→                    </TableHeader>
+   686→                    <TableBody>
+   687→                      {data.categoryBreakdown.slice(0, 10).map((c) => (
+   688→                        <TableRow key={c.category}>
+   689→                          <TableCell className="py-2 text-sm font-medium">
+   690→                            {c.category}
+   691→                          </TableCell>
+   692→                          <TableCell className="py-2 text-right text-sm tabular-nums">
+   693→                            {formatINR(c.actual)}
+   694→                          </TableCell>
+   695→                          <TableCell className="py-2 text-right text-sm text-muted-foreground tabular-nums">
+   696→                            {c.budgeted > 0 ? formatINR(c.budgeted) : (
+   697→                              <span className="text-muted-foreground/50">—</span>
+   698→                            )}
+   699→                          </TableCell>
+   700→                          <TableCell className="py-2 text-right">
+   701→                            <Badge
+   702→                              variant="outline"
+   703→                              className={`text-xs ${
+   704→                                c.variance >= 0
+   705→                                  ? 'border-emerald-200 text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400'
+   706→                                  : 'border-red-200 text-red-700 dark:border-red-900/50 dark:text-red-400'
+   707→                              }`}
+   708→                            >
+   709→                              {c.variance >= 0 ? '+' : ''}
+   710→                              {formatINR(c.variance)}
+   711→                            </Badge>
+   712→                          </TableCell>
+   713→                          <TableCell className="py-2 text-right text-xs tabular-nums text-muted-foreground">
+   714→                            {data.budget && data.budget.totalBudget > 0
+   715→                              ? ((c.actual / data.budget.totalBudget) * 100).toFixed(1)
+   716→                              : '—'}
+   717→                            %
+   718→                          </TableCell>
+   719→                        </TableRow>
+   720→                      ))}
+   721→                    </TableBody>
+   722→                  </Table>
+   723→                </div>
+   724→              ) : (
+   725→                <div className="flex h-[280px] flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+   726→                  <Wallet className="h-8 w-8 opacity-40" />
+   727→                  <p>No category spend recorded for {data.monthLabel}.</p>
+   728→                </div>
+   729→              )}
+   730→            </CardContent>
+   731→          </Card>
+   732→        </motion.div>
+   733→      </motion.div>
+   734→
+   735→      {/* ─── 6-Month Budget History (full-width) ────────────────────────── */}
+   736→      <motion.div variants={itemVariants}>
+   737→        <Card className="chart-card-accent shadow-sm transition-all hover:shadow-md border-amber-200/60 dark:border-amber-900/40">
+   738→          <CardHeader className="pb-2">
+   739→            <div className="flex items-center justify-between">
+   740→              <div>
+   741→                <CardTitle className="flex items-center gap-2 text-base">
+   742→                  <PiggyBank className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   743→                  6-Month Budget History
+   744→                </CardTitle>
+   745→                <CardDescription>
+   746→                  Budget vs actual across the last 6 months
+   747→                </CardDescription>
+   748→              </div>
+   749→            </div>
+   750→          </CardHeader>
+   751→          <CardContent>
+   752→            {data.history.some((h) => h.budget > 0 || h.actual > 0) ? (
+   753→              <>
+   754→                <ChartContainer
+   755→                  config={historyConfig}
+   756→                  className="aspect-[3/1] w-full"
+   757→                >
+   758→                  <ComposedChart
+   759→                    data={data.history}
+   760→                    margin={{ top: 10, right: 12, bottom: 5, left: 0 }}
+   761→                  >
+   762→                    <defs>
+   763→                      <pattern
+   764→                        id="budget-empty-hatch"
+   765→                        patternUnits="userSpaceOnUse"
+   766→                        width={6}
+   767→                        height={6}
+   768→                        patternTransform="rotate(45)"
+   769→                      >
+   770→                        <rect width={6} height={6} fill="oklch(0.85 0.05 70 / 0.15)" />
+   771→                        <line x1="0" y1="0" x2="0" y2={6} stroke="oklch(0.65 0.15 60)" strokeWidth={2} strokeOpacity={0.3} />
+   772→                      </pattern>
+   773→                    </defs>
+   774→                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+   775→                    <XAxis
+   776→                      dataKey="month"
+   777→                      tick={{ fontSize: 11 }}
+   778→                      tickMargin={8}
+   779→                      className="text-muted-foreground"
+   780→                    />
+   781→                    <YAxis
+   782→                      tick={{ fontSize: 11 }}
+   783→                      tickFormatter={(v) => formatINRShort(Number(v))}
+   784→                      width={70}
+   785→                      className="text-muted-foreground"
+   786→                    />
+   787→                    <ChartTooltip
+   788→                      content={
+   789→                        <ChartTooltipContent
+   790→                          formatter={(value, name, item) => {
+   791→                            const p = (item as { payload?: HistoryRow })?.payload;
+   792→                            if (p && !p.hasData) {
+   793→                              return (
+   794→                                <span className="italic text-muted-foreground">
+   795→                                  No data recorded this month
+   796→                                </span>
+   797→                              );
+   798→                            }
+   799→                            return (
+   800→                              <span>
+   801→                                {name}:{' '}
+   802→                                <span className="font-semibold tabular-nums">
+   803→                                  {formatINR(Number(value))}
+   804→                                </span>
+   805→                              </span>
+   806→                            );
+   807→                          }}
+   808→                          labelFormatter={(_, payload) => {
+   809→                            const p = payload?.[0]?.payload as
+   810→                              | HistoryRow
+   811→                              | undefined;
+   812→                            return p?.monthFull ?? '';
+   813→                          }}
+   814→                        />
+   815→                      }
+   816→                    />
+   817→                    <Legend
+   818→                      verticalAlign="top"
+   819→                      height={28}
+   820→                      iconType="circle"
+   821→                      formatter={(value) => (
+   822→                        <span className="text-xs">{value}</span>
+   823→                      )}
+   824→                    />
+   825→                    <Bar
+   826→                      dataKey="budget"
+   827→                      fill="var(--color-budget)"
+   828→                      fillOpacity={0.35}
+   829→                      radius={[4, 4, 0, 0]}
+   830→                      maxBarSize={32}
+   831→                    >
+   832→                      {data.history.map((entry) => (
+   833→                        <Cell
+   834→                          key={entry.monthCode}
+   835→                          fill={entry.hasData === false ? 'url(#budget-empty-hatch)' : 'var(--color-budget)'}
+   836→                          fillOpacity={entry.hasData === false ? 1 : 0.35}
+   837→                        />
+   838→                      ))}
+   839→                    </Bar>
+   840→                    <Line
+   841→                      type="monotone"
+   842→                      dataKey="actual"
+   843→                      stroke="var(--color-actual)"
+   844→                      strokeWidth={3}
+   845→                      dot={{ r: 5, fill: 'var(--color-actual)', strokeWidth: 2, stroke: 'var(--background)' }}
+   846→                      activeDot={{ r: 7, strokeWidth: 2 }}
+   847→                      connectNulls
+   848→                    />
+   849→                  </ComposedChart>
+   850→                </ChartContainer>
+   851→                {/* No-data badges for empty months */}
+   852→                {data.history.some((h) => !h.hasData) && (
+   853→                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+   854→                    <span className="text-muted-foreground">No data recorded:</span>
+   855→                    {data.history
+   856→                      .filter((h) => !h.hasData)
+   857→                      .map((h) => (
+   858→                        <Badge
+   859→                          key={h.monthCode}
+   860→                          variant="outline"
+   861→                          className="bg-muted/40 text-muted-foreground gap-1 font-normal"
+   862→                        >
+   863→                          <Calendar className="h-3 w-3" />
+   864→                          {h.monthFull}
+   865→                        </Badge>
+   866→                      ))}
+   867→                  </div>
+   868→                )}
+   869→                {/* History table */}
+   870→                <div className="mt-4 overflow-x-auto">
+   871→                  <Table>
+   872→                    <TableHeader>
+   873→                      <TableRow>
+   874→                        <TableHead className="text-xs">Month</TableHead>
+   875→                        <TableHead className="text-right text-xs">Budget</TableHead>
+   876→                        <TableHead className="text-right text-xs">Actual</TableHead>
+   877→                        <TableHead className="text-right text-xs">Variance</TableHead>
+   878→                        <TableHead className="text-right text-xs">Status</TableHead>
+   879→                      </TableRow>
+   880→                    </TableHeader>
+   881→                    <TableBody>
+   882→                      {data.history.map((h) => (
+   883→                        <TableRow key={h.monthCode} className={h.hasData === false ? 'opacity-60' : ''}>
+   884→                          <TableCell className="py-2 text-sm font-medium">
+   885→                            {h.monthFull}
+   886→                          </TableCell>
+   887→                          <TableCell className="py-2 text-right text-sm tabular-nums">
+   888→                            {h.budget > 0 ? formatINR(h.budget) : (
+   889→                              <span className="text-muted-foreground/50">—</span>
+   890→                            )}
+   891→                          </TableCell>
+   892→                          <TableCell className="py-2 text-right text-sm tabular-nums">
+   893→                            {h.actual > 0 ? formatINR(h.actual) : (
+   894→                              <span className="text-muted-foreground/50">—</span>
+   895→                            )}
+   896→                          </TableCell>
+   897→                          <TableCell className="py-2 text-right text-sm tabular-nums">
+   898→                            {h.hasData === false ? (
+   899→                              <span className="text-muted-foreground/50">—</span>
+   900→                            ) : (
+   901→                              <span
+   902→                                className={
+   903→                                  h.variance >= 0
+   904→                                    ? 'text-emerald-600 dark:text-emerald-400'
+   905→                                    : 'text-red-600 dark:text-red-400'
+   906→                                }
+   907→                              >
+   908→                                {h.variance >= 0 ? '+' : ''}
+   909→                                {formatINR(h.variance)}
+   910→                              </span>
+   911→                            )}
+   912→                          </TableCell>
+   913→                          <TableCell className="py-2 text-right">
+   914→                            {h.budget > 0 ? (
+   915→                              <Badge
+   916→                                variant="outline"
+   917→                                className={`text-xs ${
+   918→                                  h.variance >= 0
+   919→                                    ? 'border-emerald-200 text-emerald-700 dark:border-emerald-900/50 dark:text-emerald-400'
+   920→                                    : 'border-red-200 text-red-700 dark:border-red-900/50 dark:text-red-400'
+   921→                                }`}
+   922→                              >
+   923→                                {h.variance >= 0 ? 'Under' : 'Over'}
+   924→                              </Badge>
+   925→                            ) : (
+   926→                              <span className="text-xs text-muted-foreground">—</span>
+   927→                            )}
+   928→                          </TableCell>
+   929→                        </TableRow>
+   930→                      ))}
+   931→                    </TableBody>
+   932→                  </Table>
+   933→                </div>
+   934→              </>
+   935→            ) : (
+   936→              <div className="flex h-[280px] flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+   937→                <PiggyBank className="h-8 w-8 opacity-40" />
+   938→                <p>No budget history available for the last 6 months.</p>
+   939→              </div>
+   940→            )}
+   941→          </CardContent>
+   942→        </Card>
+   943→      </motion.div>
+   944→
+   945→      {/* ─── Set Budget Dialog ──────────────────────────────────────────── */}
+   946→      <SetBudgetDialog
+   947→        open={setBudgetOpen}
+   948→        onOpenChange={setSetBudgetOpen}
+   949→        existingBudget={data.budget}
+   950→        defaultMonth={month}
+   951→        saving={savingBudget}
+   952→        onSave={async (payload) => {
+   953→          setSavingBudget(true);
+   954→          try {
+   955→            let res: Response;
+   956→            if (data.budget) {
+   957→              // Update existing
+   958→              res = await fetch(`/api/budgets/${data.budget.id}`, {
+   959→                method: 'PUT',
+   960→                headers: { 'Content-Type': 'application/json' },
+   961→                body: JSON.stringify(payload),
+   962→              });
+   963→            } else {
+   964→              // Create new (POST supports upsert by month)
+   965→              res = await fetch('/api/budgets', {
+   966→                method: 'POST',
+   967→                headers: { 'Content-Type': 'application/json' },
+   968→                body: JSON.stringify(payload),
+   969→              });
+   970→            }
+   971→            if (!res.ok) {
+   972→              const err = await res.json().catch(() => null);
+   973→              throw new Error(err?.error || 'Failed to save budget');
+   974→            }
+   975→            toast.success(
+   976→              data.budget
+   977→                ? `Budget updated for ${payload.month}`
+   978→                : `Budget set for ${payload.month}`
+   979→            );
+   980→            setSetBudgetOpen(false);
+   981→            // Re-fetch to reflect the saved budget
+   982→            await fetchData(month);
+   983→          } catch (e) {
+   984→            toast.error('Failed to save budget', {
+   985→              description: e instanceof Error ? e.message : 'Unknown error',
+   986→            });
+   987→          } finally {
+   988→            setSavingBudget(false);
+   989→          }
+   990→        }}
+   991→      />
+   992→    </motion.div>
+   993→  );
+   994→}
+   995→
+   996→// ─── Header ─────────────────────────────────────────────────────────────────
+   997→
+   998→function Header({
+   999→  month,
+  1000→  onMonthChange,
+  1001→  onExport,
+  1002→  onSetBudget,
+  1003→}: {
+  1004→  month: string;
+  1005→  onMonthChange: (v: string) => void;
+  1006→  onExport: () => void;
+  1007→  onSetBudget: () => void;
+  1008→}) {
+  1009→  return (
+  1010→    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+  1011→      <div className="flex items-center gap-3">
+  1012→        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+  1013→          <Wallet className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1014→        </div>
+  1015→        <div>
+  1016→          <h1 className="text-2xl font-bold tracking-tight">Budget vs Actual</h1>
+  1017→          <p className="text-sm text-muted-foreground">
+  1018→            Track monthly spend against budget with projections and history
+  1019→          </p>
+  1020→        </div>
+  1021→      </div>
+  1022→      <div className="flex flex-wrap items-center gap-2">
+  1023→        <div className="flex items-center gap-2 rounded-md border bg-background px-2 py-1">
+  1024→          <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+  1025→          <Input
+  1026→            type="month"
+  1027→            value={month}
+  1028→            onChange={(e) => onMonthChange(e.target.value)}
+  1029→            className="h-8 w-[150px] border-0 px-0 shadow-none focus-visible:ring-0"
+  1030→            aria-label="Select month"
+  1031→          />
+  1032→        </div>
+  1033→        <Button onClick={onSetBudget} size="sm" className="gap-1.5 bg-amber-600 hover:bg-amber-700 text-white">
+  1034→          <Plus className="h-4 w-4" />
+  1035→          Set Budget
+  1036→        </Button>
+  1037→        <Button onClick={onExport} size="sm" variant="outline" className="gap-1.5">
+  1038→          <Download className="h-4 w-4" />
+  1039→          Export CSV
+  1040→        </Button>
+  1041→      </div>
+  1042→    </div>
+  1043→  );
+  1044→}
+  1045→
+  1046→// ─── KPI Card ───────────────────────────────────────────────────────────────
+  1047→
+  1048→function KpiCard({
+  1049→  title,
+  1050→  value,
+  1051→  icon,
+  1052→  iconBg,
+  1053→  iconColor,
+  1054→  subtitle,
+  1055→  badge,
+  1056→}: {
+  1057→  title: string;
+  1058→  value: string;
+  1059→  icon: React.ReactNode;
+  1060→  iconBg: string;
+  1061→  iconColor: string;
+  1062→  subtitle?: string;
+  1063→  badge?: { text: string; tone: string };
+  1064→}) {
+  1065→  return (
+  1066→    <Card className="h-full shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5">
+  1067→      <CardContent className="p-5">
+  1068→        <div className="flex items-start justify-between gap-3">
+  1069→          <div className="min-w-0 flex-1">
+  1070→            <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">
+  1071→              {title}
+  1072→            </p>
+  1073→            <p className="mt-1 text-2xl font-bold tracking-tight tabular-nums">
+  1074→              {value}
+  1075→            </p>
+  1076→            {badge && (
+  1077→              <p className={`mt-1 text-xs font-semibold ${badge.tone}`}>
+  1078→                {badge.text}
+  1079→              </p>
+  1080→            )}
+  1081→          </div>
+  1082→          <div
+  1083→            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconBg} ${iconColor}`}
+  1084→          >
+  1085→            {icon}
+  1086→          </div>
+  1087→        </div>
+  1088→        {subtitle && (
+  1089→          <p className="mt-3 truncate text-xs text-muted-foreground">{subtitle}</p>
+  1090→        )}
+  1091→      </CardContent>
+  1092→    </Card>
+  1093→  );
+  1094→}
+  1095→
+  1096→// ─── Mini Stat (used in empty state) ────────────────────────────────────────
+  1097→
+  1098→function MiniStat({ label, value }: { label: string; value: string }) {
+  1099→  return (
+  1100→    <div className="rounded-lg border bg-background px-4 py-3 text-center">
+  1101→      <p className="text-xs text-muted-foreground">{label}</p>
+  1102→      <p className="mt-0.5 text-base font-bold tabular-nums">{value}</p>
+  1103→    </div>
+  1104→  );
+  1105→}
+  1106→
+  1107→// ─── Utilization Bar (custom horizontal bar with gradient + projected marker) ──
+  1108→
+  1109→function UtilBar({
+  1110→  label,
+  1111→  budget,
+  1112→  actual,
+  1113→  pct,
+  1114→  projectedPct,
+  1115→}: {
+  1116→  label: string;
+  1117→  budget: number;
+  1118→  actual: number;
+  1119→  pct: number;
+  1120→  projectedPct?: number;
+  1121→}) {
+  1122→  const band = getUtilBand(pct);
+  1123→  // Bar width capped at 100% visually (over-budget shown as full bar with red marker)
+  1124→  const barWidth = Math.min(pct, 100);
+  1125→  const projectedLeft = projectedPct !== undefined
+  1126→    ? Math.min(projectedPct, 100)
+  1127→    : null;
+  1128→
+  1129→  return (
+  1130→    <div className="space-y-1.5">
+  1131→      <div className="flex items-center justify-between text-sm">
+  1132→        <div className="flex items-center gap-2">
+  1133→          <span className="font-medium">{label}</span>
+  1134→          <span className="text-xs text-muted-foreground">
+  1135→            {formatINR(actual)} / {formatINR(budget)}
+  1136→          </span>
+  1137→        </div>
+  1138→        <span className={`text-xs font-semibold tabular-nums ${band.text}`}>
+  1139→          {pct.toFixed(1)}%
+  1140→        </span>
+  1141→      </div>
+  1142→      <div className="gradient-progress relative h-3 w-full overflow-hidden rounded-full">
+  1143→        {/* Filled bar with gradient */}
+  1144→        <div
+  1145→          className="relative h-full rounded-full transition-all duration-500"
+  1146→          style={{
+  1147→            width: `${barWidth}%`,
+  1148→            backgroundImage: `linear-gradient(to right, ${band.color}, ${band.color}cc)`,
+  1149→          }}
+  1150→        />
+  1151→        {/* Projected marker (vertical dashed line) */}
+  1152→        {projectedLeft !== null && (
+  1153→          <div
+  1154→            className="absolute top-0 z-10 flex h-full flex-col items-center justify-center"
+  1155→            style={{ left: `${projectedLeft}%` }}
+  1156→            aria-label={`Projected at ${projectedPct?.toFixed(0)}%`}
+  1157→            title={`Projected: ${projectedPct?.toFixed(1)}%`}
+  1158→          >
+  1159→            <div className="h-full w-0.5 border-l-2 border-dashed border-foreground/70" />
+  1160→          </div>
+  1161→        )}
+  1162→        {/* Threshold alert marker (alertThreshold on Total bar) */}
+  1163→      </div>
+  1164→    </div>
+  1165→  );
+  1166→}
+  1167→
+  1168→// ─── Daily Spend Chart ──────────────────────────────────────────────────────
+  1169→
+  1170→function DailySpendChart({ data }: { data: DailySpendRow[] }) {
+  1171→  const avgDaily =
+  1172→    data.length > 0
+  1173→      ? data.reduce((s, d) => s + d.operatingCost, 0) / data.length
+  1174→      : 0;
+  1175→
+  1176→  return (
+  1177→    <ChartContainer config={dailyTrendConfig} className="aspect-[2/1] w-full">
+  1178→      <ComposedChart data={data} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+  1179→        <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1180→        <XAxis
+  1181→          dataKey="day"
+  1182→          tick={{ fontSize: 11 }}
+  1183→          tickMargin={8}
+  1184→          tickFormatter={(v) => `D${v}`}
+  1185→          className="text-muted-foreground"
+  1186→        />
+  1187→        <YAxis
+  1188→          tick={{ fontSize: 11 }}
+  1189→          tickFormatter={(v) => formatINRShort(Number(v))}
+  1190→          width={60}
+  1191→          className="text-muted-foreground"
+  1192→        />
+  1193→        <ChartTooltip
+  1194→          content={
+  1195→            <ChartTooltipContent
+  1196→              formatter={(value, name) => (
+  1197→                <span>
+  1198→                  {name}:{' '}
+  1199→                  <span className="font-semibold tabular-nums">
+  1200→                    {formatINR(Number(value))}
+  1201→                  </span>
+  1202→                </span>
+  1203→              )}
+  1204→              labelFormatter={(_, payload) => {
+  1205→                const p = payload?.[0]?.payload as DailySpendRow | undefined;
+  1206→                return p ? `Day ${p.day} · ${p.date}` : '';
+  1207→              }}
+  1208→            />
+  1209→          }
+  1210→        />
+  1211→        <Legend
+  1212→          verticalAlign="top"
+  1213→          height={28}
+  1214→          iconType="circle"
+  1215→          formatter={(value) => <span className="text-xs">{value}</span>}
+  1216→        />
+  1217→        <Bar
+  1218→          dataKey="foodCost"
+  1219→          fill="var(--color-foodCost)"
+  1220→          radius={[3, 3, 0, 0]}
+  1221→          maxBarSize={28}
+  1222→        />
+  1223→        <Line
+  1224→          type="monotone"
+  1225→          dataKey="operatingCost"
+  1226→          stroke="var(--color-operatingCost)"
+  1227→          strokeWidth={2.5}
+  1228→          dot={false}
+  1229→          activeDot={{ r: 5 }}
+  1230→        />
+  1231→        <ReferenceLine
+  1232→          y={avgDaily}
+  1233→          stroke="#6b7280"
+  1234→          strokeDasharray="4 4"
+  1235→          strokeWidth={1.5}
+  1236→          label={{
+  1237→            value: `Avg ${formatINRShort(avgDaily)}`,
+  1238→            position: 'right',
+  1239→            fill: '#6b7280',
+  1240→            fontSize: 10,
+  1241→          }}
+  1242→        />
+  1243→      </ComposedChart>
+  1244→    </ChartContainer>
+  1245→  );
+  1246→}
+  1247→
+  1248→// ─── Set Budget Dialog ──────────────────────────────────────────────────────
+  1249→
+  1250→interface SetBudgetPayload {
+  1251→  month: string;
+  1252→  foodBudget: number;
+  1253→  operatingBudget: number;
+  1254→  totalBudget: number;
+  1255→  alertThreshold: number;
+  1256→}
+  1257→
+  1258→function SetBudgetDialog({
+  1259→  open,
+  1260→  onOpenChange,
+  1261→  existingBudget,
+  1262→  defaultMonth,
+  1263→  saving,
+  1264→  onSave,
+  1265→}: {
+  1266→  open: boolean;
+  1267→  onOpenChange: (v: boolean) => void;
+  1268→  existingBudget: BudgetRow | null;
+  1269→  defaultMonth: string;
+  1270→  saving: boolean;
+  1271→  onSave: (payload: SetBudgetPayload) => Promise<void>;
+  1272→}) {
+  1273→  return (
+  1274→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1275→      <DialogContent className="sm:max-w-md">
+  1276→        {/* Mount form only when open so useState initializers run fresh each
+  1277→            time the dialog opens (avoids setState-in-effect lint pattern). */}
+  1278→        {open ? (
+  1279→          <SetBudgetForm
+  1280→            key={existingBudget?.id ?? `new-${defaultMonth}`}
+  1281→            existingBudget={existingBudget}
+  1282→            defaultMonth={defaultMonth}
+  1283→            saving={saving}
+  1284→            onSave={onSave}
+  1285→            onCancel={() => onOpenChange(false)}
+  1286→          />
+  1287→        ) : null}
+  1288→      </DialogContent>
+  1289→    </Dialog>
+  1290→  );
+  1291→}
+  1292→
+  1293→function SetBudgetForm({
+  1294→  existingBudget,
+  1295→  defaultMonth,
+  1296→  saving,
+  1297→  onSave,
+  1298→  onCancel,
+  1299→}: {
+  1300→  existingBudget: BudgetRow | null;
+  1301→  defaultMonth: string;
+  1302→  saving: boolean;
+  1303→  onSave: (payload: SetBudgetPayload) => Promise<void>;
+  1304→  onCancel: () => void;
+  1305→}) {
+  1306→  // Lazy initializers — runs once per mount. Parent controls remount via `key`
+  1307→  // (changes whenever existingBudget changes after a save).
+  1308→  const [formMonth, setFormMonth] = useState<string>(
+  1309→    () => existingBudget?.month ?? defaultMonth
+  1310→  );
+  1311→  const [foodBudget, setFoodBudget] = useState<string>(
+  1312→    () => (existingBudget ? String(existingBudget.foodBudget) : '')
+  1313→  );
+  1314→  const [operatingBudget, setOperatingBudget] = useState<string>(
+  1315→    () => (existingBudget ? String(existingBudget.operatingBudget) : '')
+  1316→  );
+  1317→  const [alertThreshold, setAlertThreshold] = useState<string>(
+  1318→    () => (existingBudget ? String(existingBudget.alertThreshold) : '80')
+  1319→  );
+  1320→
+  1321→  const totalBudget = useMemo(() => {
+  1322→    const f = parseFloat(foodBudget) || 0;
+  1323→    const o = parseFloat(operatingBudget) || 0;
+  1324→    return f + o;
+  1325→  }, [foodBudget, operatingBudget]);
+  1326→
+  1327→  const canSubmit =
+  1328→    !!formMonth &&
+  1329→    parseFloat(foodBudget) >= 0 &&
+  1330→    parseFloat(operatingBudget) >= 0 &&
+  1331→    parseFloat(alertThreshold) >= 0 &&
+  1332→    parseFloat(alertThreshold) <= 100 &&
+  1333→    !saving;
+  1334→
+  1335→  const handleSubmit = async (e: React.FormEvent) => {
+  1336→    e.preventDefault();
+  1337→    if (!canSubmit) return;
+  1338→    await onSave({
+  1339→      month: formMonth,
+  1340→      foodBudget: parseFloat(foodBudget) || 0,
+  1341→      operatingBudget: parseFloat(operatingBudget) || 0,
+  1342→      totalBudget,
+  1343→      alertThreshold: parseFloat(alertThreshold) || 80,
+  1344→    });
+  1345→  };
+  1346→
+  1347→  return (
+  1348→    <>
+  1349→      <DialogHeader>
+  1350→        <DialogTitle className="flex items-center gap-2">
+  1351→          <PiggyBank className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+  1352→          {existingBudget ? 'Update Budget' : 'Set Monthly Budget'}
+  1353→        </DialogTitle>
+  1354→        <DialogDescription>
+  1355→          Define the food and operating budgets for the selected month. The
+  1356→          total budget is auto-calculated as Food + Operating.
+  1357→        </DialogDescription>
+  1358→      </DialogHeader>
+  1359→        <form onSubmit={handleSubmit} className="space-y-4">
+  1360→          <div className="space-y-2">
+  1361→            <Label htmlFor="budget-month">Month</Label>
+  1362→            <Input
+  1363→              id="budget-month"
+  1364→              type="month"
+  1365→              value={formMonth}
+  1366→              onChange={(e) => setFormMonth(e.target.value)}
+  1367→              required
+  1368→              disabled={!!existingBudget}
+  1369→            />
+  1370→            {existingBudget && (
+  1371→              <p className="text-xs text-muted-foreground">
+  1372→                Month cannot be changed for an existing budget.
+  1373→              </p>
+  1374→            )}
+  1375→          </div>
+  1376→          <div className="space-y-2">
+  1377→            <Label htmlFor="food-budget">Food Budget (₹)</Label>
+  1378→            <Input
+  1379→              id="food-budget"
+  1380→              type="number"
+  1381→              min="0"
+  1382→              step="0.01"
+  1383→              placeholder="0.00"
+  1384→              value={foodBudget}
+  1385→              onChange={(e) => setFoodBudget(e.target.value)}
+  1386→              required
+  1387→            />
+  1388→          </div>
+  1389→          <div className="space-y-2">
+  1390→            <Label htmlFor="operating-budget">Operating Budget (₹)</Label>
+  1391→            <Input
+  1392→              id="operating-budget"
+  1393→              type="number"
+  1394→              min="0"
+  1395→              step="0.01"
+  1396→              placeholder="0.00"
+  1397→              value={operatingBudget}
+  1398→              onChange={(e) => setOperatingBudget(e.target.value)}
+  1399→              required
+  1400→            />
+  1401→            <p className="text-xs text-muted-foreground">
+  1402→              Includes food cost + other operating expenses (gas, electricity,
+  1403→              etc.)
+  1404→            </p>
+  1405→          </div>
+  1406→          <div className="space-y-2">
+  1407→            <Label htmlFor="total-budget">Total Budget (auto-calculated)</Label>
+  1408→            <Input
+  1409→              id="total-budget"
+  1410→              type="text"
+  1411→              readOnly
+  1412→              value={formatINR(totalBudget, true)}
+  1413→              className="bg-muted/50 font-semibold"
+  1414→            />
+  1415→          </div>
+  1416→          <div className="space-y-2">
+  1417→            <Label htmlFor="alert-threshold">Alert Threshold (%)</Label>
+  1418→            <Input
+  1419→              id="alert-threshold"
+  1420→              type="number"
+  1421→              min="0"
+  1422→              max="100"
+  1423→              step="1"
+  1424→              value={alertThreshold}
+  1425→              onChange={(e) => setAlertThreshold(e.target.value)}
+  1426→              required
+  1427→            />
+  1428→            <p className="text-xs text-muted-foreground">
+  1429→              Trigger a utilization alert once spend crosses this percentage.
+  1430→            </p>
+  1431→          </div>
+  1432→          <DialogFooter>
+  1433→            <Button
+  1434→              type="button"
+  1435→              variant="outline"
+  1436→              onClick={onCancel}
+  1437→              disabled={saving}
+  1438→            >
+  1439→              Cancel
+  1440→            </Button>
+  1441→            <Button
+  1442→              type="submit"
+  1443→              disabled={!canSubmit}
+  1444→              className="bg-amber-600 hover:bg-amber-700 text-white"
+  1445→            >
+  1446→              {saving ? (
+  1447→                <>
+  1448→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1449→                  Saving...
+  1450→                </>
+  1451→              ) : existingBudget ? (
+  1452→                <>
+  1453→                  <CheckCircle2 className="mr-2 h-4 w-4" />
+  1454→                  Update Budget
+  1455→                </>
+  1456→              ) : (
+  1457→                <>
+  1458→                  <Plus className="mr-2 h-4 w-4" />
+  1459→                  Set Budget
+  1460→                </>
+  1461→              )}
+  1462→            </Button>
+  1463→          </DialogFooter>
+  1464→        </form>
+  1465→    </>
+  1466→  );
+  1467→}
+  1468→
+  1469→// ─── Skeleton ───────────────────────────────────────────────────────────────
+  1470→
+  1471→function BudgetSkeleton() {
+  1472→  return (
+  1473→    <div className="space-y-6">
+  1474→      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+  1475→        <div className="flex items-center gap-3">
+  1476→          <Skeleton className="h-10 w-10 rounded-lg" />
+  1477→          <div className="space-y-1">
+  1478→            <Skeleton className="h-6 w-40" />
+  1479→            <Skeleton className="h-4 w-64" />
+  1480→          </div>
+  1481→        </div>
+  1482→        <div className="flex gap-2">
+  1483→          <Skeleton className="h-9 w-[180px]" />
+  1484→          <Skeleton className="h-9 w-28" />
+  1485→          <Skeleton className="h-9 w-28" />
+  1486→        </div>
+  1487→      </div>
+  1488→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  1489→        {Array.from({ length: 4 }).map((_, i) => (
+  1490→          <Skeleton key={i} className="h-32 w-full" />
+  1491→        ))}
+  1492→      </div>
+  1493→      <Skeleton className="h-64 w-full" />
+  1494→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  1495→        <Skeleton className="h-80 w-full" />
+  1496→        <Skeleton className="h-80 w-full" />
+  1497→      </div>
+  1498→      <Skeleton className="h-96 w-full" />
+  1499→    </div>
+  1500→  );
+  1501→}
+  1502→
