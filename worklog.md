@@ -702,3 +702,210 @@ The RCS Canteen app was stable from the previous review (all views 8-10/10). Thi
 4. **Medium**: Add data backup/restore functionality
 5. **Low**: Add recipe images (upload or AI-generated)
 6. **Medium**: Add budget tracking with email/SMS alerts when approaching thresholds
+
+---
+Task ID: r3-3
+Agent: full-stack-developer
+Task: Add pagination to the Expenses view
+
+Work Log:
+- Added `ChevronLeft`, `ChevronRight`, `ChevronUp`, `ChevronDown` imports from lucide-react
+- Added `ITEMS_PER_PAGE = 10` constant and `currentPage` state
+- Added `useEffect` to reset to page 1 when category/date filters change
+- Added derived pagination values: `totalExpenses`, `totalAmount`, `totalPages`, `safeCurrentPage`, `paginatedExpenses`, `showingFrom`, `showingTo`
+- `safeCurrentPage` clamps to `totalPages` so deleting the last row on the last page doesn't render an empty page
+- Updated sortable column headers (Date, Category, Amount) to show `ChevronUp`/`ChevronDown` for active sort direction and a faded `ArrowUpDown` for inactive columns
+- `handleSort` now also resets to page 1
+- Switched table body to render `paginatedExpenses` instead of all `sortedExpenses`
+- Added pagination controls at the bottom of the table: "Showing X to Y of Z results", Previous/Next buttons with ChevronLeft/ChevronRight, numbered page buttons with ellipsis for large ranges (matching stock-view.tsx pattern)
+- Current page button highlighted with orange primary color (`bg-orange-600`)
+- Added "Total Amount (filtered)" display in the card header next to the count
+- Improved empty state check (`totalExpenses === 0`)
+- Applied `hover:bg-muted/50` to table rows and `tabular-nums` to all amount displays (table, summary cards, pie legend, header total)
+- Pagination is responsive (stacks vertically on mobile)
+- Preserved all existing functionality: filters, summary cards, pie chart, add/edit/delete dialogs
+
+Stage Summary:
+- Expenses table now paginates 10 rows per page with full controls
+- Sortable columns with clear visual indicators (default: Date descending)
+- Total count and total amount shown for the current filter
+- Improved empty state, loading skeleton, hover effects, and tabular-nums alignment
+- `bun run lint` passes with no errors
+
+---
+Task ID: r3-2
+Agent: full-stack-developer
+Task: Add complete Supplier Management module (10th nav item)
+
+Work Log:
+- Updated Prisma schema (prisma/schema.prisma):
+  - Added new `Supplier` model with fields: id, name, contactPerson, phone, email, address, gstin, category, notes, createdAt, updatedAt + relations `ingredients Ingredient[]` and `purchases Purchase[]`
+  - Added `supplierId String?` + `supplierLink Supplier? @relation(...)` to Ingredient (kept legacy `supplier String?` for backward compat so stock-view/backup/meals-view/wastage-view/purchases-view continue to work unchanged)
+  - Added `supplierId String?` + `supplierLink Supplier? @relation(...)` to Purchase (kept legacy `supplier String?` text per task spec "keep existing supplier String? field for backward compat, but prefer supplierId")
+  - Named the relation `supplierLink` (instead of `supplier`) because Prisma disallows two fields with the same name, and the legacy `supplier` scalar must stay for backward compat
+- Ran `bun run db:push` — schema synced, Prisma Client regenerated
+- Created `/src/app/api/suppliers/route.ts`:
+  - GET — list suppliers with category & search filters, includes `_count` of ingredients/purchases + computed `totalPurchaseValue` per supplier
+  - POST — create supplier with validation (name required, duplicate-name check returning 409)
+- Created `/src/app/api/suppliers/[id]/route.ts`:
+  - GET — full supplier detail with linked ingredients (top 50 by name) and recent purchases (top 50 by date)
+  - PUT — partial update, name-conflict check on rename
+  - DELETE — detaches linked ingredients/purchases (sets supplierId=null) before deleting the supplier, so existing stock & purchase records stay intact
+- Created `/src/components/module-views/suppliers-view.tsx`:
+  - Full CRUD: Add/Edit Dialog (Name*, Contact Person, Phone, Email, Address, GSTIN with auto-uppercase + 15-char validation, Category with datalist of common values, Address textarea, Notes textarea)
+  - Delete with AlertDialog confirmation that explains linked items will be detached
+  - Search by name (live filtering)
+  - Filter by category (derived from existing data, with "All" option)
+  - Sortable columns: Name, Category, Ingredient Count, Purchase Value (asc/desc toggle, chevron icons)
+  - Summary cards: Total Suppliers (Building2), Total Purchase Value (IndianRupee, formatted ₹X.XXL/k), Active Suppliers (Package — suppliers with ≥1 ingredient or purchase)
+  - CSV export via `downloadCSV` from `@/lib/export-utils`
+  - Detail view uses Sheet (right drawer) with: contact info card, 3 stat cards, notes, scrollable list of linked ingredients, scrollable list of recent purchases (max 20)
+  - Responsive: desktop sortable table, mobile card list
+  - Loading skeletons, empty state with "Add Supplier" CTA
+  - Orange/amber theme consistent with rest of app
+  - Currency formatted with `Intl.NumberFormat('en-IN', { currency: 'INR' })` → ₹ with Indian grouping
+  - Toast notifications for all CRUD actions
+- Updated `/src/components/app-sidebar.tsx`:
+  - Added `Truck` to lucide-react imports
+  - Added `"suppliers"` to `ViewId` union type
+  - Added nav item `{ id: "suppliers", label: "Suppliers", icon: Truck }` positioned after `purchases` (index 5) and before `wastage` (now 10 nav items total)
+- Updated `/src/app/page.tsx`:
+  - Imported `SuppliersView`
+  - Added `suppliers: "Suppliers"` to `viewLabels`
+  - Added `case "suppliers": return <SuppliersView />;` to `ViewRenderer`
+- Updated `/src/app/api/seed/route.ts`:
+  - Added `await db.supplier.deleteMany()` to cleanup
+  - Created 6 Indian-named suppliers: Rajesh Grains (Grains), Fresh Meats (Meat), Oil Industries (Oil/Spices), Local Market (Vegetables), Pulse Traders (Pulses), Dairy Farm (Dairy/Beverages) — each with contactPerson, phone, email, address, GSTIN, category, notes
+  - Updated all 20 ingredients to set `supplierId: findSupplier(name).id` while keeping legacy `supplier` text field
+  - Remapped ingredients that previously referenced Spice House → Oil Industries, General Store → Rajesh Grains/Pulse Traders, Tea Traders → Dairy Farm (since only 6 main suppliers are created)
+  - Updated all 5 purchases to set `supplierId`; purchase 5's text supplier changed from "Tea Traders" → "Dairy Farm" to match the supplier master
+  - Added `suppliers: suppliers.length` to seed response
+- Updated `/src/components/module-views/settings-view.tsx`:
+  - Imported `Truck` icon
+  - Added `totalSuppliers: number` to `DataSummary` interface
+  - Added `totalSuppliers: 0` to initial state
+  - Added `fetch("/api/suppliers")` to `Promise.all` in `fetchDataSummary`
+  - Set `totalSuppliers` from response length
+  - Added a 5th summary card "Suppliers" with Truck icon
+  - Updated grid layout to `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5` and updated skeleton count from 4 to 5
+
+Stage Summary:
+- New Suppliers module fully integrated as the 10th sidebar nav item (between Purchases and Wastage)
+- Complete CRUD with validation, search, category filter, sortable table
+- Supplier master record tracks contact details (phone, email, address, GSTIN, category, notes)
+- Each supplier shows ingredient count, purchase count, and total purchase value
+- CSV export with all supplier fields
+- Detail Sheet view shows linked ingredients & recent purchases
+- Indian currency (₹) formatting with proper en-IN grouping
+- Orange/amber theme consistent with the rest of the app
+- Responsive: table on desktop, card list on mobile, sticky footer preserved
+- All existing functionality preserved — no breaking changes to Stock, Purchases, Meals, Wastage, Reports, Expenses, Dashboard, or Settings (legacy `supplier String?` text fields kept on Ingredient & Purchase for backward compat)
+- `bun run db:push` applied successfully; `bun run lint` passes with 0 errors and 0 warnings
+
+
+---
+Task ID: r3-4
+Agent: fullstack-developer
+Task: Add Data Backup/Restore functionality to the Settings page
+
+Work Log:
+- Created `/src/app/api/backup/route.ts` (471 lines) with GET (export) and POST (import/restore) handlers
+  - GET: fetches all 6 collections in parallel, flattens nested `recipes[].ingredients` → `recipeIngredients` and `purchases[].items` → `purchaseItems`, builds metadata with version/exportDate/app/counts, returns downloadable JSON with proper Content-Disposition header (`rcs-canteen-backup-YYYY-MM-DD.json`)
+  - POST: validates body shape, supports backwards-compat with nested format, clears existing data in dependency order inside a `$transaction` for atomicity (stockMovement → dailyMealServed → purchaseItem → purchase → expense → recipeIngredient → recipe → ingredient), then restores in parent-first order (ingredient → recipe → recipeIngredient → stockMovement → dailyMealServed → expense → purchase → purchaseItem); skips dangling FK link rows gracefully; returns success with counts
+  - Helper functions for safe type coercion: `toDate`, `toNumber`, `toStr`, `toNullableStr`
+  - Comprehensive error handling: invalid JSON, missing fields, empty data, FK violations
+
+- Modified `/src/components/module-views/settings-view.tsx`:
+  - Added imports: `useRef`, `useToast` hook, and 6 new lucide-react icons (`Download`, `Upload`, `FileJson`, `FileUp`, `CalendarClock`, `HardDriveDownload`)
+  - Added types: `BackupCounts`, `BackupMetadata`, `BackupFile`
+  - Added `LAST_BACKUP_KEY = "rcs-canteen-last-backup"` constant
+  - Added helpers: `formatBytes`, `formatRelativeDate` (Just now/X minutes ago/Yesterday/days ago/full date), `isStaleBackup` (7-day threshold), `validateBackupFile`
+  - Added component state for export (`isExporting`, `lastExportInfo`) and import (`pendingImport`, `importError`, `isImporting`, `importProgress`, `importSuccess`, `confirmOpen`)
+  - Added `handleExport`: fetches `/api/backup`, reads blob.text() to extract counts from metadata, re-creates Blob from arrayBuffer, triggers download via temporary `<a download>` element, updates localStorage with timestamp, shows toast
+  - Added `handleFileSelected`: reads file text, parses JSON, validates via `validateBackupFile`, 50MB size guard, opens confirmation dialog
+  - Added `handleConfirmImport`: simulated progress bar (8% → 95% → 100%), POSTs to `/api/backup` with `{metadata, data}`, refreshes dataSummary + budgetData on success, shows toast
+  - Added new "Data Backup & Restore" Card placed after the Budget & Alerts card (`md:col-span-2`, amber border, gradient header)
+    - Header: HardDriveDownload icon, title, description, plus two badges — Last backup relative date and total records count
+    - Auto-backup reminder banner (amber) when no backup or backup > 7 days old
+    - Two-column layout on desktop:
+      - Left (Export): Download icon, "Download Backup" amber button, green last-export summary card with file size + record counts
+      - Right (Import): Upload icon, amber warning banner ("REPLACE ALL current data"), hidden file input triggered by "Select Backup File" outline button, progress bar with percentage, error/success cards
+    - AlertDialog confirmation modal showing file name, file size, full record count breakdown (ingredients/recipes/stockMovements/dailyMeals/purchases/expenses/total), and strong warning about permanent data replacement
+    - Info footer explaining backup file contents and safe-storage recommendation
+  - All existing Settings functionality preserved (Budget & Alerts, Canteen Info, Quick Actions, Data Summary, About)
+
+Stage Summary:
+- Full Data Backup/Restore feature implemented end-to-end
+- API supports both export (downloadable JSON) and import (atomic transaction-based restore)
+- UI uses orange/amber theme matching existing Settings cards
+- Two-column responsive layout with clear visual separation between safe Export and destructive Import
+- Comprehensive validation, error handling, and user feedback (toasts, progress bars, success/error cards)
+- Last backup date persisted in localStorage with 7-day stale warning banner
+- `bun run lint` passes (0 errors, 0 warnings in modified files)
+- `bunx tsc --noEmit` confirms 0 type errors in new/modified files
+
+---
+Task ID: r3-review
+Agent: Cron Review Agent (webDevReview Round 3)
+Task: Bug fix, new modules, and feature enhancements
+
+## Current Project Status Assessment
+
+The RCS Canteen app was stable from Round 2 with all views at 8-9/10. This round focused on fixing a data gap bug and adding 3 major new features.
+
+### Bug Fixed:
+1. **Monthly Comparison showed ₹0 for previous month** — The seed data only contained current month (July 2026) data. Fixed by adding 15 days of previous month (June 2026) meals, consumption stock movements, purchase stock movements, and expenses to the seed. Now the Monthly Comparison card shows real data for both months (Dashboard rated 10/10 after fix).
+
+### New Features Added:
+
+1. **Supplier Management Module** (new 10th sidebar item):
+   - New `Supplier` Prisma model with: name, contactPerson, phone, email, address, gstin, category, notes
+   - Linked to Ingredient and Purchase models via `supplierId` (soft migration — kept legacy `supplier` text field for backward compat)
+   - Full CRUD API at `/api/suppliers` and `/api/suppliers/[id]`
+   - Suppliers view with: 3 summary cards (Total Suppliers, Total Purchase Value, Active Suppliers), search, category filter, sortable table, detail sheet showing linked ingredients and purchases, CSV export
+   - 6 Indian suppliers seeded (Rajesh Grains, Fresh Meats, Oil Industries, Local Market, Pulse Traders, Dairy Farm)
+   - Settings page updated with Suppliers count in Data Summary
+   - VLM rating: 9/10
+
+2. **Expenses Pagination & Sorting**:
+   - 10 items per page with full pagination controls (prev/next, page numbers, ellipsis)
+   - Sortable columns: Date, Category, Amount (with ChevronUp/Down indicators)
+   - Default sort: Date descending
+   - "Showing X to Y of Z results" text
+   - Total amount badge for filtered results
+   - Auto-reset to page 1 when filters change
+   - VLM rating: 9/10
+
+3. **Data Backup/Restore** (Settings page):
+   - New `/api/backup` API route: GET (export all data as JSON), POST (import/restore)
+   - Export downloads `rcs-canteen-backup-YYYY-MM-DD.json` with all 6 collections + metadata
+   - Import with file validation, confirmation dialog showing record counts, warning about data replacement
+   - Progress indicator during import
+   - Last backup date tracking in localStorage
+   - Auto-backup reminder if no backup in 7 days
+   - Atomic restore in a single transaction
+   - VLM rating: 9/10
+
+### Verification Results:
+- `bun run lint` — 0 errors, 0 warnings
+- All API endpoints returning 200 OK
+- Dashboard: 10/10 (Monthly Comparison now shows real data)
+- Suppliers view: 9/10 (new module working perfectly)
+- Settings with Backup/Restore: 9/10
+- Expenses with pagination: 9/10
+- Database re-seeded with suppliers linked to ingredients and purchases
+
+### Unresolved Issues / Risks:
+1. **Future**: No authentication/login flow yet — currently open access
+2. **Future**: No multi-user role-based access control
+3. **Low**: Could add recipe images (AI-generated) for visual appeal
+4. **Low**: Could add print functionality for purchase invoices
+5. **Medium**: Could add automated low-stock email/SMS alerts
+
+### Priority Recommendations for Next Phase:
+1. **High**: Implement authentication (NextAuth.js) with role-based access (Admin/Store/Kitchen)
+2. **Medium**: Add AI-generated recipe images using image-generation skill
+3. **Medium**: Add print-friendly purchase invoice format
+4. **Medium**: Add supplier performance analytics (on-time delivery, price trends)
+5. **Low**: Add dark mode color refinements for charts
+6. **Low**: Add keyboard shortcuts for common actions

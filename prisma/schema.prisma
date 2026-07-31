@@ -26,13 +26,33 @@ model Ingredient {
   minStock         Float    @default(0) // par level / minimum stock level
   lastPurchasePrice Float   @default(0) // per unit
   avgCost          Float    @default(0) // average cost per unit
-  supplier         String?
+  supplier         String?  // legacy free-text supplier name (kept for backward compat)
+  supplierId       String?  // FK to Supplier (preferred way to link)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  supplierLink     Supplier? @relation(fields: [supplierId], references: [id])
 
   recipeIngredients RecipeIngredient[]
   stockMovements    StockMovement[]
   purchases         PurchaseItem[]
+}
+
+model Supplier {
+  id             String   @id @default(cuid())
+  name           String
+  contactPerson  String?
+  phone          String?
+  email          String?
+  address        String?
+  gstin          String?  // GST number for Indian businesses
+  category       String?  // what they supply: Grains, Vegetables, etc.
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  ingredients Ingredient[]
+  purchases   Purchase[]
 }
 
 model Recipe {
@@ -92,12 +112,14 @@ model DailyMealServed {
 model Purchase {
   id          String   @id @default(cuid())
   date        DateTime
-  supplier    String?
+  supplier    String?  // legacy free-text supplier name (kept for backward compat)
+  supplierId  String?  // FK to Supplier (preferred way to link)
   invoiceNo   String?
   totalAmount Float    @default(0)
   notes       String?
   createdAt   DateTime @default(now())
 
+  supplierLink Supplier? @relation(fields: [supplierId], references: [id])
   items PurchaseItem[]
 }
 

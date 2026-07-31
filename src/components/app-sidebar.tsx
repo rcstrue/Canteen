@@ -6,6 +6,7 @@ import {
   UtensilsCrossed,
   ClipboardList,
   ShoppingCart,
+  Truck,
   Trash2,
   BarChart3,
   Receipt,
@@ -34,6 +35,7 @@ export type ViewId =
   | "meals"
   | "daily-entry"
   | "purchases"
+  | "suppliers"
   | "wastage"
   | "reports"
   | "expenses"
@@ -51,6 +53,7 @@ const navItems: NavItem[] = [
   { id: "meals", label: "Meals / Recipes", icon: UtensilsCrossed },
   { id: "daily-entry", label: "Daily Entry", icon: ClipboardList },
   { id: "purchases", label: "Purchases", icon: ShoppingCart },
+  { id: "suppliers", label: "Suppliers", icon: Truck },
   { id: "wastage", label: "Wastage", icon: Trash2 },
   { id: "reports", label: "Reports", icon: BarChart3 },
   { id: "expenses", label: "Expenses", icon: Receipt },

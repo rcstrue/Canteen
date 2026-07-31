@@ -13,6 +13,7 @@ export async function POST() {
     await db.recipeIngredient.deleteMany()
     await db.recipe.deleteMany()
     await db.ingredient.deleteMany()
+    await db.supplier.deleteMany()
     await db.user.deleteMany()
 
     // 1. Create admin user
@@ -25,7 +26,86 @@ export async function POST() {
       },
     })
 
-    // 2. Create ingredients
+    // 1b. Create suppliers (vendor master)
+    const suppliers = await Promise.all([
+      db.supplier.create({
+        data: {
+          name: 'Rajesh Grains',
+          contactPerson: 'Rajesh Patel',
+          phone: '9825012345',
+          email: 'rajesh@rajeshgrains.in',
+          address: 'Shop 12, Grain Market, Dahej, Gujarat 392130',
+          gstin: '24ABCDE1234F1Z5',
+          category: 'Grains',
+          notes: 'Weekly delivery on Mondays. 15-day credit terms.',
+        },
+      }),
+      db.supplier.create({
+        data: {
+          name: 'Fresh Meats',
+          contactPerson: 'Imran Khan',
+          phone: '9825023456',
+          email: 'orders@freshmeats.in',
+          address: 'Plot 5, Meat Market, Dahej, Gujarat 392130',
+          gstin: '24FGHIJ5678K1Z2',
+          category: 'Meat',
+          notes: 'Daily morning delivery by 7 AM. Cash on delivery.',
+        },
+      }),
+      db.supplier.create({
+        data: {
+          name: 'Oil Industries',
+          contactPerson: 'Suresh Shah',
+          phone: '9825034567',
+          email: 'sales@oilindustries.in',
+          address: 'Industrial Area, Plot 28, Dahej, Gujarat 392130',
+          gstin: '24KLMNO9012P1Z9',
+          category: 'Oil',
+          notes: 'Bulk oil + spices supply. Monthly billing.',
+        },
+      }),
+      db.supplier.create({
+        data: {
+          name: 'Local Market',
+          contactPerson: 'Mukesh Vegetablewala',
+          phone: '9825045678',
+          email: null,
+          address: 'APMC Market, Bharuch, Gujarat 392001',
+          gstin: null,
+          category: 'Vegetables',
+          notes: 'Fresh vegetables daily. Negotiable rates.',
+        },
+      }),
+      db.supplier.create({
+        data: {
+          name: 'Pulse Traders',
+          contactPerson: 'Anil Jain',
+          phone: '9825056789',
+          email: 'anil@pulsetraders.in',
+          address: 'Shop 8, APMC Market, Bharuch, Gujarat 392001',
+          gstin: '24PQRST3456U1Z6',
+          category: 'Pulses',
+          notes: 'Pulses & dry groceries. 30-day credit.',
+        },
+      }),
+      db.supplier.create({
+        data: {
+          name: 'Dairy Farm',
+          contactPerson: 'Mahesh Patel',
+          phone: '9825067890',
+          email: 'dairy@maheshfarm.in',
+          address: 'Village Suvali, Surat, Gujarat 394510',
+          gstin: '24VWXYZ7890A1Z3',
+          category: 'Dairy',
+          notes: 'Fresh milk + ghee daily. Weekly billing.',
+        },
+      }),
+    ])
+
+    // Helper to find supplier by name
+    const findSupplier = (name: string) => suppliers.find((s) => s.name === name)!
+
+    // 2. Create ingredients (linked to suppliers via supplierId)
     const ingredients = await Promise.all([
       db.ingredient.create({
         data: {
@@ -37,6 +117,7 @@ export async function POST() {
           lastPurchasePrice: 45,
           avgCost: 43,
           supplier: 'Rajesh Grains',
+          supplierId: findSupplier('Rajesh Grains').id,
         },
       }),
       db.ingredient.create({
@@ -49,6 +130,7 @@ export async function POST() {
           lastPurchasePrice: 35,
           avgCost: 34,
           supplier: 'Rajesh Grains',
+          supplierId: findSupplier('Rajesh Grains').id,
         },
       }),
       db.ingredient.create({
@@ -61,6 +143,7 @@ export async function POST() {
           lastPurchasePrice: 120,
           avgCost: 115,
           supplier: 'Pulse Traders',
+          supplierId: findSupplier('Pulse Traders').id,
         },
       }),
       db.ingredient.create({
@@ -73,6 +156,7 @@ export async function POST() {
           lastPurchasePrice: 150,
           avgCost: 145,
           supplier: 'Oil Industries',
+          supplierId: findSupplier('Oil Industries').id,
         },
       }),
       db.ingredient.create({
@@ -85,6 +169,7 @@ export async function POST() {
           lastPurchasePrice: 25,
           avgCost: 28,
           supplier: 'Local Market',
+          supplierId: findSupplier('Local Market').id,
         },
       }),
       db.ingredient.create({
@@ -97,6 +182,7 @@ export async function POST() {
           lastPurchasePrice: 20,
           avgCost: 22,
           supplier: 'Local Market',
+          supplierId: findSupplier('Local Market').id,
         },
       }),
       db.ingredient.create({
@@ -109,6 +195,7 @@ export async function POST() {
           lastPurchasePrice: 30,
           avgCost: 32,
           supplier: 'Local Market',
+          supplierId: findSupplier('Local Market').id,
         },
       }),
       db.ingredient.create({
@@ -121,6 +208,7 @@ export async function POST() {
           lastPurchasePrice: 40,
           avgCost: 38,
           supplier: 'Local Market',
+          supplierId: findSupplier('Local Market').id,
         },
       }),
       db.ingredient.create({
@@ -132,7 +220,8 @@ export async function POST() {
           minStock: 1,
           lastPurchasePrice: 400,
           avgCost: 380,
-          supplier: 'Spice House',
+          supplier: 'Oil Industries',
+          supplierId: findSupplier('Oil Industries').id,
         },
       }),
       db.ingredient.create({
@@ -144,7 +233,8 @@ export async function POST() {
           minStock: 1,
           lastPurchasePrice: 350,
           avgCost: 340,
-          supplier: 'Spice House',
+          supplier: 'Oil Industries',
+          supplierId: findSupplier('Oil Industries').id,
         },
       }),
       db.ingredient.create({
@@ -156,7 +246,8 @@ export async function POST() {
           minStock: 0.5,
           lastPurchasePrice: 500,
           avgCost: 480,
-          supplier: 'Spice House',
+          supplier: 'Oil Industries',
+          supplierId: findSupplier('Oil Industries').id,
         },
       }),
       db.ingredient.create({
@@ -168,7 +259,8 @@ export async function POST() {
           minStock: 5,
           lastPurchasePrice: 10,
           avgCost: 10,
-          supplier: 'General Store',
+          supplier: 'Pulse Traders',
+          supplierId: findSupplier('Pulse Traders').id,
         },
       }),
       db.ingredient.create({
@@ -181,6 +273,7 @@ export async function POST() {
           lastPurchasePrice: 550,
           avgCost: 540,
           supplier: 'Dairy Farm',
+          supplierId: findSupplier('Dairy Farm').id,
         },
       }),
       db.ingredient.create({
@@ -193,6 +286,7 @@ export async function POST() {
           lastPurchasePrice: 60,
           avgCost: 58,
           supplier: 'Dairy Farm',
+          supplierId: findSupplier('Dairy Farm').id,
         },
       }),
       db.ingredient.create({
@@ -205,6 +299,7 @@ export async function POST() {
           lastPurchasePrice: 240,
           avgCost: 235,
           supplier: 'Fresh Meats',
+          supplierId: findSupplier('Fresh Meats').id,
         },
       }),
       db.ingredient.create({
@@ -216,7 +311,8 @@ export async function POST() {
           minStock: 15,
           lastPurchasePrice: 45,
           avgCost: 44,
-          supplier: 'General Store',
+          supplier: 'Rajesh Grains',
+          supplierId: findSupplier('Rajesh Grains').id,
         },
       }),
       db.ingredient.create({
@@ -228,7 +324,8 @@ export async function POST() {
           minStock: 2,
           lastPurchasePrice: 600,
           avgCost: 580,
-          supplier: 'Tea Traders',
+          supplier: 'Dairy Farm',
+          supplierId: findSupplier('Dairy Farm').id,
         },
       }),
       db.ingredient.create({
@@ -240,7 +337,8 @@ export async function POST() {
           minStock: 0.5,
           lastPurchasePrice: 300,
           avgCost: 290,
-          supplier: 'Spice House',
+          supplier: 'Oil Industries',
+          supplierId: findSupplier('Oil Industries').id,
         },
       }),
       db.ingredient.create({
@@ -252,7 +350,8 @@ export async function POST() {
           minStock: 0.5,
           lastPurchasePrice: 350,
           avgCost: 340,
-          supplier: 'Spice House',
+          supplier: 'Oil Industries',
+          supplierId: findSupplier('Oil Industries').id,
         },
       }),
       db.ingredient.create({
@@ -265,6 +364,7 @@ export async function POST() {
           lastPurchasePrice: 200,
           avgCost: 190,
           supplier: 'Local Market',
+          supplierId: findSupplier('Local Market').id,
         },
       }),
       db.ingredient.create({
@@ -277,6 +377,7 @@ export async function POST() {
           lastPurchasePrice: 80,
           avgCost: 75,
           supplier: 'Local Market',
+          supplierId: findSupplier('Local Market').id,
         },
       }),
     ])
@@ -447,6 +548,7 @@ export async function POST() {
       data: {
         date: dates[0],
         supplier: 'Rajesh Grains',
+        supplierId: findSupplier('Rajesh Grains').id,
         invoiceNo: 'INV-2024-001',
         totalAmount: 0,
         notes: 'Weekly grains purchase',
@@ -471,6 +573,7 @@ export async function POST() {
       data: {
         date: dates[1],
         supplier: 'Local Market',
+        supplierId: findSupplier('Local Market').id,
         invoiceNo: 'INV-2024-002',
         totalAmount: 0,
         notes: 'Vegetable supply',
@@ -496,6 +599,7 @@ export async function POST() {
       data: {
         date: dates[2],
         supplier: 'Oil Industries',
+        supplierId: findSupplier('Oil Industries').id,
         invoiceNo: 'INV-2024-003',
         totalAmount: 0,
         notes: 'Oil and spices',
@@ -523,6 +627,7 @@ export async function POST() {
       data: {
         date: dates[3],
         supplier: 'Fresh Meats',
+        supplierId: findSupplier('Fresh Meats').id,
         invoiceNo: 'INV-2024-004',
         totalAmount: 0,
         notes: 'Meat and dairy',
@@ -542,11 +647,12 @@ export async function POST() {
     })
     purchases.push(purchase4)
 
-    // Purchase 5: Tea & Sugar
+    // Purchase 5: Beverages & Grocery (remapped from "Tea Traders" to Dairy Farm which now supplies beverages)
     const purchase5 = await db.purchase.create({
       data: {
         date: dates[4],
-        supplier: 'Tea Traders',
+        supplier: 'Dairy Farm',
+        supplierId: findSupplier('Dairy Farm').id,
         invoiceNo: 'INV-2024-005',
         totalAmount: 0,
         notes: 'Beverages and sugar',
@@ -648,6 +754,97 @@ export async function POST() {
       }
     }
 
+    // Create meals + consumption for PREVIOUS month (15 days spread) so Monthly Comparison works
+    const prevMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    for (let dayOffset = 0; dayOffset < 15; dayOffset++) {
+      const mealDate = new Date(prevMonth)
+      mealDate.setDate(mealDate.getDate() + dayOffset * 2) // spread across the month
+
+      const baseServings = 440 + Math.floor(Math.random() * 160)
+
+      for (const mealRecipe of mealRecipes) {
+        const servings = mealRecipe.mealType === 'Snack' ? baseServings : Math.floor(baseServings * 0.78)
+        const meal = await db.dailyMealServed.create({
+          data: {
+            date: mealDate,
+            mealType: mealRecipe.mealType,
+            mealsServed: servings,
+            recipeId: mealRecipe.recipe.id,
+          },
+        })
+
+        const recipe = await db.recipe.findUnique({
+          where: { id: mealRecipe.recipe.id },
+          include: { ingredients: { include: { ingredient: true } } },
+        })
+
+        if (recipe) {
+          const ratio = servings / recipe.baseServings
+          for (const ri of recipe.ingredients) {
+            const consumedQty = ratio * ri.quantity
+            await db.stockMovement.create({
+              data: {
+                ingredientId: ri.ingredientId,
+                type: 'CONSUMPTION',
+                quantity: consumedQty,
+                unitPrice: ri.ingredient.avgCost,
+                totalAmount: consumedQty * ri.ingredient.avgCost,
+                date: mealDate,
+                notes: `${mealRecipe.mealType} - ${recipe.name} (${servings} servings)`,
+                referenceId: meal.id,
+              },
+            })
+          }
+        }
+      }
+    }
+
+    // Create PURCHASE stock movements for previous month (so food cost has data)
+    const prevMonthPurchases = [
+      { ingredient: 'Rice (Basmati)', qty: 200, price: 44 },
+      { ingredient: 'Wheat Flour', qty: 150, price: 36 },
+      { ingredient: 'Toor Dal', qty: 80, price: 118 },
+      { ingredient: 'Cooking Oil', qty: 60, price: 152 },
+      { ingredient: 'Onions', qty: 100, price: 28 },
+      { ingredient: 'Tomatoes', qty: 80, price: 30 },
+      { ingredient: 'Chicken', qty: 40, price: 238 },
+      { ingredient: 'Milk', qty: 200, price: 58 },
+    ]
+    for (const p of prevMonthPurchases) {
+      const ing = findIngredient(p.ingredient)
+      if (ing) {
+        await db.stockMovement.create({
+          data: {
+            ingredientId: ing.id,
+            type: 'PURCHASE',
+            quantity: p.qty,
+            unitPrice: p.price,
+            totalAmount: p.qty * p.price,
+            date: new Date(prevMonth.getFullYear(), prevMonth.getMonth(), 10 + Math.floor(Math.random() * 15)),
+            notes: `Previous month purchase - ${p.ingredient}`,
+          },
+        })
+      }
+    }
+
+    // Create expenses for previous month
+    const prevMonthExpenses = [
+      { category: 'Gas', amount: 7500, description: 'LPG cylinders - prev month' },
+      { category: 'Electricity', amount: 14000, description: 'Electricity bill - prev month' },
+      { category: 'Water', amount: 4800, description: 'Water supply - prev month' },
+      { category: 'Maintenance', amount: 3000, description: 'Equipment maintenance - prev month' },
+    ]
+    for (const e of prevMonthExpenses) {
+      await db.expense.create({
+        data: {
+          date: new Date(prevMonth.getFullYear(), prevMonth.getMonth(), 5 + Math.floor(Math.random() * 20)),
+          category: e.category,
+          amount: e.amount,
+          description: e.description,
+        },
+      })
+    }
+
     // 7. Create some wastage entries
     const wastageItems = [
       { ingredient: findIngredient('Onions'), qty: 2, reason: 'Spoiled' },
@@ -739,6 +936,7 @@ export async function POST() {
       message: 'Sample data seeded successfully',
       data: {
         user: admin.id,
+        suppliers: suppliers.length,
         ingredients: ingredients.length,
         recipes: 6,
         purchases: purchases.length,

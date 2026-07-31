@@ -1,0 +1,838 @@
+     1→     1→"use client";
+     2→     2→
+     3→     3→import { useState, useEffect, useCallback } from "react";
+     4→     4→
+     5→     5→import {
+     6→     6→  Card,
+     7→     7→  CardContent,
+     8→     8→  CardDescription,
+     9→     9→  CardHeader,
+    10→    10→  CardTitle,
+    11→    11→} from "@/components/ui/card";
+    12→    12→import {
+    13→    13→  Table,
+    14→    14→  TableBody,
+    15→    15→  TableCell,
+    16→    16→  TableHead,
+    17→    17→  TableHeader,
+    18→    18→  TableRow,
+    19→    19→} from "@/components/ui/table";
+    20→    20→import {
+    21→    21→  Dialog,
+    22→    22→  DialogContent,
+    23→    23→  DialogDescription,
+    24→    24→  DialogFooter,
+    25→    25→  DialogHeader,
+    26→    26→  DialogTitle,
+    27→    27→} from "@/components/ui/dialog";
+    28→    28→import {
+    29→    29→  AlertDialog,
+    30→    30→  AlertDialogAction,
+    31→    31→  AlertDialogCancel,
+    32→    32→  AlertDialogContent,
+    33→    33→  AlertDialogDescription,
+    34→    34→  AlertDialogFooter,
+    35→    35→  AlertDialogHeader,
+    36→    36→  AlertDialogTitle,
+    37→    37→} from "@/components/ui/alert-dialog";
+    38→    38→import {
+    39→    39→  Select,
+    40→    40→  SelectContent,
+    41→    41→  SelectItem,
+    42→    42→  SelectTrigger,
+    43→    43→  SelectValue,
+    44→    44→} from "@/components/ui/select";
+    45→    45→import { Input } from "@/components/ui/input";
+    46→    46→import { Button } from "@/components/ui/button";
+    47→    47→import { Badge } from "@/components/ui/badge";
+    48→    48→import { Skeleton } from "@/components/ui/skeleton";
+    49→    49→import { Textarea } from "@/components/ui/textarea";
+    50→    50→import { Label } from "@/components/ui/label";
+    51→    51→import {
+    52→    52→  ChartContainer,
+    53→    53→  ChartTooltip,
+    54→    54→  ChartTooltipContent,
+    55→    55→  type ChartConfig,
+    56→    56→} from "@/components/ui/chart";
+    57→    57→
+    58→    58→import {
+    59→    59→  Receipt,
+    60→    60→  Plus,
+    61→    61→  Pencil,
+    62→    62→  Trash2,
+    63→    63→  IndianRupee,
+    64→    64→  CalendarDays,
+    65→    65→  Flame,
+    66→    66→  Zap,
+    67→    67→  Droplets,
+    68→    68→  Wrench,
+    69→    69→  MoreHorizontal,
+    70→    70→  Loader2,
+    71→    71→  X,
+    72→    72→  TrendingUp,
+    73→    73→  ArrowUpDown,
+    74→    74→} from "lucide-react";
+    75→    75→
+    76→    76→import {
+    77→    77→  PieChart,
+    78→    78→  Pie,
+    79→    79→  Cell,
+    80→    80→  ResponsiveContainer,
+    81→    81→} from "recharts";
+    82→    82→
+    83→    83→// ─── Types ───────────────────────────────────────────────────────────────────
+    84→    84→
+    85→    85→interface Expense {
+    86→    86→  id: string;
+    87→    87→  date: string;
+    88→    88→  category: string;
+    89→    89→  amount: number;
+    90→    90→  description: string | null;
+    91→    91→  createdAt: string;
+    92→    92→}
+    93→    93→
+    94→    94→// ─── Constants ───────────────────────────────────────────────────────────────
+    95→    95→
+    96→    96→const CATEGORIES = ["Gas", "Electricity", "Water", "Maintenance", "Other"] as const;
+    97→    97→type Category = (typeof CATEGORIES)[number];
+    98→    98→
+    99→    99→const CATEGORY_COLORS: Record<Category, string> = {
+   100→   100→  Gas: "bg-orange-100 text-orange-800 dark:bg-orange-950 dark:text-orange-300 border-orange-200 dark:border-orange-800",
+   101→   101→  Electricity: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300 border-yellow-200 dark:border-yellow-800",
+   102→   102→  Water: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+   103→   103→  Maintenance: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300 border-green-200 dark:border-green-800",
+   104→   104→  Other: "bg-gray-100 text-gray-800 dark:bg-gray-950 dark:text-gray-300 border-gray-200 dark:border-gray-800",
+   105→   105→};
+   106→   106→
+   107→   107→const CATEGORY_PIE_COLORS: Record<Category, string> = {
+   108→   108→  Gas: "#f97316",
+   109→   109→  Electricity: "#eab308",
+   110→   110→  Water: "#3b82f6",
+   111→   111→  Maintenance: "#22c55e",
+   112→   112→  Other: "#6b7280",
+   113→   113→};
+   114→   114→
+   115→   115→const CATEGORY_ICONS: Record<Category, React.ReactNode> = {
+   116→   116→  Gas: <Flame className="h-3 w-3" />,
+   117→   117→  Electricity: <Zap className="h-3 w-3" />,
+   118→   118→  Water: <Droplets className="h-3 w-3" />,
+   119→   119→  Maintenance: <Wrench className="h-3 w-3" />,
+   120→   120→  Other: <MoreHorizontal className="h-3 w-3" />,
+   121→   121→};
+   122→   122→
+   123→   123→const CHART_CONFIG: ChartConfig = {
+   124→   124→  Gas: { label: "Gas", color: "#f97316" },
+   125→   125→  Electricity: { label: "Electricity", color: "#eab308" },
+   126→   126→  Water: { label: "Water", color: "#3b82f6" },
+   127→   127→  Maintenance: { label: "Maintenance", color: "#22c55e" },
+   128→   128→  Other: { label: "Other", color: "#6b7280" },
+   129→   129→};
+   130→   130→
+   131→   131→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   132→   132→
+   133→   133→function formatCurrency(amount: number): string {
+   134→   134→  return new Intl.NumberFormat("en-IN", {
+   135→   135→    style: "currency",
+   136→   136→    currency: "INR",
+   137→   137→    minimumFractionDigits: 0,
+   138→   138→    maximumFractionDigits: 2,
+   139→   139→  }).format(amount);
+   140→   140→}
+   141→   141→
+   142→   142→function formatDate(dateStr: string): string {
+   143→   143→  const d = new Date(dateStr);
+   144→   144→  const day = String(d.getDate()).padStart(2, "0");
+   145→   145→  const month = String(d.getMonth() + 1).padStart(2, "0");
+   146→   146→  const year = d.getFullYear();
+   147→   147→  return `${day}/${month}/${year}`;
+   148→   148→}
+   149→   149→
+   150→   150→function getTodayStr(): string {
+   151→   151→  const d = new Date();
+   152→   152→  return d.toISOString().split("T")[0];
+   153→   153→}
+   154→   154→
+   155→   155→function getMonthStartStr(): string {
+   156→   156→  const d = new Date();
+   157→   157→  d.setDate(1);
+   158→   158→  return d.toISOString().split("T")[0];
+   159→   159→}
+   160→   160→
+   161→   161→// ─── Component ───────────────────────────────────────────────────────────────
+   162→   162→
+   163→   163→export function ExpensesView() {
+   164→   164→  // State
+   165→   165→  const [expenses, setExpenses] = useState<Expense[]>([]);
+   166→   166→  const [loading, setLoading] = useState(true);
+   167→   167→  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+   168→   168→  const [startDate, setStartDate] = useState<string>("");
+   169→   169→  const [endDate, setEndDate] = useState<string>("");
+   170→   170→
+   171→   171→  // Dialog states
+   172→   172→  const [dialogOpen, setDialogOpen] = useState(false);
+   173→   173→  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+   174→   174→  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+   175→   175→  const [deletingExpense, setDeletingExpense] = useState<Expense | null>(null);
+   176→   176→  const [submitting, setSubmitting] = useState(false);
+   177→   177→
+   178→   178→  // Sort
+   179→   179→  const [sortField, setSortField] = useState<"date" | "amount" | "category">("date");
+   180→   180→  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+   181→   181→
+   182→   182→  // Form state
+   183→   183→  const [formDate, setFormDate] = useState(getTodayStr());
+   184→   184→  const [formCategory, setFormCategory] = useState<string>("");
+   185→   185→  const [formAmount, setFormAmount] = useState<string>("");
+   186→   186→  const [formDescription, setFormDescription] = useState<string>("");
+   187→   187→
+   188→   188→  // ─── Fetch ─────────────────────────────────────────────────────────────────
+   189→   189→
+   190→   190→  const fetchExpenses = useCallback(async () => {
+   191→   191→    setLoading(true);
+   192→   192→    try {
+   193→   193→      const params = new URLSearchParams();
+   194→   194→      if (categoryFilter && categoryFilter !== "all") params.set("category", categoryFilter);
+   195→   195→      if (startDate) params.set("startDate", startDate);
+   196→   196→      if (endDate) params.set("endDate", endDate);
+   197→   197→      params.set("limit", "200");
+   198→   198→
+   199→   199→      const res = await fetch(`/api/expenses?${params.toString()}`);
+   200→   200→      if (!res.ok) throw new Error("Failed to fetch");
+   201→   201→      const json = await res.json();
+   202→   202→      setExpenses(json.data || []);
+   203→   203→    } catch (err) {
+   204→   204→      console.error("Error fetching expenses:", err);
+   205→   205→    } finally {
+   206→   206→      setLoading(false);
+   207→   207→    }
+   208→   208→  }, [categoryFilter, startDate, endDate]);
+   209→   209→
+   210→   210→  useEffect(() => {
+   211→   211→    fetchExpenses();
+   212→   212→  }, [fetchExpenses]);
+   213→   213→
+   214→   214→  // ─── Computed ──────────────────────────────────────────────────────────────
+   215→   215→
+   216→   216→  const todayStr = new Date().toISOString().split("T")[0];
+   217→   217→  const monthStart = new Date();
+   218→   218→  monthStart.setDate(1);
+   219→   219→  monthStart.setHours(0, 0, 0, 0);
+   220→   220→
+   221→   221→  const totalThisMonth = expenses
+   222→   222→    .filter((e) => new Date(e.date) >= monthStart)
+   223→   223→    .reduce((sum, e) => sum + e.amount, 0);
+   224→   224→
+   225→   225→  const totalToday = expenses
+   226→   226→    .filter((e) => e.date.split("T")[0] === todayStr)
+   227→   227→    .reduce((sum, e) => sum + e.amount, 0);
+   228→   228→
+   229→   229→  const categoryBreakdown = CATEGORIES.map((cat) => ({
+   230→   230→    category: cat,
+   231→   231→    total: expenses
+   232→   232→      .filter((e) => e.category === cat)
+   233→   233→      .reduce((sum, e) => sum + e.amount, 0),
+   234→   234→  })).filter((c) => c.total > 0);
+   235→   235→
+   236→   236→  const pieData = categoryBreakdown.map((c) => ({
+   237→   237→    name: c.category,
+   238→   238→    value: c.total,
+   239→   239→    fill: CATEGORY_PIE_COLORS[c.category as Category],
+   240→   240→  }));
+   241→   241→
+   242→   242→  // ─── Sort ──────────────────────────────────────────────────────────────────
+   243→   243→
+   244→   244→  const sortedExpenses = [...expenses].sort((a, b) => {
+   245→   245→    let cmp = 0;
+   246→   246→    if (sortField === "date") {
+   247→   247→      cmp = new Date(a.date).getTime() - new Date(b.date).getTime();
+   248→   248→    } else if (sortField === "amount") {
+   249→   249→      cmp = a.amount - b.amount;
+   250→   250→    } else {
+   251→   251→      cmp = a.category.localeCompare(b.category);
+   252→   252→    }
+   253→   253→    return sortDir === "desc" ? -cmp : cmp;
+   254→   254→  });
+   255→   255→
+   256→   256→  function handleSort(field: "date" | "amount" | "category") {
+   257→   257→    if (sortField === field) {
+   258→   258→      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+   259→   259→    } else {
+   260→   260→      setSortField(field);
+   261→   261→      setSortDir("desc");
+   262→   262→    }
+   263→   263→  }
+   264→   264→
+   265→   265→  // ─── Dialog handlers ───────────────────────────────────────────────────────
+   266→   266→
+   267→   267→  function openAddDialog() {
+   268→   268→    setEditingExpense(null);
+   269→   269→    setFormDate(getTodayStr());
+   270→   270→    setFormCategory("");
+   271→   271→    setFormAmount("");
+   272→   272→    setFormDescription("");
+   273→   273→    setDialogOpen(true);
+   274→   274→  }
+   275→   275→
+   276→   276→  function openEditDialog(expense: Expense) {
+   277→   277→    setEditingExpense(expense);
+   278→   278→    setFormDate(expense.date.split("T")[0]);
+   279→   279→    setFormCategory(expense.category);
+   280→   280→    setFormAmount(String(expense.amount));
+   281→   281→    setFormDescription(expense.description || "");
+   282→   282→    setDialogOpen(true);
+   283→   283→  }
+   284→   284→
+   285→   285→  function openDeleteDialog(expense: Expense) {
+   286→   286→    setDeletingExpense(expense);
+   287→   287→    setDeleteDialogOpen(true);
+   288→   288→  }
+   289→   289→
+   290→   290→  async function handleSubmit() {
+   291→   291→    if (!formDate || !formCategory || !formAmount || Number(formAmount) <= 0) return;
+   292→   292→
+   293→   293→    setSubmitting(true);
+   294→   294→    try {
+   295→   295→      const body = {
+   296→   296→        date: formDate,
+   297→   297→        category: formCategory,
+   298→   298→        amount: Number(formAmount),
+   299→   299→        description: formDescription || null,
+   300→   300→      };
+   301→   301→
+   302→   302→      if (editingExpense) {
+   303→   303→        const res = await fetch(`/api/expenses/${editingExpense.id}`, {
+   304→   304→          method: "PUT",
+   305→   305→          headers: { "Content-Type": "application/json" },
+   306→   306→          body: JSON.stringify(body),
+   307→   307→        });
+   308→   308→        if (!res.ok) throw new Error("Failed to update");
+   309→   309→      } else {
+   310→   310→        const res = await fetch("/api/expenses", {
+   311→   311→          method: "POST",
+   312→   312→          headers: { "Content-Type": "application/json" },
+   313→   313→          body: JSON.stringify(body),
+   314→   314→        });
+   315→   315→        if (!res.ok) throw new Error("Failed to create");
+   316→   316→      }
+   317→   317→
+   318→   318→      setDialogOpen(false);
+   319→   319→      fetchExpenses();
+   320→   320→    } catch (err) {
+   321→   321→      console.error("Error saving expense:", err);
+   322→   322→    } finally {
+   323→   323→      setSubmitting(false);
+   324→   324→    }
+   325→   325→  }
+   326→   326→
+   327→   327→  async function handleDelete() {
+   328→   328→    if (!deletingExpense) return;
+   329→   329→    try {
+   330→   330→      const res = await fetch(`/api/expenses/${deletingExpense.id}`, {
+   331→   331→        method: "DELETE",
+   332→   332→      });
+   333→   333→      if (!res.ok) throw new Error("Failed to delete");
+   334→   334→      setDeleteDialogOpen(false);
+   335→   335→      setDeletingExpense(null);
+   336→   336→      fetchExpenses();
+   337→   337→    } catch (err) {
+   338→   338→      console.error("Error deleting expense:", err);
+   339→   339→    }
+   340→   340→  }
+   341→   341→
+   342→   342→  // ─── Custom Tooltip for Pie ────────────────────────────────────────────────
+   343→   343→
+   344→   344→  function PieTooltipContent({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload: { fill: string } }> }) {
+   345→   345→    if (!active || !payload?.length) return null;
+   346→   346→    const item = payload[0];
+   347→   347→    return (
+   348→   348→      <div className="border-border/50 bg-background rounded-lg border px-3 py-2 text-xs shadow-xl">
+   349→   349→        <p className="font-medium">{item.name}</p>
+   350→   350→        <p className="text-muted-foreground">{formatCurrency(item.value)}</p>
+   351→   351→      </div>
+   352→   352→    );
+   353→   353→  }
+   354→   354→
+   355→   355→  // ─── Render ────────────────────────────────────────────────────────────────
+   356→   356→
+   357→   357→  return (
+   358→   358→    <div className="space-y-6">
+   359→   359→      {/* ─── Header ─────────────────────────────────────────────────────────── */}
+   360→   360→      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   361→   361→        <div className="flex items-center gap-3">
+   362→   362→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
+   363→   363→            <Receipt className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   364→   364→          </div>
+   365→   365→          <div>
+   366→   366→            <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
+   367→   367→            <p className="text-muted-foreground text-sm">
+   368→   368→              Track overhead expenses, utility bills &amp; non-food costs
+   369→   369→            </p>
+   370→   370→          </div>
+   371→   371→        </div>
+   372→   372→        <Button onClick={openAddDialog} className="bg-orange-600 hover:bg-orange-700 text-white gap-2">
+   373→   373→          <Plus className="h-4 w-4" />
+   374→   374→          Add Expense
+   375→   375→        </Button>
+   376→   376→      </div>
+   377→   377→
+   378→   378→      {/* ─── Filters ────────────────────────────────────────────────────────── */}
+   379→   379→      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+   380→   380→        <div className="flex flex-col gap-1.5">
+   381→   381→          <Label className="text-xs text-muted-foreground">Category</Label>
+   382→   382→          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   383→   383→            <SelectTrigger className="w-[160px]">
+   384→   384→              <SelectValue placeholder="All Categories" />
+   385→   385→            </SelectTrigger>
+   386→   386→            <SelectContent>
+   387→   387→              <SelectItem value="all">All Categories</SelectItem>
+   388→   388→              {CATEGORIES.map((cat) => (
+   389→   389→                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+   390→   390→              ))}
+   391→   391→            </SelectContent>
+   392→   392→          </Select>
+   393→   393→        </div>
+   394→   394→        <div className="flex flex-col gap-1.5">
+   395→   395→          <Label className="text-xs text-muted-foreground">From</Label>
+   396→   396→          <Input
+   397→   397→            type="date"
+   398→   398→            value={startDate}
+   399→   399→            onChange={(e) => setStartDate(e.target.value)}
+   400→   400→            className="w-[160px]"
+   401→   401→          />
+   402→   402→        </div>
+   403→   403→        <div className="flex flex-col gap-1.5">
+   404→   404→          <Label className="text-xs text-muted-foreground">To</Label>
+   405→   405→          <Input
+   406→   406→            type="date"
+   407→   407→            value={endDate}
+   408→   408→            onChange={(e) => setEndDate(e.target.value)}
+   409→   409→            className="w-[160px]"
+   410→   410→          />
+   411→   411→        </div>
+   412→   412→        {(categoryFilter !== "all" || startDate || endDate) && (
+   413→   413→          <Button
+   414→   414→            variant="ghost"
+   415→   415→            size="sm"
+   416→   416→            className="gap-1 text-muted-foreground"
+   417→   417→            onClick={() => {
+   418→   418→              setCategoryFilter("all");
+   419→   419→              setStartDate("");
+   420→   420→              setEndDate("");
+   421→   421→            }}
+   422→   422→          >
+   423→   423→            <X className="h-3 w-3" />
+   424→   424→            Clear
+   425→   425→          </Button>
+   426→   426→        )}
+   427→   427→      </div>
+   428→   428→
+   429→   429→      {/* ─── Summary Cards ──────────────────────────────────────────────────── */}
+   430→   430→      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   431→   431→        {/* Total This Month */}
+   432→   432→        <Card>
+   433→   433→          <CardContent className="p-6">
+   434→   434→            <div className="flex items-center gap-3">
+   435→   435→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
+   436→   436→                <CalendarDays className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   437→   437→              </div>
+   438→   438→              <div className="flex-1">
+   439→   439→                <p className="text-sm text-muted-foreground">Total This Month</p>
+   440→   440→                {loading ? (
+   441→   441→                  <Skeleton className="h-7 w-32" />
+   442→   442→                ) : (
+   443→   443→                  <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+   444→   444→                    {formatCurrency(totalThisMonth)}
+   445→   445→                  </p>
+   446→   446→                )}
+   447→   447→              </div>
+   448→   448→              <TrendingUp className="h-5 w-5 text-orange-400" />
+   449→   449→            </div>
+   450→   450→          </CardContent>
+   451→   451→        </Card>
+   452→   452→
+   453→   453→        {/* Total Today */}
+   454→   454→        <Card>
+   455→   455→          <CardContent className="p-6">
+   456→   456→            <div className="flex items-center gap-3">
+   457→   457→              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-950">
+   458→   458→                <IndianRupee className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   459→   459→              </div>
+   460→   460→              <div className="flex-1">
+   461→   461→                <p className="text-sm text-muted-foreground">Total Today</p>
+   462→   462→                {loading ? (
+   463→   463→                  <Skeleton className="h-7 w-32" />
+   464→   464→                ) : (
+   465→   465→                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+   466→   466→                    {formatCurrency(totalToday)}
+   467→   467→                  </p>
+   468→   468→                )}
+   469→   469→              </div>
+   470→   470→            </div>
+   471→   471→          </CardContent>
+   472→   472→        </Card>
+   473→   473→
+   474→   474→        {/* Category Breakdown Inline */}
+   475→   475→        <Card>
+   476→   476→          <CardContent className="p-6">
+   477→   477→            <p className="text-sm text-muted-foreground mb-3">By Category</p>
+   478→   478→            {loading ? (
+   479→   479→              <div className="space-y-2">
+   480→   480→                {Array.from({ length: 3 }).map((_, i) => (
+   481→   481→                  <Skeleton key={i} className="h-4 w-full" />
+   482→   482→                ))}
+   483→   483→              </div>
+   484→   484→            ) : categoryBreakdown.length === 0 ? (
+   485→   485→              <p className="text-xs text-muted-foreground">No expenses recorded</p>
+   486→   486→            ) : (
+   487→   487→              <div className="space-y-2">
+   488→   488→                {categoryBreakdown.map((c) => (
+   489→   489→                  <div key={c.category} className="flex items-center justify-between gap-2">
+   490→   490→                    <div className="flex items-center gap-1.5">
+   491→   491→                      {CATEGORY_ICONS[c.category as Category]}
+   492→   492→                      <span className="text-xs font-medium">{c.category}</span>
+   493→   493→                    </div>
+   494→   494→                    <span className="text-xs font-semibold">{formatCurrency(c.total)}</span>
+   495→   495→                  </div>
+   496→   496→                ))}
+   497→   497→              </div>
+   498→   498→            )}
+   499→   499→          </CardContent>
+   500→   500→        </Card>
+   501→   501→      </div>
+   502→   502→
+   503→   503→      {/* ─── Main Content: Table + Pie Chart ─────────────────────────────────── */}
+   504→   504→      <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+   505→   505→        {/* Expenses Table */}
+   506→   506→        <Card>
+   507→   507→          <CardHeader className="pb-3">
+   508→   508→            <CardTitle className="text-lg">Expense Records</CardTitle>
+   509→   509→            <CardDescription>
+   510→   510→              {loading
+   511→   511→                ? "Loading..."
+   512→   512→                : `${expenses.length} expense${expenses.length !== 1 ? "s" : ""} found`}
+   513→   513→            </CardDescription>
+   514→   514→          </CardHeader>
+   515→   515→          <CardContent>
+   516→   516→            {loading ? (
+   517→   517→              <div className="space-y-3">
+   518→   518→                {Array.from({ length: 5 }).map((_, i) => (
+   519→   519→                  <div key={i} className="flex items-center gap-4">
+   520→   520→                    <Skeleton className="h-4 w-20" />
+   521→   521→                    <Skeleton className="h-4 w-16" />
+   522→   522→                    <Skeleton className="h-4 w-24" />
+   523→   523→                    <Skeleton className="h-4 flex-1" />
+   524→   524→                  </div>
+   525→   525→                ))}
+   526→   526→              </div>
+   527→   527→            ) : sortedExpenses.length === 0 ? (
+   528→   528→              <div className="flex flex-col items-center justify-center py-12 text-center">
+   529→   529→                <Receipt className="h-12 w-12 text-muted-foreground/40 mb-3" />
+   530→   530→                <p className="text-muted-foreground text-sm font-medium">No expenses found</p>
+   531→   531→                <p className="text-muted-foreground/70 text-xs mt-1">
+   532→   532→                  Add your first expense or adjust filters
+   533→   533→                </p>
+   534→   534→                <Button
+   535→   535→                  onClick={openAddDialog}
+   536→   536→                  variant="outline"
+   537→   537→                  className="mt-4 gap-2 border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-400 dark:hover:bg-orange-950"
+   538→   538→                >
+   539→   539→                  <Plus className="h-4 w-4" />
+   540→   540→                  Add Expense
+   541→   541→                </Button>
+   542→   542→              </div>
+   543→   543→            ) : (
+   544→   544→              <div className="overflow-x-auto">
+   545→   545→                <Table>
+   546→   546→                  <TableHeader>
+   547→   547→                    <TableRow>
+   548→   548→                      <TableHead
+   549→   549→                        className="cursor-pointer select-none hover:text-foreground"
+   550→   550→                        onClick={() => handleSort("date")}
+   551→   551→                      >
+   552→   552→                        <div className="flex items-center gap-1">
+   553→   553→                          Date
+   554→   554→                          <ArrowUpDown className="h-3 w-3" />
+   555→   555→                        </div>
+   556→   556→                      </TableHead>
+   557→   557→                      <TableHead
+   558→   558→                        className="cursor-pointer select-none hover:text-foreground"
+   559→   559→                        onClick={() => handleSort("category")}
+   560→   560→                      >
+   561→   561→                        <div className="flex items-center gap-1">
+   562→   562→                          Category
+   563→   563→                          <ArrowUpDown className="h-3 w-3" />
+   564→   564→                        </div>
+   565→   565→                      </TableHead>
+   566→   566→                      <TableHead
+   567→   567→                        className="cursor-pointer select-none hover:text-foreground text-right"
+   568→   568→                        onClick={() => handleSort("amount")}
+   569→   569→                      >
+   570→   570→                        <div className="flex items-center justify-end gap-1">
+   571→   571→                          Amount
+   572→   572→                          <ArrowUpDown className="h-3 w-3" />
+   573→   573→                        </div>
+   574→   574→                      </TableHead>
+   575→   575→                      <TableHead>Description</TableHead>
+   576→   576→                      <TableHead className="text-right">Actions</TableHead>
+   577→   577→                    </TableRow>
+   578→   578→                  </TableHeader>
+   579→   579→                  <TableBody>
+   580→   580→                    {sortedExpenses.map((expense) => (
+   581→   581→                      <TableRow
+   582→   582→                        key={expense.id}
+   583→   583→                        className="hover:bg-orange-50/50 dark:hover:bg-orange-950/20 transition-colors"
+   584→   584→                      >
+   585→   585→                        <TableCell className="font-medium whitespace-nowrap">
+   586→   586→                          {formatDate(expense.date)}
+   587→   587→                        </TableCell>
+   588→   588→                        <TableCell>
+   589→   589→                          <Badge
+   590→   590→                            variant="outline"
+   591→   591→                            className={`gap-1 ${CATEGORY_COLORS[expense.category as Category] || CATEGORY_COLORS.Other}`}
+   592→   592→                          >
+   593→   593→                            {CATEGORY_ICONS[expense.category as Category]}
+   594→   594→                            {expense.category}
+   595→   595→                          </Badge>
+   596→   596→                        </TableCell>
+   597→   597→                        <TableCell className="text-right font-semibold whitespace-nowrap">
+   598→   598→                          {formatCurrency(expense.amount)}
+   599→   599→                        </TableCell>
+   600→   600→                        <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
+   601→   601→                          {expense.description || "—"}
+   602→   602→                        </TableCell>
+   603→   603→                        <TableCell className="text-right">
+   604→   604→                          <div className="flex items-center justify-end gap-1">
+   605→   605→                            <Button
+   606→   606→                              variant="ghost"
+   607→   607→                              size="icon"
+   608→   608→                              className="h-8 w-8 text-muted-foreground hover:text-orange-600"
+   609→   609→                              onClick={() => openEditDialog(expense)}
+   610→   610→                            >
+   611→   611→                              <Pencil className="h-3.5 w-3.5" />
+   612→   612→                            </Button>
+   613→   613→                            <Button
+   614→   614→                              variant="ghost"
+   615→   615→                              size="icon"
+   616→   616→                              className="h-8 w-8 text-muted-foreground hover:text-red-600"
+   617→   617→                              onClick={() => openDeleteDialog(expense)}
+   618→   618→                            >
+   619→   619→                              <Trash2 className="h-3.5 w-3.5" />
+   620→   620→                            </Button>
+   621→   621→                          </div>
+   622→   622→                        </TableCell>
+   623→   623→                      </TableRow>
+   624→   624→                    ))}
+   625→   625→                  </TableBody>
+   626→   626→                </Table>
+   627→   627→              </div>
+   628→   628→            )}
+   629→   629→          </CardContent>
+   630→   630→        </Card>
+   631→   631→
+   632→   632→        {/* Category Breakdown Pie Chart */}
+   633→   633→        <Card>
+   634→   634→          <CardHeader className="pb-3">
+   635→   635→            <CardTitle className="text-lg">Category Breakdown</CardTitle>
+   636→   636→            <CardDescription>Expense distribution by category</CardDescription>
+   637→   637→          </CardHeader>
+   638→   638→          <CardContent>
+   639→   639→            {loading ? (
+   640→   640→              <div className="flex flex-col items-center gap-4">
+   641→   641→                <Skeleton className="h-[200px] w-[200px] rounded-full" />
+   642→   642→                <div className="w-full space-y-2">
+   643→   643→                  {Array.from({ length: 3 }).map((_, i) => (
+   644→   644→                    <Skeleton key={i} className="h-4 w-full" />
+   645→   645→                  ))}
+   646→   646→                </div>
+   647→   647→              </div>
+   648→   648→            ) : pieData.length === 0 ? (
+   649→   649→              <div className="flex flex-col items-center justify-center py-8 text-center">
+   650→   650→                <Receipt className="h-10 w-10 text-muted-foreground/40 mb-2" />
+   651→   651→                <p className="text-muted-foreground text-xs">No data for chart</p>
+   652→   652→              </div>
+   653→   653→            ) : (
+   654→   654→              <div className="flex flex-col items-center">
+   655→   655→                <ChartContainer config={CHART_CONFIG} className="mx-auto aspect-square max-h-[220px] w-full">
+   656→   656→                  <PieChart>
+   657→   657→                    <ChartTooltip content={<PieTooltipContent />} />
+   658→   658→                    <Pie
+   659→   659→                      data={pieData}
+   660→   660→                      dataKey="value"
+   661→   661→                      nameKey="name"
+   662→   662→                      cx="50%"
+   663→   663→                      cy="50%"
+   664→   664→                      innerRadius={50}
+   665→   665→                      outerRadius={85}
+   666→   666→                      paddingAngle={3}
+   667→   667→                      strokeWidth={2}
+   668→   668→                      stroke="var(--background)"
+   669→   669→                    >
+   670→   670→                      {pieData.map((entry, index) => (
+   671→   671→                        <Cell key={`cell-${index}`} fill={entry.fill} />
+   672→   672→                      ))}
+   673→   673→                    </Pie>
+   674→   674→                  </PieChart>
+   675→   675→                </ChartContainer>
+   676→   676→                <div className="mt-4 w-full space-y-2">
+   677→   677→                  {categoryBreakdown.map((c) => {
+   678→   678→                    const total = categoryBreakdown.reduce((s, x) => s + x.total, 0);
+   679→   679→                    const pct = total > 0 ? ((c.total / total) * 100).toFixed(1) : "0";
+   680→   680→                    return (
+   681→   681→                      <div key={c.category} className="flex items-center justify-between gap-2">
+   682→   682→                        <div className="flex items-center gap-2">
+   683→   683→                          <div
+   684→   684→                            className="h-2.5 w-2.5 rounded-sm shrink-0"
+   685→   685→                            style={{ backgroundColor: CATEGORY_PIE_COLORS[c.category as Category] }}
+   686→   686→                          />
+   687→   687→                          <span className="text-xs font-medium">{c.category}</span>
+   688→   688→                        </div>
+   689→   689→                        <div className="flex items-center gap-2">
+   690→   690→                          <span className="text-xs font-semibold">{formatCurrency(c.total)}</span>
+   691→   691→                          <span className="text-xs text-muted-foreground">({pct}%)</span>
+   692→   692→                        </div>
+   693→   693→                      </div>
+   694→   694→                    );
+   695→   695→                  })}
+   696→   696→                </div>
+   697→   697→              </div>
+   698→   698→            )}
+   699→   699→          </CardContent>
+   700→   700→        </Card>
+   701→   701→      </div>
+   702→   702→
+   703→   703→      {/* ─── Add/Edit Dialog ─────────────────────────────────────────────────── */}
+   704→   704→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   705→   705→        <DialogContent className="sm:max-w-[460px]">
+   706→   706→          <DialogHeader>
+   707→   707→            <DialogTitle>
+   708→   708→              {editingExpense ? "Edit Expense" : "Add Expense"}
+   709→   709→            </DialogTitle>
+   710→   710→            <DialogDescription>
+   711→   711→              {editingExpense
+   712→   712→                ? "Update the expense details below"
+   713→   713→                : "Record a new expense entry"}
+   714→   714→            </DialogDescription>
+   715→   715→          </DialogHeader>
+   716→   716→
+   717→   717→          <div className="grid gap-4 py-4">
+   718→   718→            {/* Date */}
+   719→   719→            <div className="grid gap-2">
+   720→   720→              <Label htmlFor="exp-date" className="text-sm font-medium">
+   721→   721→                Date <span className="text-red-500">*</span>
+   722→   722→              </Label>
+   723→   723→              <Input
+   724→   724→                id="exp-date"
+   725→   725→                type="date"
+   726→   726→                value={formDate}
+   727→   727→                onChange={(e) => setFormDate(e.target.value)}
+   728→   728→              />
+   729→   729→            </div>
+   730→   730→
+   731→   731→            {/* Category */}
+   732→   732→            <div className="grid gap-2">
+   733→   733→              <Label htmlFor="exp-category" className="text-sm font-medium">
+   734→   734→                Category <span className="text-red-500">*</span>
+   735→   735→              </Label>
+   736→   736→              <Select value={formCategory} onValueChange={setFormCategory}>
+   737→   737→                <SelectTrigger id="exp-category">
+   738→   738→                  <SelectValue placeholder="Select category" />
+   739→   739→                </SelectTrigger>
+   740→   740→                <SelectContent>
+   741→   741→                  {CATEGORIES.map((cat) => (
+   742→   742→                    <SelectItem key={cat} value={cat}>
+   743→   743→                      <div className="flex items-center gap-2">
+   744→   744→                        {CATEGORY_ICONS[cat]}
+   745→   745→                        {cat}
+   746→   746→                      </div>
+   747→   747→                    </SelectItem>
+   748→   748→                  ))}
+   749→   749→                </SelectContent>
+   750→   750→              </Select>
+   751→   751→            </div>
+   752→   752→
+   753→   753→            {/* Amount */}
+   754→   754→            <div className="grid gap-2">
+   755→   755→              <Label htmlFor="exp-amount" className="text-sm font-medium">
+   756→   756→                Amount (₹) <span className="text-red-500">*</span>
+   757→   757→              </Label>
+   758→   758→              <div className="relative">
+   759→   759→                <IndianRupee className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   760→   760→                <Input
+   761→   761→                  id="exp-amount"
+   762→   762→                  type="number"
+   763→   763→                  min="0"
+   764→   764→                  step="0.01"
+   765→   765→                  placeholder="0.00"
+   766→   766→                  value={formAmount}
+   767→   767→                  onChange={(e) => setFormAmount(e.target.value)}
+   768→   768→                  className="pl-9"
+   769→   769→                />
+   770→   770→              </div>
+   771→   771→            </div>
+   772→   772→
+   773→   773→            {/* Description */}
+   774→   774→            <div className="grid gap-2">
+   775→   775→              <Label htmlFor="exp-desc" className="text-sm font-medium">
+   776→   776→                Description
+   777→   777→              </Label>
+   778→   778→              <Textarea
+   779→   779→                id="exp-desc"
+   780→   780→                placeholder="Optional notes about this expense..."
+   781→   781→                value={formDescription}
+   782→   782→                onChange={(e) => setFormDescription(e.target.value)}
+   783→   783→                rows={3}
+   784→   784→              />
+   785→   785→            </div>
+   786→   786→          </div>
+   787→   787→
+   788→   788→          <DialogFooter>
+   789→   789→            <Button
+   790→   790→              variant="outline"
+   791→   791→              onClick={() => setDialogOpen(false)}
+   792→   792→              disabled={submitting}
+   793→   793→            >
+   794→   794→              Cancel
+   795→   795→            </Button>
+   796→   796→            <Button
+   797→   797→              onClick={handleSubmit}
+   798→   798→              disabled={submitting || !formDate || !formCategory || !formAmount || Number(formAmount) <= 0}
+   799→   799→              className="bg-orange-600 hover:bg-orange-700 text-white gap-2"
+   800→   800→            >
+   801→   801→              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+   802→   802→              {editingExpense ? "Update" : "Add"} Expense
+   803→   803→            </Button>
+   804→   804→          </DialogFooter>
+   805→   805→        </DialogContent>
+   806→   806→      </Dialog>
+   807→   807→
+   808→   808→      {/* ─── Delete Confirmation ─────────────────────────────────────────────── */}
+   809→   809→      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+   810→   810→        <AlertDialogContent>
+   811→   811→          <AlertDialogHeader>
+   812→   812→            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+   813→   813→            <AlertDialogDescription>
+   814→   814→              Are you sure you want to delete this expense record?
+   815→   815→              {deletingExpense && (
+   816→   816→                <span className="mt-2 block font-medium text-foreground">
+   817→   817→                  {deletingExpense.category} — {formatCurrency(deletingExpense.amount)} on{" "}
+   818→   818→                  {formatDate(deletingExpense.date)}
+   819→   819→                </span>
+   820→   820→              )}
+   821→   821→              <span className="mt-1 block">This action cannot be undone.</span>
+   822→   822→            </AlertDialogDescription>
+   823→   823→          </AlertDialogHeader>
+   824→   824→          <AlertDialogFooter>
+   825→   825→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   826→   826→            <AlertDialogAction
+   827→   827→              onClick={handleDelete}
+   828→   828→              className="bg-red-600 hover:bg-red-700 text-white"
+   829→   829→            >
+   830→   830→              Delete
+   831→   831→            </AlertDialogAction>
+   832→   832→          </AlertDialogFooter>
+   833→   833→        </AlertDialogContent>
+   834→   834→      </AlertDialog>
+   835→   835→    </div>
+   836→   836→  );
+   837→   837→}
+   838→   838→

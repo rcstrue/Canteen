@@ -71,6 +71,10 @@ import {
   X,
   TrendingUp,
   ArrowUpDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 
 import {
@@ -92,6 +96,8 @@ interface Expense {
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
+
+const ITEMS_PER_PAGE = 10;
 
 const CATEGORIES = ["Gas", "Electricity", "Water", "Maintenance", "Other"] as const;
 type Category = (typeof CATEGORIES)[number];
@@ -179,6 +185,9 @@ export function ExpensesView() {
   const [sortField, setSortField] = useState<"date" | "amount" | "category">("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Form state
   const [formDate, setFormDate] = useState(getTodayStr());
   const [formCategory, setFormCategory] = useState<string>("");
@@ -210,6 +219,11 @@ export function ExpensesView() {
   useEffect(() => {
     fetchExpenses();
   }, [fetchExpenses]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [categoryFilter, startDate, endDate]);
 
   // ─── Computed ──────────────────────────────────────────────────────────────
 
@@ -260,7 +274,21 @@ export function ExpensesView() {
       setSortField(field);
       setSortDir("desc");
     }
+    setCurrentPage(1);
   }
+
+  // ─── Pagination ────────────────────────────────────────────────────────────
+
+  const totalExpenses = sortedExpenses.length;
+  const totalAmount = sortedExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalPages = Math.max(1, Math.ceil(totalExpenses / ITEMS_PER_PAGE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedExpenses = sortedExpenses.slice(
+    (safeCurrentPage - 1) * ITEMS_PER_PAGE,
+    safeCurrentPage * ITEMS_PER_PAGE
+  );
+  const showingFrom = totalExpenses === 0 ? 0 : (safeCurrentPage - 1) * ITEMS_PER_PAGE + 1;
+  const showingTo = Math.min(safeCurrentPage * ITEMS_PER_PAGE, totalExpenses);
 
   // ─── Dialog handlers ───────────────────────────────────────────────────────
 
@@ -440,7 +468,7 @@ export function ExpensesView() {
                 {loading ? (
                   <Skeleton className="h-7 w-32" />
                 ) : (
-                  <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                  <p className="text-2xl font-bold tabular-nums text-orange-600 dark:text-orange-400">
                     {formatCurrency(totalThisMonth)}
                   </p>
                 )}
@@ -462,7 +490,7 @@ export function ExpensesView() {
                 {loading ? (
                   <Skeleton className="h-7 w-32" />
                 ) : (
-                  <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                  <p className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
                     {formatCurrency(totalToday)}
                   </p>
                 )}
@@ -491,7 +519,7 @@ export function ExpensesView() {
                       {CATEGORY_ICONS[c.category as Category]}
                       <span className="text-xs font-medium">{c.category}</span>
                     </div>
-                    <span className="text-xs font-semibold">{formatCurrency(c.total)}</span>
+                    <span className="text-xs font-semibold tabular-nums">{formatCurrency(c.total)}</span>
                   </div>
                 ))}
               </div>
@@ -505,12 +533,24 @@ export function ExpensesView() {
         {/* Expenses Table */}
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Expense Records</CardTitle>
-            <CardDescription>
-              {loading
-                ? "Loading..."
-                : `${expenses.length} expense${expenses.length !== 1 ? "s" : ""} found`}
-            </CardDescription>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <CardTitle className="text-lg">Expense Records</CardTitle>
+                <CardDescription>
+                  {loading
+                    ? "Loading..."
+                    : `${totalExpenses} expense${totalExpenses !== 1 ? "s" : ""} found`}
+                </CardDescription>
+              </div>
+              {!loading && totalExpenses > 0 && (
+                <div className="text-left sm:text-right">
+                  <p className="text-xs text-muted-foreground">Total Amount (filtered)</p>
+                  <p className="text-lg font-bold tabular-nums text-orange-600 dark:text-orange-400">
+                    {formatCurrency(totalAmount)}
+                  </p>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -524,7 +564,7 @@ export function ExpensesView() {
                   </div>
                 ))}
               </div>
-            ) : sortedExpenses.length === 0 ? (
+            ) : totalExpenses === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Receipt className="h-12 w-12 text-muted-foreground/40 mb-3" />
                 <p className="text-muted-foreground text-sm font-medium">No expenses found</p>
@@ -541,90 +581,183 @@ export function ExpensesView() {
                 </Button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead
-                        className="cursor-pointer select-none hover:text-foreground"
-                        onClick={() => handleSort("date")}
-                      >
-                        <div className="flex items-center gap-1">
-                          Date
-                          <ArrowUpDown className="h-3 w-3" />
-                        </div>
-                      </TableHead>
-                      <TableHead
-                        className="cursor-pointer select-none hover:text-foreground"
-                        onClick={() => handleSort("category")}
-                      >
-                        <div className="flex items-center gap-1">
-                          Category
-                          <ArrowUpDown className="h-3 w-3" />
-                        </div>
-                      </TableHead>
-                      <TableHead
-                        className="cursor-pointer select-none hover:text-foreground text-right"
-                        onClick={() => handleSort("amount")}
-                      >
-                        <div className="flex items-center justify-end gap-1">
-                          Amount
-                          <ArrowUpDown className="h-3 w-3" />
-                        </div>
-                      </TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedExpenses.map((expense) => (
-                      <TableRow
-                        key={expense.id}
-                        className="hover:bg-orange-50/50 dark:hover:bg-orange-950/20 transition-colors"
-                      >
-                        <TableCell className="font-medium whitespace-nowrap">
-                          {formatDate(expense.date)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant="outline"
-                            className={`gap-1 ${CATEGORY_COLORS[expense.category as Category] || CATEGORY_COLORS.Other}`}
-                          >
-                            {CATEGORY_ICONS[expense.category as Category]}
-                            {expense.category}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right font-semibold whitespace-nowrap">
-                          {formatCurrency(expense.amount)}
-                        </TableCell>
-                        <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
-                          {expense.description || "—"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-orange-600"
-                              onClick={() => openEditDialog(expense)}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-red-600"
-                              onClick={() => openDeleteDialog(expense)}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+              <>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-foreground"
+                          onClick={() => handleSort("date")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Date
+                            {sortField === "date" ? (
+                              sortDir === "asc" ? (
+                                <ChevronUp className="h-3 w-3" />
+                              ) : (
+                                <ChevronDown className="h-3 w-3" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-40" />
+                            )}
                           </div>
-                        </TableCell>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-foreground"
+                          onClick={() => handleSort("category")}
+                        >
+                          <div className="flex items-center gap-1">
+                            Category
+                            {sortField === "category" ? (
+                              sortDir === "asc" ? (
+                                <ChevronUp className="h-3 w-3" />
+                              ) : (
+                                <ChevronDown className="h-3 w-3" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-40" />
+                            )}
+                          </div>
+                        </TableHead>
+                        <TableHead
+                          className="cursor-pointer select-none hover:text-foreground text-right"
+                          onClick={() => handleSort("amount")}
+                        >
+                          <div className="flex items-center justify-end gap-1">
+                            Amount
+                            {sortField === "amount" ? (
+                              sortDir === "asc" ? (
+                                <ChevronUp className="h-3 w-3" />
+                              ) : (
+                                <ChevronDown className="h-3 w-3" />
+                              )
+                            ) : (
+                              <ArrowUpDown className="h-3 w-3 opacity-40" />
+                            )}
+                          </div>
+                        </TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedExpenses.map((expense) => (
+                        <TableRow
+                          key={expense.id}
+                          className="hover:bg-muted/50 transition-colors"
+                        >
+                          <TableCell className="font-medium whitespace-nowrap">
+                            {formatDate(expense.date)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={`gap-1 ${CATEGORY_COLORS[expense.category as Category] || CATEGORY_COLORS.Other}`}
+                            >
+                              {CATEGORY_ICONS[expense.category as Category]}
+                              {expense.category}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-semibold whitespace-nowrap tabular-nums">
+                            {formatCurrency(expense.amount)}
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate text-muted-foreground text-sm">
+                            {expense.description || "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-orange-600"
+                                onClick={() => openEditDialog(expense)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                                onClick={() => openDeleteDialog(expense)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {/* Pagination */}
+                <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm text-muted-foreground">
+                    Showing{" "}
+                    <span className="font-medium text-foreground">{showingFrom}</span>
+                    {" "}to{" "}
+                    <span className="font-medium text-foreground">{showingTo}</span>
+                    {" "}of{" "}
+                    <span className="font-medium text-foreground">{totalExpenses}</span>
+                    {" "}results
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={safeCurrentPage === 1}
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                      Previous
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter((page) => {
+                          // Show first, last, current, and adjacent pages
+                          return (
+                            page === 1 ||
+                            page === totalPages ||
+                            Math.abs(page - safeCurrentPage) <= 1
+                          );
+                        })
+                        .map((page, idx, arr) => {
+                          const prev = arr[idx - 1];
+                          const showEllipsis = prev && page - prev > 1;
+                          return (
+                            <span key={page} className="flex items-center">
+                              {showEllipsis && (
+                                <span className="px-1 text-muted-foreground">…</span>
+                              )}
+                              <Button
+                                variant={safeCurrentPage === page ? "default" : "outline"}
+                                size="sm"
+                                className={`h-8 w-8 p-0 ${
+                                  safeCurrentPage === page
+                                    ? "bg-orange-600 hover:bg-orange-700 text-white"
+                                    : ""
+                                }`}
+                                onClick={() => setCurrentPage(page)}
+                              >
+                                {page}
+                              </Button>
+                            </span>
+                          );
+                        })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={safeCurrentPage === totalPages}
+                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -687,8 +820,8 @@ export function ExpensesView() {
                           <span className="text-xs font-medium">{c.category}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold">{formatCurrency(c.total)}</span>
-                          <span className="text-xs text-muted-foreground">({pct}%)</span>
+                          <span className="text-xs font-semibold tabular-nums">{formatCurrency(c.total)}</span>
+                          <span className="text-xs text-muted-foreground tabular-nums">({pct}%)</span>
                         </div>
                       </div>
                     );

@@ -14,6 +14,7 @@ import { StockView } from "@/components/module-views/stock-view";
 import { MealsView } from "@/components/module-views/meals-view";
 import { DailyEntryView } from "@/components/module-views/daily-entry-view";
 import { PurchasesView } from "@/components/module-views/purchases-view";
+import { SuppliersView } from "@/components/module-views/suppliers-view";
 import { WastageView } from "@/components/module-views/wastage-view";
 import { ReportsView } from "@/components/module-views/reports-view";
 import { ExpensesView } from "@/components/module-views/expenses-view";
@@ -25,6 +26,7 @@ const viewLabels: Record<ViewId, string> = {
   meals: "Meals / Recipes",
   "daily-entry": "Daily Entry",
   purchases: "Purchases",
+  suppliers: "Suppliers",
   wastage: "Wastage",
   reports: "Reports",
   expenses: "Expenses",
@@ -66,6 +68,8 @@ function ViewRenderer({
       return <DailyEntryView />;
     case "purchases":
       return <PurchasesView />;
+    case "suppliers":
+      return <SuppliersView />;
     case "wastage":
       return <WastageView />;
     case "reports":

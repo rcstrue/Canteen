@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -25,6 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
 import {
   Settings,
   Building2,
@@ -52,6 +53,13 @@ import {
   Bell,
   Save,
   PackageOpen,
+  Download,
+  Upload,
+  FileJson,
+  FileUp,
+  CalendarClock,
+  HardDriveDownload,
+  Truck,
 } from "lucide-react";
 import type { ViewId } from "@/components/app-sidebar";
 
@@ -62,6 +70,7 @@ interface DataSummary {
   totalRecipes: number;
   totalPurchases: number;
   totalExpenses: number;
+  totalSuppliers: number;
 }
 
 interface CanteenInfo {
@@ -95,11 +104,38 @@ interface CostReportData {
   totalOperatingCost: number;
 }
 
+// ─── Backup / Restore Types ───────────────────────────────────────────────────
+
+interface BackupCounts {
+  ingredients: number;
+  recipes: number;
+  recipeIngredients?: number;
+  stockMovements: number;
+  dailyMeals: number;
+  purchases: number;
+  purchaseItems?: number;
+  expenses: number;
+  total: number;
+}
+
+interface BackupMetadata {
+  version: string;
+  exportDate: string;
+  app: string;
+  counts: BackupCounts;
+}
+
+interface BackupFile {
+  metadata: BackupMetadata;
+  data: Record<string, unknown>;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const CANTEEN_INFO_KEY = "rcs-canteen-info";
 const BUDGET_KEY = "rcs-canteen-budget";
 const ALERTS_KEY = "rcs-canteen-alerts";
+const LAST_BACKUP_KEY = "rcs-canteen-last-backup";
 
 const DEFAULT_CANTEEN_INFO: CanteenInfo = {
   name: "RCS Canteen",
@@ -150,6 +186,86 @@ function getProgressClass(pct: number): string {
   if (pct > 100) return "[&>div]:bg-red-500";
   if (pct >= 80) return "[&>div]:bg-amber-500";
   return "[&>div]:bg-emerald-500";
+}
+
+// ─── Backup / Restore Helpers ─────────────────────────────────────────────────
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const v = bytes / Math.pow(1024, i);
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function formatRelativeDate(iso: string | null): string {
+  if (!iso) return "Never";
+  try {
+    const date = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) {
+      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+      if (diffHours === 0) {
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        return diffMins <= 1 ? "Just now" : `${diffMins} minutes ago`;
+      }
+      return `${diffHours} hour${diffHours === 1 ? "" : "s"} ago`;
+    }
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString("en-IN", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return "Unknown";
+  }
+}
+
+function isStaleBackup(iso: string | null, days = 7): boolean {
+  if (!iso) return true;
+  try {
+    const date = new Date(iso);
+    const diffMs = Date.now() - date.getTime();
+    return diffMs > days * 24 * 60 * 60 * 1000;
+  } catch {
+    return true;
+  }
+}
+
+function validateBackupFile(parsed: unknown): {
+  valid: boolean;
+  error?: string;
+  file?: BackupFile;
+} {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { valid: false, error: "Invalid format: expected a JSON object." };
+  }
+  const obj = parsed as Record<string, unknown>;
+  const metadata = obj.metadata as Record<string, unknown> | undefined;
+  const data = obj.data as Record<string, unknown> | undefined;
+  if (!metadata || typeof metadata !== "object") {
+    return { valid: false, error: 'Missing "metadata" object.' };
+  }
+  if (!data || typeof data !== "object") {
+    return { valid: false, error: 'Missing "data" object.' };
+  }
+  // At least one collection must be an array
+  const collections = ["ingredients", "recipes", "stockMovements", "dailyMeals", "purchases", "expenses"];
+  const hasAny = collections.some((k) => Array.isArray((data as Record<string, unknown>)[k]));
+  if (!hasAny) {
+    return { valid: false, error: "Backup contains no recognizable data collections." };
+  }
+  return {
+    valid: true,
+    file: {
+      metadata: metadata as unknown as BackupMetadata,
+      data,
+    },
+  };
 }
 
 // ─── Circular Budget Gauge ───────────────────────────────────────────────────
@@ -238,6 +354,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
     totalRecipes: 0,
     totalPurchases: 0,
     totalExpenses: 0,
+    totalSuppliers: 0,
   });
   const [isLoadingSummary, setIsLoadingSummary] = useState(true);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -260,6 +377,30 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
   const [foodThresholdInput, setFoodThresholdInput] = useState("");
   const [operatingThresholdInput, setOperatingThresholdInput] = useState("");
 
+  // Backup / Restore state
+  const { toast } = useToast();
+  const [lastBackupDate, setLastBackupDate] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [lastExportInfo, setLastExportInfo] = useState<{
+    size: number;
+    counts: BackupCounts;
+  } | null>(null);
+
+  // Import state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingImport, setPendingImport] = useState<{
+    fileName: string;
+    fileSize: number;
+    file: BackupFile;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
+  const [importSuccess, setImportSuccess] = useState<{
+    counts: BackupCounts;
+  } | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   // Load canteen info from localStorage
   useEffect(() => {
     try {
@@ -271,6 +412,18 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
       }
     } catch {
       // Ignore localStorage errors
+    }
+  }, []);
+
+  // Load last backup date from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(LAST_BACKUP_KEY);
+      if (stored) {
+        setLastBackupDate(stored);
+      }
+    } catch {
+      // ignore
     }
   }, []);
 
@@ -369,24 +522,27 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
   const fetchDataSummary = useCallback(async () => {
     setIsLoadingSummary(true);
     try {
-      const [ingredientsRes, recipesRes, purchasesRes, expensesRes] =
+      const [ingredientsRes, recipesRes, purchasesRes, expensesRes, suppliersRes] =
         await Promise.all([
           fetch("/api/ingredients"),
           fetch("/api/recipes"),
           fetch("/api/purchases"),
           fetch("/api/expenses"),
+          fetch("/api/suppliers"),
         ]);
 
       const ingredients = await ingredientsRes.json();
       const recipes = await recipesRes.json();
       const purchases = await purchasesRes.json();
       const expenses = await expensesRes.json();
+      const suppliers = await suppliersRes.json();
 
       setDataSummary({
         totalIngredients: Array.isArray(ingredients) ? ingredients.length : 0,
         totalRecipes: Array.isArray(recipes) ? recipes.length : 0,
         totalPurchases: purchases?.total ?? 0,
         totalExpenses: expenses?.total ?? 0,
+        totalSuppliers: Array.isArray(suppliers) ? suppliers.length : 0,
       });
     } catch (error) {
       console.error("Error fetching data summary:", error);
@@ -436,6 +592,196 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
       console.error("Error clearing data:", error);
     }
   };
+
+  // ─── Backup: Export (GET /api/backup) ───────────────────────────────────────
+  const handleExport = async () => {
+    setIsExporting(true);
+    setLastExportInfo(null);
+    try {
+      const res = await fetch("/api/backup");
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.error || `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const size = blob.size;
+
+      // Read counts from metadata for display
+      let counts: BackupCounts | null = null;
+      try {
+        const text = await blob.text();
+        const parsed = JSON.parse(text) as BackupFile;
+        counts = parsed.metadata?.counts ?? null;
+      } catch {
+        // ignore parse error for display purposes
+      }
+
+      // Re-create blob from text to ensure the download works even after .text()
+      const downloadBlob = new Blob([await blob.arrayBuffer()], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(downloadBlob);
+      const filename = `rcs-canteen-backup-${new Date().toISOString().split("T")[0]}.json`;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      // Persist last backup date
+      const nowIso = new Date().toISOString();
+      try {
+        localStorage.setItem(LAST_BACKUP_KEY, nowIso);
+        setLastBackupDate(nowIso);
+      } catch {
+        // ignore
+      }
+
+      if (counts) {
+        setLastExportInfo({ size, counts });
+      }
+
+      toast({
+        title: "Backup exported",
+        description: `Saved ${filename} (${formatBytes(size)}, ${counts?.total ?? 0} records).`,
+      });
+    } catch (error) {
+      console.error("Export error:", error);
+      toast({
+        title: "Export failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // ─── Restore: File selection & validation ──────────────────────────────────
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError(null);
+    setImportSuccess(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Reset input so the same file can be selected again later
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    if (file.size > 50 * 1024 * 1024) {
+      setImportError("File is too large (max 50 MB).");
+      toast({
+        title: "File too large",
+        description: "Backup files must be under 50 MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const result = validateBackupFile(parsed);
+      if (!result.valid || !result.file) {
+        setImportError(result.error ?? "Invalid backup file.");
+        toast({
+          title: "Invalid backup file",
+          description: result.error ?? "Could not read this file.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setPendingImport({
+        fileName: file.name,
+        fileSize: file.size,
+        file: result.file,
+      });
+      setConfirmOpen(true);
+    } catch {
+      setImportError("Could not parse JSON file.");
+      toast({
+        title: "Invalid file",
+        description: "The selected file is not valid JSON.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // ─── Restore: Confirm import (POST /api/backup) ────────────────────────────
+  const handleConfirmImport = async () => {
+    if (!pendingImport) return;
+    setConfirmOpen(false);
+    setIsImporting(true);
+    setImportProgress(8);
+    setImportError(null);
+    setImportSuccess(null);
+
+    try {
+      // Simulated progress feedback while request is in flight
+      const progressInterval = setInterval(() => {
+        setImportProgress((p) => (p < 90 ? p + Math.max(1, Math.floor((90 - p) / 5)) : p));
+      }, 250);
+
+      const res = await fetch("/api/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          metadata: pendingImport.file.metadata,
+          data: pendingImport.file.data,
+        }),
+      });
+
+      clearInterval(progressInterval);
+      setImportProgress(95);
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body?.error || `Import failed (${res.status})`);
+      }
+
+      setImportProgress(100);
+      const counts = (body?.counts ?? pendingImport.file.metadata.counts) as BackupCounts;
+      setImportSuccess({ counts });
+
+      // Refresh data summary + budget data after restore
+      await Promise.all([fetchDataSummary(), fetchBudgetData()]);
+
+      toast({
+        title: "Data restored successfully",
+        description: `Imported ${counts?.total ?? 0} records from ${pendingImport.fileName}.`,
+      });
+
+      setTimeout(() => {
+        setIsImporting(false);
+        setImportProgress(0);
+        setPendingImport(null);
+      }, 800);
+    } catch (error) {
+      console.error("Import error:", error);
+      setIsImporting(false);
+      setImportProgress(0);
+      setImportError(error instanceof Error ? error.message : "Unknown error");
+      toast({
+        title: "Restore failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleCancelImport = () => {
+    setConfirmOpen(false);
+    setPendingImport(null);
+  };
+
+  // ─── Derived display values ────────────────────────────────────────────────
+  const backupStale = isStaleBackup(lastBackupDate, 7);
+  const totalRecords =
+    dataSummary.totalIngredients +
+    dataSummary.totalRecipes +
+    dataSummary.totalPurchases +
+    dataSummary.totalExpenses;
 
   // Budget calculations
   const foodSpent = dashboardData?.foodCost?.month ?? 0;
@@ -929,6 +1275,279 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
           </CardContent>
         </Card>
 
+        {/* ─── Data Backup & Restore Card ─────────────────────────────────── */}
+        <Card className="md:col-span-2 border-amber-300/70 dark:border-amber-700/40 overflow-hidden">
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
+            <CardHeader>
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <HardDriveDownload className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    Data Backup &amp; Restore
+                  </CardTitle>
+                  <CardDescription>
+                    Export all canteen data to a JSON file or restore from a previous backup
+                  </CardDescription>
+                </div>
+                {/* Last backup + total records badges */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge
+                    variant="outline"
+                    className="border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                  >
+                    <CalendarClock className="h-3 w-3 mr-1" />
+                    Last backup: {formatRelativeDate(lastBackupDate)}
+                  </Badge>
+                  <Badge
+                    variant="outline"
+                    className="border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                  >
+                    <Database className="h-3 w-3 mr-1" />
+                    {totalRecords} records
+                  </Badge>
+                </div>
+              </div>
+            </CardHeader>
+          </div>
+
+          <CardContent className="space-y-5 pt-6">
+            {/* ─── Auto-backup reminder banner ──────────────────────────── */}
+            {backupStale && (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-900/20 px-4 py-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                    {lastBackupDate
+                      ? "It's been more than 7 days since your last backup"
+                      : "No backup has been created yet"}
+                  </p>
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    Regular backups protect your data. Export a backup now to keep it safe.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* ─── Two-column layout: Export / Import ───────────────────── */}
+            <div className="grid gap-5 md:grid-cols-2">
+              {/* Export (Backup) */}
+              <div className="rounded-xl border border-amber-200/70 dark:border-amber-800/40 bg-gradient-to-br from-amber-50/40 to-orange-50/30 dark:from-amber-900/10 dark:to-orange-900/10 p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                    <Download className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold">Export Data (Backup)</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Download all data as a JSON file
+                    </p>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Exports ingredients, recipes, stock movements, daily meals, purchases, and expenses
+                  with metadata (version, export date, record counts).
+                </p>
+
+                <Button
+                  onClick={handleExport}
+                  disabled={isExporting || isImporting}
+                  className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Download Backup
+                    </>
+                  )}
+                </Button>
+
+                {/* Last export summary */}
+                {lastExportInfo && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800/40 dark:bg-emerald-900/20 px-3 py-2 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div className="text-xs">
+                      <p className="font-medium text-emerald-700 dark:text-emerald-300">
+                        Last export: {formatBytes(lastExportInfo.size)}
+                      </p>
+                      <p className="text-emerald-600/80 dark:text-emerald-400/80 tabular-nums">
+                        {lastExportInfo.counts.total} records •{" "}
+                        {lastExportInfo.counts.ingredients} ingredients •{" "}
+                        {lastExportInfo.counts.recipes} recipes •{" "}
+                        {lastExportInfo.counts.purchases} purchases •{" "}
+                        {lastExportInfo.counts.expenses} expenses
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Import (Restore) */}
+              <div className="rounded-xl border-2 border-amber-300/80 dark:border-amber-700/50 bg-gradient-to-br from-amber-50/30 to-orange-50/20 dark:from-amber-900/5 dark:to-orange-900/5 p-5 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+                    <Upload className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold">Import Data (Restore)</h3>
+                    <p className="text-xs text-muted-foreground">
+                      Restore from a previously exported backup file
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2 rounded-lg bg-amber-100/60 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800/50 px-3 py-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    <span className="font-semibold">Warning:</span> Importing will{" "}
+                    <span className="font-bold">REPLACE ALL</span> current data with the contents
+                    of the selected file. This action cannot be undone.
+                  </p>
+                </div>
+
+                {/* Hidden file input triggered by button */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  onChange={handleFileSelected}
+                  className="hidden"
+                  aria-hidden="true"
+                />
+
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isExporting || isImporting}
+                  variant="outline"
+                  className="w-full border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                >
+                  <FileUp className="mr-2 h-4 w-4" />
+                  Select Backup File
+                </Button>
+
+                {/* Import progress */}
+                {isImporting && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground flex items-center gap-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Restoring data...
+                      </span>
+                      <span className="font-medium tabular-nums">{importProgress}%</span>
+                    </div>
+                    <Progress value={importProgress} className="h-2 [&>div]:bg-amber-500" />
+                  </div>
+                )}
+
+                {/* Import error */}
+                {importError && !isImporting && (
+                  <div className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 dark:border-red-800/50 dark:bg-red-900/20 px-3 py-2">
+                    <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-red-700 dark:text-red-300">{importError}</p>
+                  </div>
+                )}
+
+                {/* Import success */}
+                {importSuccess && !isImporting && (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 dark:border-emerald-800/40 dark:bg-emerald-900/20 px-3 py-2 flex items-start gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="text-xs">
+                      <p className="font-medium text-emerald-700 dark:text-emerald-300">
+                        Restore complete — {importSuccess.counts.total} records imported
+                      </p>
+                      <p className="text-emerald-600/80 dark:text-emerald-400/80 tabular-nums">
+                        {importSuccess.counts.ingredients} ingredients •{" "}
+                        {importSuccess.counts.recipes} recipes •{" "}
+                        {importSuccess.counts.purchases} purchases •{" "}
+                        {importSuccess.counts.expenses} expenses
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ─── Restore Confirmation Dialog ──────────────────────────── */}
+            <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    Confirm Data Restore
+                  </AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-3 text-sm">
+                      <p>
+                        You are about to restore data from{" "}
+                        <span className="font-semibold text-foreground">
+                          {pendingImport?.fileName}
+                        </span>{" "}
+                        ({pendingImport ? formatBytes(pendingImport.fileSize) : "—"}).
+                      </p>
+                      {pendingImport && (
+                        <div className="rounded-md border bg-muted/40 p-3 space-y-1.5">
+                          <p className="font-medium text-foreground text-xs uppercase tracking-wide">
+                            Records in backup
+                          </p>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs tabular-nums">
+                            <span className="text-muted-foreground">Ingredients:</span>
+                            <span className="font-medium">{pendingImport.file.metadata.counts.ingredients}</span>
+                            <span className="text-muted-foreground">Recipes:</span>
+                            <span className="font-medium">{pendingImport.file.metadata.counts.recipes}</span>
+                            <span className="text-muted-foreground">Stock Movements:</span>
+                            <span className="font-medium">{pendingImport.file.metadata.counts.stockMovements}</span>
+                            <span className="text-muted-foreground">Daily Meals:</span>
+                            <span className="font-medium">{pendingImport.file.metadata.counts.dailyMeals}</span>
+                            <span className="text-muted-foreground">Purchases:</span>
+                            <span className="font-medium">{pendingImport.file.metadata.counts.purchases}</span>
+                            <span className="text-muted-foreground">Expenses:</span>
+                            <span className="font-medium">{pendingImport.file.metadata.counts.expenses}</span>
+                            <span className="text-muted-foreground font-semibold">Total:</span>
+                            <span className="font-bold">{pendingImport.file.metadata.counts.total}</span>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-3 py-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                        <p className="text-amber-800 dark:text-amber-300">
+                          This will <span className="font-bold">permanently delete</span> all current
+                          data and replace it with the contents of this backup file. This action
+                          cannot be undone.
+                        </p>
+                      </div>
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel onClick={handleCancelImport}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleConfirmImport}
+                    className="bg-amber-600 hover:bg-amber-700 text-white"
+                  >
+                    <FileJson className="mr-2 h-4 w-4" />
+                    Yes, restore data
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+
+            {/* ─── Info footer ──────────────────────────────────────────── */}
+            <div className="flex items-start gap-2 rounded-lg bg-muted/40 border px-3 py-2.5">
+              <Info className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+              <p className="text-xs text-muted-foreground">
+                Backup files contain all canteen data including IDs and timestamps, allowing a
+                complete restore to the exact state at export time. Keep your backups in a safe
+                location — they may contain sensitive financial information.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* ─── Canteen Information Card ─────────────────────────────────── */}
         <Card className="border-amber-200/60 dark:border-amber-800/30">
           <CardHeader>
@@ -1119,8 +1738,8 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
           </CardHeader>
           <CardContent>
             {isLoadingSummary ? (
-              <div className="grid grid-cols-2 gap-4">
-                {[1, 2, 3, 4].map((i) => (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                {[1, 2, 3, 4, 5].map((i) => (
                   <div
                     key={i}
                     className="h-20 rounded-lg bg-muted/50 animate-pulse"
@@ -1128,7 +1747,7 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                 ))}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                 <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
                   <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
                     <Package className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -1166,6 +1785,16 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                   <div>
                     <p className="text-2xl font-bold">{dataSummary.totalExpenses}</p>
                     <p className="text-xs text-muted-foreground">Expenses</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 rounded-lg border p-3 bg-muted/30">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30">
+                    <Truck className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{dataSummary.totalSuppliers}</p>
+                    <p className="text-xs text-muted-foreground">Suppliers</p>
                   </div>
                 </div>
               </div>
