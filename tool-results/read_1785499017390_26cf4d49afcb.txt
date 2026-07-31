@@ -1,0 +1,895 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback } from "react";
+     4→import {
+     5→  Card,
+     6→  CardContent,
+     7→  CardDescription,
+     8→  CardHeader,
+     9→  CardTitle,
+    10→} from "@/components/ui/card";
+    11→import {
+    12→  Dialog,
+    13→  DialogContent,
+    14→  DialogDescription,
+    15→  DialogFooter,
+    16→  DialogHeader,
+    17→  DialogTitle,
+    18→} from "@/components/ui/dialog";
+    19→import {
+    20→  Select,
+    21→  SelectContent,
+    22→  SelectItem,
+    23→  SelectTrigger,
+    24→  SelectValue,
+    25→} from "@/components/ui/select";
+    26→import {
+    27→  Table,
+    28→  TableBody,
+    29→  TableCell,
+    30→  TableHead,
+    31→  TableHeader,
+    32→  TableRow,
+    33→} from "@/components/ui/table";
+    34→import { Button } from "@/components/ui/button";
+    35→import { Input } from "@/components/ui/input";
+    36→import { Badge } from "@/components/ui/badge";
+    37→import { Label } from "@/components/ui/label";
+    38→import { Textarea } from "@/components/ui/textarea";
+    39→import { Separator } from "@/components/ui/separator";
+    40→import {
+    41→  UtensilsCrossed,
+    42→  Search,
+    43→  Plus,
+    44→  Pencil,
+    45→  Trash2,
+    46→  ChefHat,
+    47→  Users,
+    48→  IndianRupee,
+    49→  X,
+    50→  Calculator,
+    51→  BookOpen,
+    52→  AlertTriangle,
+    53→} from "lucide-react";
+    54→
+    55→// ─── Types ───────────────────────────────────────────────────────
+    56→
+    57→interface Ingredient {
+    58→  id: string;
+    59→  name: string;
+    60→  unit: string;
+    61→  category: string;
+    62→  currentStock: number;
+    63→  minStock: number;
+    64→  lastPurchasePrice: number;
+    65→  avgCost: number;
+    66→  supplier: string | null;
+    67→}
+    68→
+    69→interface RecipeIngredient {
+    70→  id: string;
+    71→  recipeId: string;
+    72→  ingredientId: string;
+    73→  quantity: number;
+    74→  unit: string;
+    75→  ingredient: Ingredient;
+    76→}
+    77→
+    78→interface Recipe {
+    79→  id: string;
+    80→  name: string;
+    81→  description: string | null;
+    82→  mealType: string;
+    83→  baseServings: number;
+    84→  instructions: string | null;
+    85→  createdAt: string;
+    86→  updatedAt: string;
+    87→  ingredients: RecipeIngredient[];
+    88→}
+    89→
+    90→interface IngredientRow {
+    91→  ingredientId: string;
+    92→  quantity: string;
+    93→  unit: string;
+    94→}
+    95→
+    96→// ─── Helpers ─────────────────────────────────────────────────────
+    97→
+    98→const MEAL_TYPES = ["All", "Breakfast", "Lunch", "Dinner", "Snack"] as const;
+    99→
+   100→function getMealTypeBadgeClass(mealType: string): string {
+   101→  switch (mealType) {
+   102→    case "Breakfast":
+   103→      return "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-700";
+   104→    case "Lunch":
+   105→      return "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-700";
+   106→    case "Dinner":
+   107→      return "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700";
+   108→    case "Snack":
+   109→      return "bg-purple-100 text-purple-800 border-purple-300 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-700";
+   110→    default:
+   111→      return "bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-900/30 dark:text-gray-400 dark:border-gray-700";
+   112→  }
+   113→}
+   114→
+   115→function formatRupee(amount: number): string {
+   116→  return "₹" + amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+   117→}
+   118→
+   119→function calcTotalIngredientCost(ingredients: RecipeIngredient[]): number {
+   120→  return ingredients.reduce((sum, ri) => sum + ri.quantity * ri.ingredient.avgCost, 0);
+   121→}
+   122→
+   123→function calcCostPerMeal(ingredients: RecipeIngredient[], baseServings: number): number {
+   124→  if (baseServings <= 0) return 0;
+   125→  return calcTotalIngredientCost(ingredients) / baseServings;
+   126→}
+   127→
+   128→function calcCostFor600(ingredients: RecipeIngredient[], baseServings: number): number {
+   129→  return calcCostPerMeal(ingredients, baseServings) * 600;
+   130→}
+   131→
+   132→// ─── Component ───────────────────────────────────────────────────
+   133→
+   134→export function MealsView() {
+   135→  // State
+   136→  const [recipes, setRecipes] = useState<Recipe[]>([]);
+   137→  const [allIngredients, setAllIngredients] = useState<Ingredient[]>([]);
+   138→  const [search, setSearch] = useState("");
+   139→  const [mealTypeFilter, setMealTypeFilter] = useState<string>("All");
+   140→  const [loading, setLoading] = useState(true);
+   141→
+   142→  // Detail dialog
+   143→  const [detailRecipe, setDetailRecipe] = useState<Recipe | null>(null);
+   144→  const [scalingServings, setScalingServings] = useState<string>("600");
+   145→
+   146→  // Add/Edit dialog
+   147→  const [formOpen, setFormOpen] = useState(false);
+   148→  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
+   149→  const [formName, setFormName] = useState("");
+   150→  const [formDescription, setFormDescription] = useState("");
+   151→  const [formMealType, setFormMealType] = useState("Lunch");
+   152→  const [formBaseServings, setFormBaseServings] = useState("100");
+   153→  const [formInstructions, setFormInstructions] = useState("");
+   154→  const [formIngredients, setFormIngredients] = useState<IngredientRow[]>([
+   155→    { ingredientId: "", quantity: "", unit: "" },
+   156→  ]);
+   157→  const [submitting, setSubmitting] = useState(false);
+   158→
+   159→  // Delete confirmation
+   160→  const [deleteConfirm, setDeleteConfirm] = useState<Recipe | null>(null);
+   161→
+   162→  // ─── Data Fetching ────────────────────────────────────────────
+   163→
+   164→  const fetchRecipes = useCallback(async () => {
+   165→    try {
+   166→      setLoading(true);
+   167→      const params = new URLSearchParams();
+   168→      if (search) params.set("search", search);
+   169→      if (mealTypeFilter !== "All") params.set("mealType", mealTypeFilter);
+   170→      const res = await fetch(`/api/recipes?${params.toString()}`);
+   171→      if (res.ok) {
+   172→        const data = await res.json();
+   173→        setRecipes(data);
+   174→      }
+   175→    } catch (err) {
+   176→      console.error("Error fetching recipes:", err);
+   177→    } finally {
+   178→      setLoading(false);
+   179→    }
+   180→  }, [search, mealTypeFilter]);
+   181→
+   182→  const fetchIngredients = useCallback(async () => {
+   183→    try {
+   184→      const res = await fetch("/api/ingredients");
+   185→      if (res.ok) {
+   186→        const data = await res.json();
+   187→        setAllIngredients(data);
+   188→      }
+   189→    } catch (err) {
+   190→      console.error("Error fetching ingredients:", err);
+   191→    }
+   192→  }, []);
+   193→
+   194→  useEffect(() => {
+   195→    fetchRecipes();
+   196→  }, [fetchRecipes]);
+   197→
+   198→  useEffect(() => {
+   199→    fetchIngredients();
+   200→  }, [fetchIngredients]);
+   201→
+   202→  // ─── Form Helpers ─────────────────────────────────────────────
+   203→
+   204→  const openAddForm = () => {
+   205→    setEditingRecipe(null);
+   206→    setFormName("");
+   207→    setFormDescription("");
+   208→    setFormMealType("Lunch");
+   209→    setFormBaseServings("100");
+   210→    setFormInstructions("");
+   211→    setFormIngredients([{ ingredientId: "", quantity: "", unit: "" }]);
+   212→    setFormOpen(true);
+   213→  };
+   214→
+   215→  const openEditForm = (recipe: Recipe) => {
+   216→    setEditingRecipe(recipe);
+   217→    setFormName(recipe.name);
+   218→    setFormDescription(recipe.description || "");
+   219→    setFormMealType(recipe.mealType);
+   220→    setFormBaseServings(String(recipe.baseServings));
+   221→    setFormInstructions(recipe.instructions || "");
+   222→    setFormIngredients(
+   223→      recipe.ingredients.map((ri) => ({
+   224→        ingredientId: ri.ingredientId,
+   225→        quantity: String(ri.quantity),
+   226→        unit: ri.unit,
+   227→      }))
+   228→    );
+   229→    setFormOpen(true);
+   230→  };
+   231→
+   232→  const addIngredientRow = () => {
+   233→    setFormIngredients([...formIngredients, { ingredientId: "", quantity: "", unit: "" }]);
+   234→  };
+   235→
+   236→  const removeIngredientRow = (index: number) => {
+   237→    if (formIngredients.length <= 1) return;
+   238→    setFormIngredients(formIngredients.filter((_, i) => i !== index));
+   239→  };
+   240→
+   241→  const updateIngredientRow = (index: number, field: keyof IngredientRow, value: string) => {
+   242→    const updated = [...formIngredients];
+   243→    updated[index] = { ...updated[index], [field]: value };
+   244→    // Auto-fill unit when ingredient is selected
+   245→    if (field === "ingredientId" && value) {
+   246→      const ing = allIngredients.find((i) => i.id === value);
+   247→      if (ing) {
+   248→        updated[index].unit = ing.unit;
+   249→      }
+   250→    }
+   251→    setFormIngredients(updated);
+   252→  };
+   253→
+   254→  const calcFormTotalCost = (): number => {
+   255→    return formIngredients.reduce((sum, row) => {
+   256→      if (!row.ingredientId || !row.quantity) return sum;
+   257→      const ing = allIngredients.find((i) => i.id === row.ingredientId);
+   258→      if (!ing) return sum;
+   259→      const qty = parseFloat(row.quantity) || 0;
+   260→      return sum + qty * ing.avgCost;
+   261→    }, 0);
+   262→  };
+   263→
+   264→  const handleSubmit = async () => {
+   265→    if (!formName || !formMealType) return;
+   266→    const validIngredients = formIngredients.filter(
+   267→      (row) => row.ingredientId && row.quantity && parseFloat(row.quantity) > 0
+   268→    );
+   269→    if (validIngredients.length === 0) return;
+   270→
+   271→    setSubmitting(true);
+   272→    try {
+   273→      const body = {
+   274→        name: formName,
+   275→        description: formDescription || null,
+   276→        mealType: formMealType,
+   277→        baseServings: parseInt(formBaseServings) || 100,
+   278→        instructions: formInstructions || null,
+   279→        ingredients: validIngredients.map((row) => ({
+   280→          ingredientId: row.ingredientId,
+   281→          quantity: parseFloat(row.quantity),
+   282→          unit: row.unit,
+   283→        })),
+   284→      };
+   285→
+   286→      if (editingRecipe) {
+   287→        const res = await fetch(`/api/recipes/${editingRecipe.id}`, {
+   288→          method: "PUT",
+   289→          headers: { "Content-Type": "application/json" },
+   290→          body: JSON.stringify(body),
+   291→        });
+   292→        if (res.ok) {
+   293→          setFormOpen(false);
+   294→          fetchRecipes();
+   295→        }
+   296→      } else {
+   297→        const res = await fetch("/api/recipes", {
+   298→          method: "POST",
+   299→          headers: { "Content-Type": "application/json" },
+   300→          body: JSON.stringify(body),
+   301→        });
+   302→        if (res.ok) {
+   303→          setFormOpen(false);
+   304→          fetchRecipes();
+   305→        }
+   306→      }
+   307→    } catch (err) {
+   308→      console.error("Error saving recipe:", err);
+   309→    } finally {
+   310→      setSubmitting(false);
+   311→    }
+   312→  };
+   313→
+   314→  const handleDelete = async (recipe: Recipe) => {
+   315→    try {
+   316→      const res = await fetch(`/api/recipes/${recipe.id}`, { method: "DELETE" });
+   317→      if (res.ok) {
+   318→        setDeleteConfirm(null);
+   319→        setDetailRecipe(null);
+   320→        fetchRecipes();
+   321→      }
+   322→    } catch (err) {
+   323→      console.error("Error deleting recipe:", err);
+   324→    }
+   325→  };
+   326→
+   327→  const openDetail = (recipe: Recipe) => {
+   328→    setDetailRecipe(recipe);
+   329→    setScalingServings("600");
+   330→  };
+   331→
+   332→  // ─── Render ───────────────────────────────────────────────────
+   333→
+   334→  const formTotalCost = calcFormTotalCost();
+   335→  const formBaseServingsNum = parseInt(formBaseServings) || 100;
+   336→
+   337→  return (
+   338→    <div className="space-y-6">
+   339→      {/* Header */}
+   340→      <div className="flex items-center gap-3">
+   341→        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+   342→          <UtensilsCrossed className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   343→        </div>
+   344→        <div>
+   345→          <h1 className="text-2xl font-bold tracking-tight">Meals / Recipes</h1>
+   346→          <p className="text-muted-foreground">
+   347→            Define meal recipes, ingredient lists, and per-meal cost calculations
+   348→          </p>
+   349→        </div>
+   350→      </div>
+   351→
+   352→      {/* Search & Filters */}
+   353→      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   354→        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+   355→          <div className="relative flex-1 sm:max-w-xs">
+   356→            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   357→            <Input
+   358→              placeholder="Search recipes..."
+   359→              value={search}
+   360→              onChange={(e) => setSearch(e.target.value)}
+   361→              className="pl-9"
+   362→            />
+   363→          </div>
+   364→          <Select value={mealTypeFilter} onValueChange={setMealTypeFilter}>
+   365→            <SelectTrigger className="w-full sm:w-[160px]">
+   366→              <SelectValue placeholder="Meal Type" />
+   367→            </SelectTrigger>
+   368→            <SelectContent>
+   369→              {MEAL_TYPES.map((type) => (
+   370→                <SelectItem key={type} value={type}>
+   371→                  {type === "All" ? "All Types" : type}
+   372→                </SelectItem>
+   373→              ))}
+   374→            </SelectContent>
+   375→          </Select>
+   376→        </div>
+   377→        <Button onClick={openAddForm} className="bg-orange-600 hover:bg-orange-700 text-white gap-2">
+   378→          <Plus className="h-4 w-4" />
+   379→          Add Recipe
+   380→        </Button>
+   381→      </div>
+   382→
+   383→      {/* Recipe Cards Grid */}
+   384→      {loading ? (
+   385→        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   386→          {[1, 2, 3].map((i) => (
+   387→            <Card key={i} className="animate-pulse">
+   388→              <CardHeader className="pb-3">
+   389→                <div className="h-5 w-2/3 rounded bg-muted" />
+   390→                <div className="h-4 w-1/3 rounded bg-muted" />
+   391→              </CardHeader>
+   392→              <CardContent>
+   393→                <div className="space-y-3">
+   394→                  <div className="h-8 w-1/2 rounded bg-muted" />
+   395→                  <div className="h-4 w-3/4 rounded bg-muted" />
+   396→                </div>
+   397→              </CardContent>
+   398→            </Card>
+   399→          ))}
+   400→        </div>
+   401→      ) : recipes.length === 0 ? (
+   402→        <Card>
+   403→          <CardContent className="flex flex-col items-center justify-center py-16">
+   404→            <ChefHat className="h-12 w-12 text-muted-foreground/40 mb-4" />
+   405→            <p className="text-muted-foreground text-sm text-center">
+   406→              No recipes found. Click &quot;Add Recipe&quot; to create your first recipe.
+   407→            </p>
+   408→          </CardContent>
+   409→        </Card>
+   410→      ) : (
+   411→        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+   412→          {recipes.map((recipe) => {
+   413→            const costPerMeal = calcCostPerMeal(recipe.ingredients, recipe.baseServings);
+   414→            const costFor600 = calcCostFor600(recipe.ingredients, recipe.baseServings);
+   415→            return (
+   416→              <Card
+   417→                key={recipe.id}
+   418→                className="group cursor-pointer transition-all duration-200 hover:border-orange-400 hover:shadow-md dark:hover:border-orange-600"
+   419→                onClick={() => openDetail(recipe)}
+   420→              >
+   421→                <CardHeader className="pb-3">
+   422→                  <div className="flex items-start justify-between gap-2">
+   423→                    <div className="flex-1 min-w-0">
+   424→                      <CardTitle className="text-base truncate">{recipe.name}</CardTitle>
+   425→                      {recipe.description && (
+   426→                        <CardDescription className="mt-1 line-clamp-1 text-xs">
+   427→                          {recipe.description}
+   428→                        </CardDescription>
+   429→                      )}
+   430→                    </div>
+   431→                    <Badge
+   432→                      variant="outline"
+   433→                      className={`shrink-0 text-[10px] px-1.5 py-0 ${getMealTypeBadgeClass(recipe.mealType)}`}
+   434→                    >
+   435→                      {recipe.mealType}
+   436→                    </Badge>
+   437→                  </div>
+   438→                </CardHeader>
+   439→                <CardContent className="space-y-3">
+   440→                  {/* Cost per meal - prominent */}
+   441→                  <div className="flex items-baseline gap-1">
+   442→                    <IndianRupee className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   443→                    <span className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+   444→                      {formatRupee(costPerMeal)}
+   445→                    </span>
+   446→                    <span className="text-xs text-muted-foreground">/ meal</span>
+   447→                  </div>
+   448→
+   449→                  {/* Cost for 600 */}
+   450→                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+   451→                    <Calculator className="h-3.5 w-3.5" />
+   452→                    <span>Cost for 600: <span className="font-semibold text-foreground">{formatRupee(costFor600)}</span></span>
+   453→                  </div>
+   454→
+   455→                  <Separator />
+   456→
+   457→                  {/* Meta info */}
+   458→                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+   459→                    <div className="flex items-center gap-1.5">
+   460→                      <Users className="h-3.5 w-3.5" />
+   461→                      <span>{recipe.baseServings} servings</span>
+   462→                    </div>
+   463→                    <div className="flex items-center gap-1.5">
+   464→                      <BookOpen className="h-3.5 w-3.5" />
+   465→                      <span>{recipe.ingredients.length} ingredient{recipe.ingredients.length !== 1 ? "s" : ""}</span>
+   466→                    </div>
+   467→                  </div>
+   468→
+   469→                  {/* Action buttons */}
+   470→                  <div className="flex gap-2 pt-1">
+   471→                    <Button
+   472→                      variant="outline"
+   473→                      size="sm"
+   474→                      className="h-7 text-xs gap-1"
+   475→                      onClick={(e) => {
+   476→                        e.stopPropagation();
+   477→                        openEditForm(recipe);
+   478→                      }}
+   479→                    >
+   480→                      <Pencil className="h-3 w-3" />
+   481→                      Edit
+   482→                    </Button>
+   483→                    <Button
+   484→                      variant="outline"
+   485→                      size="sm"
+   486→                      className="h-7 text-xs gap-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+   487→                      onClick={(e) => {
+   488→                        e.stopPropagation();
+   489→                        setDeleteConfirm(recipe);
+   490→                      }}
+   491→                    >
+   492→                      <Trash2 className="h-3 w-3" />
+   493→                      Delete
+   494→                    </Button>
+   495→                  </div>
+   496→                </CardContent>
+   497→              </Card>
+   498→            );
+   499→          })}
+   500→        </div>
+   501→      )}
+   502→
+   503→      {/* ─── Detail Dialog ─────────────────────────────────────── */}
+   504→      <Dialog open={!!detailRecipe} onOpenChange={(open) => !open && setDetailRecipe(null)}>
+   505→        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+   506→          {detailRecipe && (
+   507→            <>
+   508→              <DialogHeader>
+   509→                <div className="flex items-center gap-3">
+   510→                  <DialogTitle className="text-xl">{detailRecipe.name}</DialogTitle>
+   511→                  <Badge
+   512→                    variant="outline"
+   513→                    className={`text-xs ${getMealTypeBadgeClass(detailRecipe.mealType)}`}
+   514→                  >
+   515→                    {detailRecipe.mealType}
+   516→                  </Badge>
+   517→                </div>
+   518→                {detailRecipe.description && (
+   519→                  <DialogDescription>{detailRecipe.description}</DialogDescription>
+   520→                )}
+   521→              </DialogHeader>
+   522→
+   523→              <div className="space-y-4">
+   524→                {/* Meta row */}
+   525→                <div className="flex flex-wrap gap-4 text-sm">
+   526→                  <div className="flex items-center gap-1.5 text-muted-foreground">
+   527→                    <Users className="h-4 w-4" />
+   528→                    <span>Base Servings: <span className="font-semibold text-foreground">{detailRecipe.baseServings}</span></span>
+   529→                  </div>
+   530→                  <div className="flex items-center gap-1.5 text-muted-foreground">
+   531→                    <BookOpen className="h-4 w-4" />
+   532→                    <span>Ingredients: <span className="font-semibold text-foreground">{detailRecipe.ingredients.length}</span></span>
+   533→                  </div>
+   534→                </div>
+   535→
+   536→                {/* Instructions */}
+   537→                {detailRecipe.instructions && (
+   538→                  <div className="rounded-lg border bg-muted/50 p-3">
+   539→                    <p className="text-xs font-medium text-muted-foreground mb-1">Instructions</p>
+   540→                    <p className="text-sm whitespace-pre-wrap">{detailRecipe.instructions}</p>
+   541→                  </div>
+   542→                )}
+   543→
+   544→                {/* Ingredients Table */}
+   545→                <div className="rounded-lg border">
+   546→                  <Table>
+   547→                    <TableHeader>
+   548→                      <TableRow>
+   549→                        <TableHead className="w-[40%]">Ingredient</TableHead>
+   550→                        <TableHead className="text-right">Quantity</TableHead>
+   551→                        <TableHead>Unit</TableHead>
+   552→                        <TableHead className="text-right">Unit Cost</TableHead>
+   553→                        <TableHead className="text-right">Total Cost</TableHead>
+   554→                      </TableRow>
+   555→                    </TableHeader>
+   556→                    <TableBody>
+   557→                      {detailRecipe.ingredients.map((ri, idx) => {
+   558→                        const unitCost = ri.ingredient.avgCost;
+   559→                        const totalCost = ri.quantity * unitCost;
+   560→                        return (
+   561→                          <TableRow key={ri.id} className={idx % 2 === 1 ? "bg-muted/30" : ""}>
+   562→                            <TableCell className="font-medium">{ri.ingredient.name}</TableCell>
+   563→                            <TableCell className="text-right">{ri.quantity}</TableCell>
+   564→                            <TableCell>{ri.unit}</TableCell>
+   565→                            <TableCell className="text-right">{formatRupee(unitCost)}</TableCell>
+   566→                            <TableCell className="text-right font-medium">{formatRupee(totalCost)}</TableCell>
+   567→                          </TableRow>
+   568→                        );
+   569→                      })}
+   570→                    </TableBody>
+   571→                  </Table>
+   572→                </div>
+   573→
+   574→                {/* Cost Summary */}
+   575→                <div className="grid gap-3 sm:grid-cols-3">
+   576→                  <Card className="border-orange-200 dark:border-orange-800">
+   577→                    <CardContent className="p-4 text-center">
+   578→                      <p className="text-xs text-muted-foreground mb-1">Total Ingredient Cost</p>
+   579→                      <p className="text-lg font-bold">{formatRupee(calcTotalIngredientCost(detailRecipe.ingredients))}</p>
+   580→                    </CardContent>
+   581→                  </Card>
+   582→                  <Card className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20">
+   583→                    <CardContent className="p-4 text-center">
+   584→                      <p className="text-xs text-orange-700 dark:text-orange-400 mb-1">Cost per Meal</p>
+   585→                      <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+   586→                        {formatRupee(calcCostPerMeal(detailRecipe.ingredients, detailRecipe.baseServings))}
+   587→                      </p>
+   588→                    </CardContent>
+   589→                  </Card>
+   590→                  <Card className="border-orange-200 dark:border-orange-800">
+   591→                    <CardContent className="p-4 text-center">
+   592→                      <p className="text-xs text-muted-foreground mb-1">Cost for 600</p>
+   593→                      <p className="text-lg font-bold">
+   594→                        {formatRupee(calcCostFor600(detailRecipe.ingredients, detailRecipe.baseServings))}
+   595→                      </p>
+   596→                    </CardContent>
+   597→                  </Card>
+   598→                </div>
+   599→
+   600→                {/* Scaling Section */}
+   601→                <div className="rounded-lg border p-4">
+   602→                  <p className="text-sm font-medium mb-3 flex items-center gap-2">
+   603→                    <Calculator className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+   604→                    Cost Scaling Calculator
+   605→                  </p>
+   606→                  <div className="flex items-center gap-3">
+   607→                    <Label htmlFor="scaling-servings" className="text-sm text-muted-foreground whitespace-nowrap">
+   608→                      Servings:
+   609→                    </Label>
+   610→                    <Input
+   611→                      id="scaling-servings"
+   612→                      type="number"
+   613→                      min={1}
+   614→                      value={scalingServings}
+   615→                      onChange={(e) => setScalingServings(e.target.value)}
+   616→                      className="w-28"
+   617→                    />
+   618→                    <div className="text-sm">
+   619→                      <span className="text-muted-foreground">Total Cost: </span>
+   620→                      <span className="font-bold text-orange-600 dark:text-orange-400">
+   621→                        {formatRupee(
+   622→                          calcCostPerMeal(detailRecipe.ingredients, detailRecipe.baseServings) *
+   623→                            (parseInt(scalingServings) || 0)
+   624→                        )}
+   625→                      </span>
+   626→                    </div>
+   627→                  </div>
+   628→                </div>
+   629→
+   630→                {/* Detail actions */}
+   631→                <div className="flex gap-2 pt-2">
+   632→                  <Button
+   633→                    variant="outline"
+   634→                    className="gap-2"
+   635→                    onClick={() => {
+   636→                      setDetailRecipe(null);
+   637→                      openEditForm(detailRecipe);
+   638→                    }}
+   639→                  >
+   640→                    <Pencil className="h-4 w-4" />
+   641→                    Edit Recipe
+   642→                  </Button>
+   643→                  <Button
+   644→                    variant="outline"
+   645→                    className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+   646→                    onClick={() => {
+   647→                      setDeleteConfirm(detailRecipe);
+   648→                    }}
+   649→                  >
+   650→                    <Trash2 className="h-4 w-4" />
+   651→                    Delete Recipe
+   652→                  </Button>
+   653→                </div>
+   654→              </div>
+   655→            </>
+   656→          )}
+   657→        </DialogContent>
+   658→      </Dialog>
+   659→
+   660→      {/* ─── Add / Edit Dialog ─────────────────────────────────── */}
+   661→      <Dialog open={formOpen} onOpenChange={(open) => !open && setFormOpen(false)}>
+   662→        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+   663→          <DialogHeader>
+   664→            <DialogTitle>{editingRecipe ? "Edit Recipe" : "Add New Recipe"}</DialogTitle>
+   665→            <DialogDescription>
+   666→              {editingRecipe
+   667→                ? "Update recipe details and ingredient list"
+   668→                : "Create a new recipe with ingredients and cost calculation"}
+   669→            </DialogDescription>
+   670→          </DialogHeader>
+   671→
+   672→          <div className="space-y-4">
+   673→            {/* Name */}
+   674→            <div className="space-y-1.5">
+   675→              <Label htmlFor="recipe-name">Recipe Name *</Label>
+   676→              <Input
+   677→                id="recipe-name"
+   678→                placeholder="e.g., Dal Rice"
+   679→                value={formName}
+   680→                onChange={(e) => setFormName(e.target.value)}
+   681→              />
+   682→            </div>
+   683→
+   684→            {/* Description */}
+   685→            <div className="space-y-1.5">
+   686→              <Label htmlFor="recipe-desc">Description</Label>
+   687→              <Input
+   688→                id="recipe-desc"
+   689→                placeholder="Brief description of the recipe"
+   690→                value={formDescription}
+   691→                onChange={(e) => setFormDescription(e.target.value)}
+   692→              />
+   693→            </div>
+   694→
+   695→            {/* Meal Type & Base Servings */}
+   696→            <div className="grid gap-4 sm:grid-cols-2">
+   697→              <div className="space-y-1.5">
+   698→                <Label>Meal Type *</Label>
+   699→                <Select value={formMealType} onValueChange={setFormMealType}>
+   700→                  <SelectTrigger className="w-full">
+   701→                    <SelectValue />
+   702→                  </SelectTrigger>
+   703→                  <SelectContent>
+   704→                    <SelectItem value="Breakfast">Breakfast</SelectItem>
+   705→                    <SelectItem value="Lunch">Lunch</SelectItem>
+   706→                    <SelectItem value="Dinner">Dinner</SelectItem>
+   707→                    <SelectItem value="Snack">Snack</SelectItem>
+   708→                  </SelectContent>
+   709→                </Select>
+   710→              </div>
+   711→              <div className="space-y-1.5">
+   712→                <Label htmlFor="base-servings">Base Servings</Label>
+   713→                <Input
+   714→                  id="base-servings"
+   715→                  type="number"
+   716→                  min={1}
+   717→                  value={formBaseServings}
+   718→                  onChange={(e) => setFormBaseServings(e.target.value)}
+   719→                />
+   720→              </div>
+   721→            </div>
+   722→
+   723→            {/* Instructions */}
+   724→            <div className="space-y-1.5">
+   725→              <Label htmlFor="recipe-instructions">Instructions</Label>
+   726→              <Textarea
+   727→                id="recipe-instructions"
+   728→                placeholder="Cooking instructions (optional)"
+   729→                value={formInstructions}
+   730→                onChange={(e) => setFormInstructions(e.target.value)}
+   731→                rows={3}
+   732→              />
+   733→            </div>
+   734→
+   735→            <Separator />
+   736→
+   737→            {/* Ingredients Section */}
+   738→            <div className="space-y-3">
+   739→              <div className="flex items-center justify-between">
+   740→                <Label className="text-sm font-medium">Ingredients *</Label>
+   741→                <Button
+   742→                  type="button"
+   743→                  variant="outline"
+   744→                  size="sm"
+   745→                  className="h-7 text-xs gap-1"
+   746→                  onClick={addIngredientRow}
+   747→                >
+   748→                  <Plus className="h-3 w-3" />
+   749→                  Add Ingredient
+   750→                </Button>
+   751→              </div>
+   752→
+   753→              <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+   754→                {formIngredients.map((row, idx) => (
+   755→                  <div key={idx} className="flex items-end gap-2">
+   756→                    <div className="flex-1 min-w-0">
+   757→                      {idx === 0 && (
+   758→                        <p className="text-[10px] text-muted-foreground mb-1">Ingredient</p>
+   759→                      )}
+   760→                      <Select
+   761→                        value={row.ingredientId}
+   762→                        onValueChange={(val) => updateIngredientRow(idx, "ingredientId", val)}
+   763→                      >
+   764→                        <SelectTrigger className="w-full h-9 text-sm">
+   765→                          <SelectValue placeholder="Select ingredient" />
+   766→                        </SelectTrigger>
+   767→                        <SelectContent>
+   768→                          {allIngredients.map((ing) => (
+   769→                            <SelectItem key={ing.id} value={ing.id}>
+   770→                              {ing.name} ({ing.unit})
+   771→                            </SelectItem>
+   772→                          ))}
+   773→                        </SelectContent>
+   774→                      </Select>
+   775→                    </div>
+   776→                    <div className="w-24">
+   777→                      {idx === 0 && (
+   778→                        <p className="text-[10px] text-muted-foreground mb-1">Qty</p>
+   779→                      )}
+   780→                      <Input
+   781→                        type="number"
+   782→                        min={0}
+   783→                        step="any"
+   784→                        placeholder="0"
+   785→                        value={row.quantity}
+   786→                        onChange={(e) => updateIngredientRow(idx, "quantity", e.target.value)}
+   787→                        className="h-9 text-sm"
+   788→                      />
+   789→                    </div>
+   790→                    <div className="w-20">
+   791→                      {idx === 0 && (
+   792→                        <p className="text-[10px] text-muted-foreground mb-1">Unit</p>
+   793→                      )}
+   794→                      <Input
+   795→                        placeholder="unit"
+   796→                        value={row.unit}
+   797→                        onChange={(e) => updateIngredientRow(idx, "unit", e.target.value)}
+   798→                        className="h-9 text-sm"
+   799→                      />
+   800→                    </div>
+   801→                    <Button
+   802→                      type="button"
+   803→                      variant="ghost"
+   804→                      size="sm"
+   805→                      className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+   806→                      disabled={formIngredients.length <= 1}
+   807→                      onClick={() => removeIngredientRow(idx)}
+   808→                    >
+   809→                      <X className="h-4 w-4" />
+   810→                    </Button>
+   811→                  </div>
+   812→                ))}
+   813→              </div>
+   814→
+   815→              {/* Real-time cost summary in form */}
+   816→              <div className="rounded-lg border bg-orange-50 dark:bg-orange-950/20 p-3 space-y-1.5">
+   817→                <p className="text-xs font-medium text-orange-700 dark:text-orange-400 flex items-center gap-1.5">
+   818→                  <Calculator className="h-3.5 w-3.5" />
+   819→                  Cost Preview
+   820→                </p>
+   821→                <div className="grid grid-cols-3 gap-2 text-xs">
+   822→                  <div>
+   823→                    <span className="text-muted-foreground">Total Cost: </span>
+   824→                    <span className="font-semibold">{formatRupee(formTotalCost)}</span>
+   825→                  </div>
+   826→                  <div>
+   827→                    <span className="text-muted-foreground">Per Meal: </span>
+   828→                    <span className="font-semibold text-orange-600 dark:text-orange-400">
+   829→                      {formatRupee(formBaseServingsNum > 0 ? formTotalCost / formBaseServingsNum : 0)}
+   830→                    </span>
+   831→                  </div>
+   832→                  <div>
+   833→                    <span className="text-muted-foreground">For 600: </span>
+   834→                    <span className="font-semibold">
+   835→                      {formatRupee(formBaseServingsNum > 0 ? (formTotalCost / formBaseServingsNum) * 600 : 0)}
+   836→                    </span>
+   837→                  </div>
+   838→                </div>
+   839→              </div>
+   840→            </div>
+   841→          </div>
+   842→
+   843→          <DialogFooter>
+   844→            <Button variant="outline" onClick={() => setFormOpen(false)}>
+   845→              Cancel
+   846→            </Button>
+   847→            <Button
+   848→              onClick={handleSubmit}
+   849→              disabled={submitting || !formName || !formMealType || formIngredients.every((r) => !r.ingredientId)}
+   850→              className="bg-orange-600 hover:bg-orange-700 text-white gap-2"
+   851→            >
+   852→              {submitting ? (
+   853→                "Saving..."
+   854→              ) : (
+   855→                <>
+   856→                  <ChefHat className="h-4 w-4" />
+   857→                  {editingRecipe ? "Update Recipe" : "Create Recipe"}
+   858→                </>
+   859→              )}
+   860→            </Button>
+   861→          </DialogFooter>
+   862→        </DialogContent>
+   863→      </Dialog>
+   864→
+   865→      {/* ─── Delete Confirmation Dialog ────────────────────────── */}
+   866→      <Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+   867→        <DialogContent className="max-w-md">
+   868→          <DialogHeader>
+   869→            <DialogTitle className="flex items-center gap-2 text-destructive">
+   870→              <AlertTriangle className="h-5 w-5" />
+   871→              Delete Recipe
+   872→            </DialogTitle>
+   873→            <DialogDescription>
+   874→              Are you sure you want to delete &quot;{deleteConfirm?.name}&quot;? This action cannot be undone.
+   875→            </DialogDescription>
+   876→          </DialogHeader>
+   877→          <DialogFooter>
+   878→            <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
+   879→              Cancel
+   880→            </Button>
+   881→            <Button
+   882→              variant="destructive"
+   883→              onClick={() => deleteConfirm && handleDelete(deleteConfirm)}
+   884→              className="gap-2"
+   885→            >
+   886→              <Trash2 className="h-4 w-4" />
+   887→              Delete
+   888→            </Button>
+   889→          </DialogFooter>
+   890→        </DialogContent>
+   891→      </Dialog>
+   892→    </div>
+   893→  );
+   894→}
+   895→

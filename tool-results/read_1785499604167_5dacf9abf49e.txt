@@ -1,0 +1,1233 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect, useCallback } from "react";
+     4→import { useForm } from "react-hook-form";
+     5→import { z } from "zod";
+     6→import { zodResolver } from "@hookform/resolvers/zod";
+     7→
+     8→import {
+     9→  Card,
+    10→  CardContent,
+    11→  CardDescription,
+    12→  CardHeader,
+    13→  CardTitle,
+    14→} from "@/components/ui/card";
+    15→import {
+    16→  Table,
+    17→  TableBody,
+    18→  TableCell,
+    19→  TableHead,
+    20→  TableHeader,
+    21→  TableRow,
+    22→} from "@/components/ui/table";
+    23→import {
+    24→  Dialog,
+    25→  DialogContent,
+    26→  DialogDescription,
+    27→  DialogFooter,
+    28→  DialogHeader,
+    29→  DialogTitle,
+    30→} from "@/components/ui/dialog";
+    31→import {
+    32→  AlertDialog,
+    33→  AlertDialogAction,
+    34→  AlertDialogCancel,
+    35→  AlertDialogContent,
+    36→  AlertDialogDescription,
+    37→  AlertDialogFooter,
+    38→  AlertDialogHeader,
+    39→  AlertDialogTitle,
+    40→} from "@/components/ui/alert-dialog";
+    41→import {
+    42→  Select,
+    43→  SelectContent,
+    44→  SelectItem,
+    45→  SelectTrigger,
+    46→  SelectValue,
+    47→} from "@/components/ui/select";
+    48→import {
+    49→  Form,
+    50→  FormControl,
+    51→  FormField,
+    52→  FormItem,
+    53→  FormLabel,
+    54→  FormMessage,
+    55→} from "@/components/ui/form";
+    56→import { Input } from "@/components/ui/input";
+    57→import { Button } from "@/components/ui/button";
+    58→import { Badge } from "@/components/ui/badge";
+    59→import { Separator } from "@/components/ui/separator";
+    60→
+    61→import {
+    62→  Package,
+    63→  Plus,
+    64→  Search,
+    65→  Pencil,
+    66→  Trash2,
+    67→  ArrowUpDown,
+    68→  ChevronLeft,
+    69→  ChevronRight,
+    70→  AlertTriangle,
+    71→  Loader2,
+    72→  Eye,
+    73→  X,
+    74→} from "lucide-react";
+    75→
+    76→// ─── Types ───────────────────────────────────────────────────────────────────
+    77→
+    78→interface Ingredient {
+    79→  id: string;
+    80→  name: string;
+    81→  unit: string;
+    82→  category: string;
+    83→  currentStock: number;
+    84→  minStock: number;
+    85→  lastPurchasePrice: number;
+    86→  avgCost: number;
+    87→  supplier: string | null;
+    88→  createdAt: string;
+    89→  updatedAt: string;
+    90→}
+    91→
+    92→interface IngredientDetail extends Ingredient {
+    93→  stockMovements: Array<{
+    94→    id: string;
+    95→    type: string;
+    96→    quantity: number;
+    97→    unitPrice: number;
+    98→    totalAmount: number;
+    99→    date: string;
+   100→    notes: string | null;
+   101→  }>;
+   102→  recipeIngredients: Array<{
+   103→    id: string;
+   104→    quantity: number;
+   105→    unit: string;
+   106→    recipe: {
+   107→      id: string;
+   108→      name: string;
+   109→      mealType: string;
+   110→    };
+   111→  }>;
+   112→}
+   113→
+   114→// ─── Constants ───────────────────────────────────────────────────────────────
+   115→
+   116→const CATEGORIES = [
+   117→  "All",
+   118→  "Vegetables",
+   119→  "Grains",
+   120→  "Oil",
+   121→  "Spices",
+   122→  "Dairy",
+   123→  "Meat",
+   124→  "Pulses",
+   125→  "Other",
+   126→] as const;
+   127→
+   128→const UNITS = ["kg", "gram", "litre", "ml", "pcs", "dozen", "packet"] as const;
+   129→
+   130→const CATEGORY_COLORS: Record<string, string> = {
+   131→  Vegetables: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+   132→  Grains: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
+   133→  Oil: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+   134→  Spices: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+   135→  Dairy: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+   136→  Meat: "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300",
+   137→  Pulses: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+   138→  Other: "bg-gray-100 text-gray-800 dark:bg-gray-900/40 dark:text-gray-300",
+   139→};
+   140→
+   141→const ITEMS_PER_PAGE = 10;
+   142→
+   143→type SortField =
+   144→  | "name"
+   145→  | "category"
+   146→  | "unit"
+   147→  | "currentStock"
+   148→  | "minStock"
+   149→  | "lastPurchasePrice"
+   150→  | "avgCost"
+   151→  | "supplier";
+   152→type SortDirection = "asc" | "desc";
+   153→
+   154→// ─── Zod Schema ──────────────────────────────────────────────────────────────
+   155→
+   156→const ingredientSchema = z.object({
+   157→  name: z.string().min(1, "Name is required"),
+   158→  unit: z.string().min(1, "Unit is required"),
+   159→  category: z.string().min(1, "Category is required"),
+   160→  currentStock: z.coerce.number().min(0, "Must be 0 or more"),
+   161→  minStock: z.coerce.number().min(0, "Must be 0 or more"),
+   162→  lastPurchasePrice: z.coerce.number().min(0, "Must be 0 or more"),
+   163→  avgCost: z.coerce.number().min(0, "Must be 0 or more"),
+   164→  supplier: z.string().optional().default(""),
+   165→});
+   166→
+   167→type IngredientFormValues = z.infer<typeof ingredientSchema>;
+   168→
+   169→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   170→
+   171→function formatCurrency(value: number): string {
+   172→  return `₹${value.toFixed(2)}`;
+   173→}
+   174→
+   175→function formatStockWithUnit(quantity: number, unit: string): string {
+   176→  return `${quantity} ${unit}`;
+   177→}
+   178→
+   179→function isLowStock(item: Ingredient): boolean {
+   180→  return item.currentStock < item.minStock;
+   181→}
+   182→
+   183→// ─── Component ───────────────────────────────────────────────────────────────
+   184→
+   185→export function StockView() {
+   186→  // State
+   187→  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+   188→  const [loading, setLoading] = useState(true);
+   189→  const [search, setSearch] = useState("");
+   190→  const [categoryFilter, setCategoryFilter] = useState("All");
+   191→  const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+   192→
+   193→  // Dialog state
+   194→  const [dialogOpen, setDialogOpen] = useState(false);
+   195→  const [editingItem, setEditingItem] = useState<Ingredient | null>(null);
+   196→  const [deleteItem, setDeleteItem] = useState<Ingredient | null>(null);
+   197→  const [detailItem, setDetailItem] = useState<IngredientDetail | null>(null);
+   198→  const [detailOpen, setDetailOpen] = useState(false);
+   199→
+   200→  // Sorting
+   201→  const [sortField, setSortField] = useState<SortField>("name");
+   202→  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+   203→
+   204→  // Pagination
+   205→  const [currentPage, setCurrentPage] = useState(1);
+   206→
+   207→  // Submitting state
+   208→  const [submitting, setSubmitting] = useState(false);
+   209→
+   210→  // ─── Form ────────────────────────────────────────────────────────────────
+   211→
+   212→  const form = useForm<IngredientFormValues>({
+   213→    resolver: zodResolver(ingredientSchema),
+   214→    defaultValues: {
+   215→      name: "",
+   216→      unit: "",
+   217→      category: "",
+   218→      currentStock: 0,
+   219→      minStock: 0,
+   220→      lastPurchasePrice: 0,
+   221→      avgCost: 0,
+   222→      supplier: "",
+   223→    },
+   224→  });
+   225→
+   226→  // ─── Fetch ───────────────────────────────────────────────────────────────
+   227→
+   228→  const fetchIngredients = useCallback(async () => {
+   229→    setLoading(true);
+   230→    try {
+   231→      const params = new URLSearchParams();
+   232→      if (search) params.set("search", search);
+   233→      if (categoryFilter !== "All") params.set("category", categoryFilter);
+   234→      if (showLowStockOnly) params.set("lowStock", "true");
+   235→
+   236→      const res = await fetch(`/api/ingredients?${params.toString()}`);
+   237→      if (res.ok) {
+   238→        const data = await res.json();
+   239→        setIngredients(data);
+   240→      }
+   241→    } catch (error) {
+   242→      console.error("Failed to fetch ingredients:", error);
+   243→    } finally {
+   244→      setLoading(false);
+   245→    }
+   246→  }, [search, categoryFilter, showLowStockOnly]);
+   247→
+   248→  useEffect(() => {
+   249→    fetchIngredients();
+   250→  }, [fetchIngredients]);
+   251→
+   252→  // Reset page when filters change
+   253→  useEffect(() => {
+   254→    setCurrentPage(1);
+   255→  }, [search, categoryFilter, showLowStockOnly]);
+   256→
+   257→  // ─── Sorting ─────────────────────────────────────────────────────────────
+   258→
+   259→  const handleSort = (field: SortField) => {
+   260→    if (sortField === field) {
+   261→      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+   262→    } else {
+   263→      setSortField(field);
+   264→      setSortDirection("asc");
+   265→    }
+   266→  };
+   267→
+   268→  const sortedIngredients = [...ingredients].sort((a, b) => {
+   269→    let aVal: string | number = a[sortField] ?? "";
+   270→    let bVal: string | number = b[sortField] ?? "";
+   271→
+   272→    if (typeof aVal === "string") aVal = aVal.toLowerCase();
+   273→    if (typeof bVal === "string") bVal = bVal.toLowerCase();
+   274→
+   275→    if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+   276→    if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
+   277→    return 0;
+   278→  });
+   279→
+   280→  // ─── Pagination ──────────────────────────────────────────────────────────
+   281→
+   282→  const totalPages = Math.max(1, Math.ceil(sortedIngredients.length / ITEMS_PER_PAGE));
+   283→  const paginatedIngredients = sortedIngredients.slice(
+   284→    (currentPage - 1) * ITEMS_PER_PAGE,
+   285→    currentPage * ITEMS_PER_PAGE
+   286→  );
+   287→
+   288→  // ─── CRUD Handlers ──────────────────────────────────────────────────────
+   289→
+   290→  const openAddDialog = () => {
+   291→    setEditingItem(null);
+   292→    form.reset({
+   293→      name: "",
+   294→      unit: "",
+   295→      category: "",
+   296→      currentStock: 0,
+   297→      minStock: 0,
+   298→      lastPurchasePrice: 0,
+   299→      avgCost: 0,
+   300→      supplier: "",
+   301→    });
+   302→    setDialogOpen(true);
+   303→  };
+   304→
+   305→  const openEditDialog = (item: Ingredient) => {
+   306→    setEditingItem(item);
+   307→    form.reset({
+   308→      name: item.name,
+   309→      unit: item.unit,
+   310→      category: item.category,
+   311→      currentStock: item.currentStock,
+   312→      minStock: item.minStock,
+   313→      lastPurchasePrice: item.lastPurchasePrice,
+   314→      avgCost: item.avgCost,
+   315→      supplier: item.supplier ?? "",
+   316→    });
+   317→    setDialogOpen(true);
+   318→  };
+   319→
+   320→  const onSubmit = async (values: IngredientFormValues) => {
+   321→    setSubmitting(true);
+   322→    try {
+   323→      const body = {
+   324→        ...values,
+   325→        supplier: values.supplier || null,
+   326→      };
+   327→
+   328→      if (editingItem) {
+   329→        const res = await fetch(`/api/ingredients/${editingItem.id}`, {
+   330→          method: "PUT",
+   331→          headers: { "Content-Type": "application/json" },
+   332→          body: JSON.stringify(body),
+   333→        });
+   334→        if (!res.ok) throw new Error("Failed to update ingredient");
+   335→      } else {
+   336→        const res = await fetch("/api/ingredients", {
+   337→          method: "POST",
+   338→          headers: { "Content-Type": "application/json" },
+   339→          body: JSON.stringify(body),
+   340→        });
+   341→        if (!res.ok) throw new Error("Failed to create ingredient");
+   342→      }
+   343→
+   344→      setDialogOpen(false);
+   345→      form.reset();
+   346→      await fetchIngredients();
+   347→    } catch (error) {
+   348→      console.error("Failed to save ingredient:", error);
+   349→    } finally {
+   350→      setSubmitting(false);
+   351→    }
+   352→  };
+   353→
+   354→  const handleDelete = async () => {
+   355→    if (!deleteItem) return;
+   356→    try {
+   357→      const res = await fetch(`/api/ingredients/${deleteItem.id}`, {
+   358→        method: "DELETE",
+   359→      });
+   360→      if (!res.ok) throw new Error("Failed to delete ingredient");
+   361→      setDeleteItem(null);
+   362→      await fetchIngredients();
+   363→    } catch (error) {
+   364→      console.error("Failed to delete ingredient:", error);
+   365→    }
+   366→  };
+   367→
+   368→  const openDetailDialog = async (item: Ingredient) => {
+   369→    try {
+   370→      const res = await fetch(`/api/ingredients/${item.id}`);
+   371→      if (res.ok) {
+   372→        const data = await res.json();
+   373→        setDetailItem(data);
+   374→        setDetailOpen(true);
+   375→      }
+   376→    } catch (error) {
+   377→      console.error("Failed to fetch ingredient detail:", error);
+   378→    }
+   379→  };
+   380→
+   381→  // ─── Sortable Header Helper ──────────────────────────────────────────────
+   382→
+   383→  const SortableHeader = ({
+   384→    field,
+   385→    children,
+   386→  }: {
+   387→    field: SortField;
+   388→    children: React.ReactNode;
+   389→  }) => (
+   390→    <Button
+   391→      variant="ghost"
+   392→      size="sm"
+   393→      className="-ml-3 h-8"
+   394→      onClick={() => handleSort(field)}
+   395→    >
+   396→      {children}
+   397→      <ArrowUpDown className="ml-1 h-3 w-3" />
+   398→      {sortField === field && (
+   399→        <span className="ml-1 text-[10px] text-muted-foreground">
+   400→          {sortDirection === "asc" ? "↑" : "↓"}
+   401→        </span>
+   402→      )}
+   403→    </Button>
+   404→  );
+   405→
+   406→  // ─── Low stock count ────────────────────────────────────────────────────
+   407→
+   408→  const lowStockCount = ingredients.filter(isLowStock).length;
+   409→
+   410→  // ─── Render ──────────────────────────────────────────────────────────────
+   411→
+   412→  return (
+   413→    <div className="space-y-6">
+   414→      {/* Header */}
+   415→      <div className="flex items-center gap-3">
+   416→        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/40">
+   417→          <Package className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+   418→        </div>
+   419→        <div>
+   420→          <h1 className="text-2xl font-bold tracking-tight">
+   421→            Stock / Raw Materials
+   422→          </h1>
+   423→          <p className="text-muted-foreground">
+   424→            Manage raw material inventory, track quantities, and monitor stock
+   425→            levels
+   426→          </p>
+   427→        </div>
+   428→      </div>
+   429→
+   430→      {/* Summary Cards */}
+   431→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+   432→        <Card>
+   433→          <CardContent className="p-4">
+   434→            <div className="flex items-center gap-3">
+   435→              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
+   436→                <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+   437→              </div>
+   438→              <div>
+   439→                <p className="text-sm text-muted-foreground">Total Items</p>
+   440→                <p className="text-xl font-bold">{ingredients.length}</p>
+   441→              </div>
+   442→            </div>
+   443→          </CardContent>
+   444→        </Card>
+   445→        <Card>
+   446→          <CardContent className="p-4">
+   447→            <div className="flex items-center gap-3">
+   448→              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
+   449→                <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
+   450→              </div>
+   451→              <div>
+   452→                <p className="text-sm text-muted-foreground">Low Stock</p>
+   453→                <p className="text-xl font-bold text-red-600 dark:text-red-400">
+   454→                  {lowStockCount}
+   455→                </p>
+   456→              </div>
+   457→            </div>
+   458→          </CardContent>
+   459→        </Card>
+   460→        <Card>
+   461→          <CardContent className="p-4">
+   462→            <div className="flex items-center gap-3">
+   463→              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/40">
+   464→                <Package className="h-4 w-4 text-green-600 dark:text-green-400" />
+   465→              </div>
+   466→              <div>
+   467→                <p className="text-sm text-muted-foreground">In Stock</p>
+   468→                <p className="text-xl font-bold text-green-600 dark:text-green-400">
+   469→                  {ingredients.length - lowStockCount}
+   470→                </p>
+   471→              </div>
+   472→            </div>
+   473→          </CardContent>
+   474→        </Card>
+   475→      </div>
+   476→
+   477→      {/* Filters & Actions */}
+   478→      <Card>
+   479→        <CardHeader className="pb-4">
+   480→          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+   481→            <div>
+   482→              <CardTitle>Inventory</CardTitle>
+   483→              <CardDescription>
+   484→                Add, edit, and track all raw materials used in the canteen
+   485→              </CardDescription>
+   486→            </div>
+   487→            <Button
+   488→              onClick={openAddDialog}
+   489→              className="bg-orange-600 hover:bg-orange-700 text-white shrink-0"
+   490→            >
+   491→              <Plus className="h-4 w-4" />
+   492→              Add Ingredient
+   493→            </Button>
+   494→          </div>
+   495→        </CardHeader>
+   496→        <CardContent className="space-y-4">
+   497→          {/* Search & Filter Row */}
+   498→          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+   499→            <div className="relative flex-1">
+   500→              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+   501→              <Input
+   502→                placeholder="Search by name..."
+   503→                value={search}
+   504→                onChange={(e) => setSearch(e.target.value)}
+   505→                className="pl-9"
+   506→              />
+   507→              {search && (
+   508→                <button
+   509→                  onClick={() => setSearch("")}
+   510→                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+   511→                >
+   512→                  <X className="h-4 w-4" />
+   513→                </button>
+   514→              )}
+   515→            </div>
+   516→            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+   517→              <SelectTrigger className="w-full sm:w-[180px]">
+   518→                <SelectValue placeholder="Category" />
+   519→              </SelectTrigger>
+   520→              <SelectContent>
+   521→                {CATEGORIES.map((cat) => (
+   522→                  <SelectItem key={cat} value={cat}>
+   523→                    {cat}
+   524→                  </SelectItem>
+   525→                ))}
+   526→              </SelectContent>
+   527→            </Select>
+   528→            <Button
+   529→              variant={showLowStockOnly ? "default" : "outline"}
+   530→              size="sm"
+   531→              onClick={() => setShowLowStockOnly(!showLowStockOnly)}
+   532→              className={
+   533→                showLowStockOnly
+   534→                  ? "bg-red-600 hover:bg-red-700 text-white"
+   535→                  : ""
+   536→              }
+   537→            >
+   538→              <AlertTriangle className="h-4 w-4" />
+   539→              Low Stock
+   540→            </Button>
+   541→          </div>
+   542→
+   543→          {/* Table */}
+   544→          {loading ? (
+   545→            <div className="flex h-48 items-center justify-center">
+   546→              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+   547→            </div>
+   548→          ) : sortedIngredients.length === 0 ? (
+   549→            <div className="flex h-48 flex-col items-center justify-center rounded-lg border border-dashed border-muted-foreground/25">
+   550→              <Package className="mb-2 h-8 w-8 text-muted-foreground" />
+   551→              <p className="text-sm text-muted-foreground">
+   552→                No ingredients found. Add your first ingredient to get started.
+   553→              </p>
+   554→            </div>
+   555→          ) : (
+   556→            <>
+   557→              <div className="rounded-md border">
+   558→                <Table>
+   559→                  <TableHeader>
+   560→                    <TableRow>
+   561→                      <TableHead>
+   562→                        <SortableHeader field="name">Name</SortableHeader>
+   563→                      </TableHead>
+   564→                      <TableHead>
+   565→                        <SortableHeader field="category">
+   566→                          Category
+   567→                        </SortableHeader>
+   568→                      </TableHead>
+   569→                      <TableHead>
+   570→                        <SortableHeader field="unit">Unit</SortableHeader>
+   571→                      </TableHead>
+   572→                      <TableHead className="text-right">
+   573→                        <SortableHeader field="currentStock">
+   574→                          Current Stock
+   575→                        </SortableHeader>
+   576→                      </TableHead>
+   577→                      <TableHead className="text-right">
+   578→                        <SortableHeader field="minStock">
+   579→                          Min Stock
+   580→                        </SortableHeader>
+   581→                      </TableHead>
+   582→                      <TableHead className="text-right">
+   583→                        <SortableHeader field="lastPurchasePrice">
+   584→                          Last Price
+   585→                        </SortableHeader>
+   586→                      </TableHead>
+   587→                      <TableHead className="text-right">
+   588→                        <SortableHeader field="avgCost">
+   589→                          Avg Cost
+   590→                        </SortableHeader>
+   591→                      </TableHead>
+   592→                      <TableHead>
+   593→                        <SortableHeader field="supplier">
+   594→                          Supplier
+   595→                        </SortableHeader>
+   596→                      </TableHead>
+   597→                      <TableHead>Status</TableHead>
+   598→                      <TableHead className="text-right">Actions</TableHead>
+   599→                    </TableRow>
+   600→                  </TableHeader>
+   601→                  <TableBody>
+   602→                    {paginatedIngredients.map((item) => {
+   603→                      const low = isLowStock(item);
+   604→                      return (
+   605→                        <TableRow
+   606→                          key={item.id}
+   607→                          className={`cursor-pointer ${
+   608→                            low
+   609→                              ? "bg-red-50/50 hover:bg-red-100/50 dark:bg-red-950/20 dark:hover:bg-red-950/30"
+   610→                              : ""
+   611→                          }`}
+   612→                          onClick={() => openDetailDialog(item)}
+   613→                        >
+   614→                          <TableCell className="font-medium">
+   615→                            {item.name}
+   616→                          </TableCell>
+   617→                          <TableCell>
+   618→                            <Badge
+   619→                              variant="secondary"
+   620→                              className={
+   621→                                CATEGORY_COLORS[item.category] ||
+   622→                                CATEGORY_COLORS.Other
+   623→                              }
+   624→                            >
+   625→                              {item.category}
+   626→                            </Badge>
+   627→                          </TableCell>
+   628→                          <TableCell className="text-muted-foreground">
+   629→                            {item.unit}
+   630→                          </TableCell>
+   631→                          <TableCell className="text-right font-mono">
+   632→                            {formatStockWithUnit(item.currentStock, item.unit)}
+   633→                          </TableCell>
+   634→                          <TableCell className="text-right font-mono text-muted-foreground">
+   635→                            {formatStockWithUnit(item.minStock, item.unit)}
+   636→                          </TableCell>
+   637→                          <TableCell className="text-right font-mono">
+   638→                            {formatCurrency(item.lastPurchasePrice)}
+   639→                          </TableCell>
+   640→                          <TableCell className="text-right font-mono">
+   641→                            {formatCurrency(item.avgCost)}
+   642→                          </TableCell>
+   643→                          <TableCell className="text-muted-foreground">
+   644→                            {item.supplier || "—"}
+   645→                          </TableCell>
+   646→                          <TableCell>
+   647→                            {low ? (
+   648→                              <Badge
+   649→                                variant="destructive"
+   650→                                className="gap-1"
+   651→                              >
+   652→                                <AlertTriangle className="h-3 w-3" />
+   653→                                Low Stock
+   654→                              </Badge>
+   655→                            ) : (
+   656→                              <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
+   657→                                In Stock
+   658→                              </Badge>
+   659→                            )}
+   660→                          </TableCell>
+   661→                          <TableCell className="text-right">
+   662→                            <div className="flex items-center justify-end gap-1">
+   663→                              <Button
+   664→                                variant="ghost"
+   665→                                size="icon"
+   666→                                className="h-8 w-8"
+   667→                                onClick={(e) => {
+   668→                                  e.stopPropagation();
+   669→                                  openEditDialog(item);
+   670→                                }}
+   671→                                title="Edit"
+   672→                              >
+   673→                                <Pencil className="h-4 w-4" />
+   674→                              </Button>
+   675→                              <Button
+   676→                                variant="ghost"
+   677→                                size="icon"
+   678→                                className="h-8 w-8 text-destructive hover:text-destructive"
+   679→                                onClick={(e) => {
+   680→                                  e.stopPropagation();
+   681→                                  setDeleteItem(item);
+   682→                                }}
+   683→                                title="Delete"
+   684→                              >
+   685→                                <Trash2 className="h-4 w-4" />
+   686→                              </Button>
+   687→                            </div>
+   688→                          </TableCell>
+   689→                        </TableRow>
+   690→                      );
+   691→                    })}
+   692→                  </TableBody>
+   693→                </Table>
+   694→              </div>
+   695→
+   696→              {/* Pagination */}
+   697→              <div className="flex items-center justify-between">
+   698→                <p className="text-sm text-muted-foreground">
+   699→                  Showing{" "}
+   700→                  {(currentPage - 1) * ITEMS_PER_PAGE + 1}
+   701→                  –
+   702→                  {Math.min(
+   703→                    currentPage * ITEMS_PER_PAGE,
+   704→                    sortedIngredients.length
+   705→                  )}{" "}
+   706→                  of {sortedIngredients.length} items
+   707→                </p>
+   708→                <div className="flex items-center gap-2">
+   709→                  <Button
+   710→                    variant="outline"
+   711→                    size="sm"
+   712→                    disabled={currentPage === 1}
+   713→                    onClick={() => setCurrentPage((p) => p - 1)}
+   714→                  >
+   715→                    <ChevronLeft className="h-4 w-4" />
+   716→                    Previous
+   717→                  </Button>
+   718→                  <div className="flex items-center gap-1">
+   719→                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+   720→                      .filter((page) => {
+   721→                        // Show first, last, current, and adjacent pages
+   722→                        return (
+   723→                          page === 1 ||
+   724→                          page === totalPages ||
+   725→                          Math.abs(page - currentPage) <= 1
+   726→                        );
+   727→                      })
+   728→                      .map((page, idx, arr) => {
+   729→                        const prev = arr[idx - 1];
+   730→                        const showEllipsis = prev && page - prev > 1;
+   731→                        return (
+   732→                          <span key={page} className="flex items-center">
+   733→                            {showEllipsis && (
+   734→                              <span className="px-1 text-muted-foreground">
+   735→                                …
+   736→                              </span>
+   737→                            )}
+   738→                            <Button
+   739→                              variant={
+   740→                                currentPage === page ? "default" : "outline"
+   741→                              }
+   742→                              size="sm"
+   743→                              className="h-8 w-8 p-0"
+   744→                              onClick={() => setCurrentPage(page)}
+   745→                            >
+   746→                              {page}
+   747→                            </Button>
+   748→                          </span>
+   749→                        );
+   750→                      })}
+   751→                  </div>
+   752→                  <Button
+   753→                    variant="outline"
+   754→                    size="sm"
+   755→                    disabled={currentPage === totalPages}
+   756→                    onClick={() => setCurrentPage((p) => p + 1)}
+   757→                  >
+   758→                    Next
+   759→                    <ChevronRight className="h-4 w-4" />
+   760→                  </Button>
+   761→                </div>
+   762→              </div>
+   763→            </>
+   764→          )}
+   765→        </CardContent>
+   766→      </Card>
+   767→
+   768→      {/* ─── Add / Edit Dialog ──────────────────────────────────────────────── */}
+   769→
+   770→      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+   771→        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+   772→          <DialogHeader>
+   773→            <DialogTitle>
+   774→              {editingItem ? "Edit Ingredient" : "Add Ingredient"}
+   775→            </DialogTitle>
+   776→            <DialogDescription>
+   777→              {editingItem
+   778→                ? "Update the details of this ingredient."
+   779→                : "Add a new raw material to the inventory."}
+   780→            </DialogDescription>
+   781→          </DialogHeader>
+   782→
+   783→          <Form {...form}>
+   784→            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+   785→              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+   786→                {/* Name */}
+   787→                <FormField
+   788→                  control={form.control}
+   789→                  name="name"
+   790→                  render={({ field }) => (
+   791→                    <FormItem className="sm:col-span-2">
+   792→                      <FormLabel>
+   793→                        Name <span className="text-destructive">*</span>
+   794→                      </FormLabel>
+   795→                      <FormControl>
+   796→                        <Input placeholder="e.g. Rice" {...field} />
+   797→                      </FormControl>
+   798→                      <FormMessage />
+   799→                    </FormItem>
+   800→                  )}
+   801→                />
+   802→
+   803→                {/* Unit */}
+   804→                <FormField
+   805→                  control={form.control}
+   806→                  name="unit"
+   807→                  render={({ field }) => (
+   808→                    <FormItem>
+   809→                      <FormLabel>
+   810→                        Unit <span className="text-destructive">*</span>
+   811→                      </FormLabel>
+   812→                      <Select
+   813→                        onValueChange={field.onChange}
+   814→                        value={field.value}
+   815→                      >
+   816→                        <FormControl>
+   817→                          <SelectTrigger className="w-full">
+   818→                            <SelectValue placeholder="Select unit" />
+   819→                          </SelectTrigger>
+   820→                        </FormControl>
+   821→                        <SelectContent>
+   822→                          {UNITS.map((unit) => (
+   823→                            <SelectItem key={unit} value={unit}>
+   824→                              {unit}
+   825→                            </SelectItem>
+   826→                          ))}
+   827→                        </SelectContent>
+   828→                      </Select>
+   829→                      <FormMessage />
+   830→                    </FormItem>
+   831→                  )}
+   832→                />
+   833→
+   834→                {/* Category */}
+   835→                <FormField
+   836→                  control={form.control}
+   837→                  name="category"
+   838→                  render={({ field }) => (
+   839→                    <FormItem>
+   840→                      <FormLabel>
+   841→                        Category <span className="text-destructive">*</span>
+   842→                      </FormLabel>
+   843→                      <Select
+   844→                        onValueChange={field.onChange}
+   845→                        value={field.value}
+   846→                      >
+   847→                        <FormControl>
+   848→                          <SelectTrigger className="w-full">
+   849→                            <SelectValue placeholder="Select category" />
+   850→                          </SelectTrigger>
+   851→                        </FormControl>
+   852→                        <SelectContent>
+   853→                          {CATEGORIES.filter((c) => c !== "All").map((cat) => (
+   854→                            <SelectItem key={cat} value={cat}>
+   855→                              {cat}
+   856→                            </SelectItem>
+   857→                          ))}
+   858→                        </SelectContent>
+   859→                      </Select>
+   860→                      <FormMessage />
+   861→                    </FormItem>
+   862→                  )}
+   863→                />
+   864→
+   865→                {/* Current Stock */}
+   866→                <FormField
+   867→                  control={form.control}
+   868→                  name="currentStock"
+   869→                  render={({ field }) => (
+   870→                    <FormItem>
+   871→                      <FormLabel>Current Stock</FormLabel>
+   872→                      <FormControl>
+   873→                        <Input
+   874→                          type="number"
+   875→                          step="0.01"
+   876→                          min="0"
+   877→                          placeholder="0"
+   878→                          {...field}
+   879→                        />
+   880→                      </FormControl>
+   881→                      <FormMessage />
+   882→                    </FormItem>
+   883→                  )}
+   884→                />
+   885→
+   886→                {/* Min Stock / Par Level */}
+   887→                <FormField
+   888→                  control={form.control}
+   889→                  name="minStock"
+   890→                  render={({ field }) => (
+   891→                    <FormItem>
+   892→                      <FormLabel>Min Stock / Par Level</FormLabel>
+   893→                      <FormControl>
+   894→                        <Input
+   895→                          type="number"
+   896→                          step="0.01"
+   897→                          min="0"
+   898→                          placeholder="0"
+   899→                          {...field}
+   900→                        />
+   901→                      </FormControl>
+   902→                      <FormMessage />
+   903→                    </FormItem>
+   904→                  )}
+   905→                />
+   906→
+   907→                {/* Last Purchase Price */}
+   908→                <FormField
+   909→                  control={form.control}
+   910→                  name="lastPurchasePrice"
+   911→                  render={({ field }) => (
+   912→                    <FormItem>
+   913→                      <FormLabel>Last Purchase Price (₹)</FormLabel>
+   914→                      <FormControl>
+   915→                        <Input
+   916→                          type="number"
+   917→                          step="0.01"
+   918→                          min="0"
+   919→                          placeholder="0.00"
+   920→                          {...field}
+   921→                        />
+   922→                      </FormControl>
+   923→                      <FormMessage />
+   924→                    </FormItem>
+   925→                  )}
+   926→                />
+   927→
+   928→                {/* Avg Cost */}
+   929→                <FormField
+   930→                  control={form.control}
+   931→                  name="avgCost"
+   932→                  render={({ field }) => (
+   933→                    <FormItem>
+   934→                      <FormLabel>Avg Cost (₹)</FormLabel>
+   935→                      <FormControl>
+   936→                        <Input
+   937→                          type="number"
+   938→                          step="0.01"
+   939→                          min="0"
+   940→                          placeholder="0.00"
+   941→                          {...field}
+   942→                        />
+   943→                      </FormControl>
+   944→                      <FormMessage />
+   945→                    </FormItem>
+   946→                  )}
+   947→                />
+   948→
+   949→                {/* Supplier */}
+   950→                <FormField
+   951→                  control={form.control}
+   952→                  name="supplier"
+   953→                  render={({ field }) => (
+   954→                    <FormItem className="sm:col-span-2">
+   955→                      <FormLabel>Supplier</FormLabel>
+   956→                      <FormControl>
+   957→                        <Input
+   958→                          placeholder="e.g. ABC Traders"
+   959→                          {...field}
+   960→                        />
+   961→                      </FormControl>
+   962→                      <FormMessage />
+   963→                    </FormItem>
+   964→                  )}
+   965→                />
+   966→              </div>
+   967→
+   968→              <DialogFooter>
+   969→                <Button
+   970→                  type="button"
+   971→                  variant="outline"
+   972→                  onClick={() => setDialogOpen(false)}
+   973→                  disabled={submitting}
+   974→                >
+   975→                  Cancel
+   976→                </Button>
+   977→                <Button
+   978→                  type="submit"
+   979→                  disabled={submitting}
+   980→                  className="bg-orange-600 hover:bg-orange-700 text-white"
+   981→                >
+   982→                  {submitting && (
+   983→                    <Loader2 className="h-4 w-4 animate-spin" />
+   984→                  )}
+   985→                  {editingItem ? "Update" : "Add"} Ingredient
+   986→                </Button>
+   987→              </DialogFooter>
+   988→            </form>
+   989→          </Form>
+   990→        </DialogContent>
+   991→      </Dialog>
+   992→
+   993→      {/* ─── Delete Confirmation ────────────────────────────────────────────── */}
+   994→
+   995→      <AlertDialog
+   996→        open={!!deleteItem}
+   997→        onOpenChange={(open) => {
+   998→          if (!open) setDeleteItem(null);
+   999→        }}
+  1000→      >
+  1001→        <AlertDialogContent>
+  1002→          <AlertDialogHeader>
+  1003→            <AlertDialogTitle>Delete Ingredient</AlertDialogTitle>
+  1004→            <AlertDialogDescription>
+  1005→              Are you sure you want to delete{" "}
+  1006→              <span className="font-semibold">{deleteItem?.name}</span>? This
+  1007→              action cannot be undone. All related stock movements and recipe
+  1008→              associations will also be removed.
+  1009→            </AlertDialogDescription>
+  1010→          </AlertDialogHeader>
+  1011→          <AlertDialogFooter>
+  1012→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+  1013→            <AlertDialogAction
+  1014→              onClick={handleDelete}
+  1015→              className="bg-destructive text-white hover:bg-destructive/90"
+  1016→            >
+  1017→              Delete
+  1018→            </AlertDialogAction>
+  1019→          </AlertDialogFooter>
+  1020→        </AlertDialogContent>
+  1021→      </AlertDialog>
+  1022→
+  1023→      {/* ─── Detail Dialog ──────────────────────────────────────────────────── */}
+  1024→
+  1025→      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+  1026→        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+  1027→          <DialogHeader>
+  1028→            <DialogTitle className="flex items-center gap-2">
+  1029→              <Package className="h-5 w-5 text-orange-600" />
+  1030→              {detailItem?.name}
+  1031→            </DialogTitle>
+  1032→            <DialogDescription>
+  1033→              Ingredient details and history
+  1034→            </DialogDescription>
+  1035→          </DialogHeader>
+  1036→
+  1037→          {detailItem && (
+  1038→            <div className="space-y-4">
+  1039→              {/* Basic Info */}
+  1040→              <div className="grid grid-cols-2 gap-3">
+  1041→                <div>
+  1042→                  <p className="text-sm text-muted-foreground">Category</p>
+  1043→                  <Badge
+  1044→                    variant="secondary"
+  1045→                    className={
+  1046→                      CATEGORY_COLORS[detailItem.category] ||
+  1047→                      CATEGORY_COLORS.Other
+  1048→                    }
+  1049→                  >
+  1050→                    {detailItem.category}
+  1051→                  </Badge>
+  1052→                </div>
+  1053→                <div>
+  1054→                  <p className="text-sm text-muted-foreground">Unit</p>
+  1055→                  <p className="font-medium">{detailItem.unit}</p>
+  1056→                </div>
+  1057→                <div>
+  1058→                  <p className="text-sm text-muted-foreground">
+  1059→                    Current Stock
+  1060→                  </p>
+  1061→                  <p className="font-medium">
+  1062→                    {formatStockWithUnit(
+  1063→                      detailItem.currentStock,
+  1064→                      detailItem.unit
+  1065→                    )}
+  1066→                  </p>
+  1067→                </div>
+  1068→                <div>
+  1069→                  <p className="text-sm text-muted-foreground">Min Stock</p>
+  1070→                  <p className="font-medium">
+  1071→                    {formatStockWithUnit(detailItem.minStock, detailItem.unit)}
+  1072→                  </p>
+  1073→                </div>
+  1074→                <div>
+  1075→                  <p className="text-sm text-muted-foreground">
+  1076→                    Last Purchase Price
+  1077→                  </p>
+  1078→                  <p className="font-medium">
+  1079→                    {formatCurrency(detailItem.lastPurchasePrice)}
+  1080→                  </p>
+  1081→                </div>
+  1082→                <div>
+  1083→                  <p className="text-sm text-muted-foreground">Avg Cost</p>
+  1084→                  <p className="font-medium">
+  1085→                    {formatCurrency(detailItem.avgCost)}
+  1086→                  </p>
+  1087→                </div>
+  1088→                <div>
+  1089→                  <p className="text-sm text-muted-foreground">Supplier</p>
+  1090→                  <p className="font-medium">
+  1091→                    {detailItem.supplier || "—"}
+  1092→                  </p>
+  1093→                </div>
+  1094→                <div>
+  1095→                  <p className="text-sm text-muted-foreground">Status</p>
+  1096→                  {isLowStock(detailItem) ? (
+  1097→                    <Badge variant="destructive" className="gap-1">
+  1098→                      <AlertTriangle className="h-3 w-3" />
+  1099→                      Low Stock
+  1100→                    </Badge>
+  1101→                  ) : (
+  1102→                    <Badge className="bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300">
+  1103→                      In Stock
+  1104→                    </Badge>
+  1105→                  )}
+  1106→                </div>
+  1107→              </div>
+  1108→
+  1109→              <Separator />
+  1110→
+  1111→              {/* Stock Movements */}
+  1112→              <div>
+  1113→                <h4 className="mb-2 text-sm font-semibold">
+  1114→                  Recent Stock Movements
+  1115→                </h4>
+  1116→                {detailItem.stockMovements &&
+  1117→                detailItem.stockMovements.length > 0 ? (
+  1118→                  <div className="max-h-48 space-y-2 overflow-y-auto">
+  1119→                    {detailItem.stockMovements.map((m) => (
+  1120→                      <div
+  1121→                        key={m.id}
+  1122→                        className="flex items-center justify-between rounded-md border p-2 text-sm"
+  1123→                      >
+  1124→                        <div className="flex items-center gap-2">
+  1125→                          <Badge
+  1126→                            variant={
+  1127→                              m.type === "PURCHASE"
+  1128→                                ? "default"
+  1129→                                : m.type === "CONSUMPTION"
+  1130→                                  ? "secondary"
+  1131→                                  : m.type === "WASTAGE"
+  1132→                                    ? "destructive"
+  1133→                                    : "outline"
+  1134→                            }
+  1135→                            className="text-[10px]"
+  1136→                          >
+  1137→                            {m.type}
+  1138→                          </Badge>
+  1139→                          <span className="text-muted-foreground">
+  1140→                            {new Date(m.date).toLocaleDateString()}
+  1141→                          </span>
+  1142→                        </div>
+  1143→                        <div className="text-right">
+  1144→                          <p className="font-mono">
+  1145→                            {m.type === "CONSUMPTION" ||
+  1146→                            m.type === "WASTAGE"
+  1147→                              ? "-"
+  1148→                              : "+"}
+  1149→                            {m.quantity} {detailItem.unit}
+  1150→                          </p>
+  1151→                          {m.notes && (
+  1152→                            <p className="text-xs text-muted-foreground">
+  1153→                              {m.notes}
+  1154→                            </p>
+  1155→                          )}
+  1156→                        </div>
+  1157→                      </div>
+  1158→                    ))}
+  1159→                  </div>
+  1160→                ) : (
+  1161→                  <p className="text-sm text-muted-foreground">
+  1162→                    No stock movements recorded yet.
+  1163→                  </p>
+  1164→                )}
+  1165→              </div>
+  1166→
+  1167→              <Separator />
+  1168→
+  1169→              {/* Recipe Usage */}
+  1170→              <div>
+  1171→                <h4 className="mb-2 text-sm font-semibold">
+  1172→                  Used in Recipes
+  1173→                </h4>
+  1174→                {detailItem.recipeIngredients &&
+  1175→                detailItem.recipeIngredients.length > 0 ? (
+  1176→                  <div className="space-y-2">
+  1177→                    {detailItem.recipeIngredients.map((ri) => (
+  1178→                      <div
+  1179→                        key={ri.id}
+  1180→                        className="flex items-center justify-between rounded-md border p-2 text-sm"
+  1181→                      >
+  1182→                        <div className="flex items-center gap-2">
+  1183→                          <Eye className="h-3 w-3 text-muted-foreground" />
+  1184→                          <span className="font-medium">
+  1185→                            {ri.recipe.name}
+  1186→                          </span>
+  1187→                        </div>
+  1188→                        <div className="flex items-center gap-2">
+  1189→                          <Badge variant="outline" className="text-[10px]">
+  1190→                            {ri.recipe.mealType}
+  1191→                          </Badge>
+  1192→                          <span className="text-muted-foreground">
+  1193→                            {ri.quantity} {ri.unit}
+  1194→                          </span>
+  1195→                        </div>
+  1196→                      </div>
+  1197→                    ))}
+  1198→                  </div>
+  1199→                ) : (
+  1200→                  <p className="text-sm text-muted-foreground">
+  1201→                    Not used in any recipes yet.
+  1202→                  </p>
+  1203→                )}
+  1204→              </div>
+  1205→            </div>
+  1206→          )}
+  1207→
+  1208→          <DialogFooter>
+  1209→            <Button
+  1210→              variant="outline"
+  1211→              onClick={() => setDetailOpen(false)}
+  1212→            >
+  1213→              Close
+  1214→            </Button>
+  1215→            {detailItem && (
+  1216→              <Button
+  1217→                onClick={() => {
+  1218→                  setDetailOpen(false);
+  1219→                  openEditDialog(detailItem);
+  1220→                }}
+  1221→                className="bg-orange-600 hover:bg-orange-700 text-white"
+  1222→              >
+  1223→                <Pencil className="h-4 w-4" />
+  1224→                Edit
+  1225→              </Button>
+  1226→            )}
+  1227→          </DialogFooter>
+  1228→        </DialogContent>
+  1229→      </Dialog>
+  1230→    </div>
+  1231→  );
+  1232→}
+  1233→

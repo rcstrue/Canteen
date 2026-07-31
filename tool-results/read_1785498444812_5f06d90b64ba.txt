@@ -1,0 +1,624 @@
+     1→# RCS Canteen - Work Log
+     2→
+     3→## Task 3: Build All API Routes
+     4→
+     5→**Agent:** API Builder
+     6→**Date:** 2026-07-31
+     7→**Status:** ✅ Completed
+     8→
+     9→### Summary
+    10→Built all 15 API route files for the RCS Canteen Stock & Cost Management application, covering ingredients, recipes, stock movements, daily meals, purchases, expenses, dashboard, reports, and seed data.
+    11→
+    12→### Files Created
+    13→
+    14→| # | Route File | Methods | Description |
+    15→|---|-----------|---------|-------------|
+    16→| 1 | `/src/app/api/ingredients/route.ts` | GET, POST | List all ingredients (with category/search/lowStock filters), create ingredient |
+    17→| 2 | `/src/app/api/ingredients/[id]/route.ts` | GET, PUT, DELETE | Get single ingredient (with stock movements & recipe usage), update, delete |
+    18→| 3 | `/src/app/api/recipes/route.ts` | GET, POST | List recipes with ingredients (mealType/search filter), create recipe with ingredients |
+    19→| 4 | `/src/app/api/recipes/[id]/route.ts` | GET, PUT, DELETE | Get single recipe, update (including ingredient replacement), delete |
+    20→| 5 | `/src/app/api/stock-movements/route.ts` | GET, POST | List movements (type/ingredient/date filters), create movement with auto stock update |
+    21→| 6 | `/src/app/api/daily-meals/route.ts` | GET, POST | List meals (date/mealType filter), create meal with auto stock deduction |
+    22→| 7 | `/src/app/api/purchases/route.ts` | GET, POST | List purchases with items, create purchase with items + auto stock movements |
+    23→| 8 | `/src/app/api/purchases/[id]/route.ts` | GET, DELETE | Get single purchase with items, delete purchase |
+    24→| 9 | `/src/app/api/expenses/route.ts` | GET, POST | List expenses (category/date filter), create expense |
+    25→| 10 | `/src/app/api/expenses/[id]/route.ts` | PUT, DELETE | Update expense, delete expense |
+    26→| 11 | `/src/app/api/dashboard/route.ts` | GET | Aggregated stats: food cost, meals, cost per meal, low stock alerts, top consuming ingredients |
+    27→| 12 | `/src/app/api/reports/cost/route.ts` | GET | Cost report: total cost, cost per meal, category breakdown, daily trend, expenses |
+    28→| 13 | `/src/app/api/reports/consumption/route.ts` | GET | Consumption report: ingredient usage, wastage, category breakdown, daily trend |
+    29→| 14 | `/src/app/api/reports/variance/route.ts` | GET | Variance report: theoretical vs actual consumption, status (normal/warning/critical) |
+    30→| 15 | `/src/app/api/seed/route.ts` | POST | Seed sample data: 21 ingredients, 6 recipes, 5 purchases, 7 days meals, 6 expenses |
+    31→
+    32→### Business Logic Implemented
+    33→
+    34→**Stock Movement (POST):**
+    35→- PURCHASE: adds quantity to currentStock, updates lastPurchasePrice and avgCost (weighted average)
+    36→- CONSUMPTION: subtracts quantity from currentStock (min 0)
+    37→- WASTAGE: subtracts quantity from currentStock (min 0)
+    38→- ADJUSTMENT: sets currentStock to the quantity value
+    39→
+    40→**Daily Meals (POST):**
+    41→- Looks up recipe and its ingredients
+    42→- Calculates consumption = (mealsServed / baseServings) × ingredient.quantity
+    43→- Creates CONSUMPTION stock movements for each ingredient
+    44→- Updates ingredient currentStock
+    45→
+    46→**Purchases (POST):**
+    47→- Creates purchase record with items
+    48→- Creates PURCHASE stock movements for each item
+    49→- Updates ingredient currentStock, lastPurchasePrice, avgCost (weighted average)
+    50→- Calculates total amount from items
+    51→
+    52→**Dashboard (GET):**
+    53→- Total food cost today/week/month (from PURCHASE stock movements)
+    54→- Cost per meal = total food cost / total meals served
+    55→- Low stock alerts (ingredients where currentStock < minStock)
+    56→- Top consuming ingredients (from CONSUMPTION movements)
+    57→- Today's meals served breakdown
+    58→- Monthly expense summary and breakdown
+    59→
+    60→**Reports (GET):**
+    61→- Support period filter: today/week/month/custom (startDate + endDate)
+    62→- Cost report: total cost, cost per meal, category breakdown, daily trend, operating expenses
+    63→- Consumption report: ingredient usage, wastage analysis, category breakdown
+    64→- Variance report: theoretical vs actual consumption with status classification
+    65→
+    66→### Testing Results
+    67→All endpoints tested and verified:
+    68→- ✅ Ingredients CRUD + filtering (category, search, lowStock)
+    69→- ✅ Recipes CRUD with ingredient management
+    70→- ✅ Stock movements with auto stock updates (PURCHASE, CONSUMPTION, WASTAGE, ADJUSTMENT)
+    71→- ✅ Daily meals with auto stock deduction (verified: 15kg rice consumed for 100 servings)
+    72→- ✅ Purchases with auto stock movements and avgCost calculation
+    73→- ✅ Expenses CRUD with category validation
+    74→- ✅ Dashboard aggregated stats
+    75→- ✅ Cost report with period filter
+    76→- ✅ Consumption report with wastage analysis
+    77→- ✅ Variance report with status classification
+    78→- ✅ Seed data endpoint (21 ingredients, 6 recipes, 5 purchases, 7 days meals, 6 expenses)
+    79→- ✅ Lint check passed
+    80→
+    81→### Bug Fix
+    82→- Fixed low stock filter in `/api/ingredients/route.ts`: SQLite doesn't support field-to-field comparison in WHERE clause, so filtering is done in JavaScript instead.
+    83→
+    84→---
+    85→
+    86→## Task 6: Build Meals/Recipes View Component
+    87→
+    88→**Agent:** Meals View Builder
+    89→**Date:** 2026-07-31
+    90→**Status:** ✅ Completed
+    91→
+    92→### Summary
+    93→Built the complete Meals/Recipes view component with recipe costing functionality, replacing the placeholder content in `meals-view.tsx`. The component provides full CRUD operations for recipes, real-time cost calculations, and a responsive card-based layout.
+    94→
+    95→### File Modified
+    96→- `/src/components/module-views/meals-view.tsx`
+    97→
+    98→### Features Implemented
+    99→
+   100→1. **Header with Search & Filters:**
+   101→   - Search input for filtering recipes by name
+   102→   - Meal type filter dropdown (All, Breakfast, Lunch, Dinner, Snack)
+   103→   - "Add Recipe" button with orange accent
+   104→
+   105→2. **Recipe Cards Grid:**
+   106→   - Responsive grid layout (1/2/3 columns based on screen size)
+   107→   - Each card shows: Recipe name, description, meal type badge, cost per meal (prominent), cost for 600, base servings, ingredient count
+   108→   - Orange/amber border on hover with shadow effect
+   109→   - Edit and Delete action buttons on each card
+   110→   - Click card to open detail view
+   111→   - Loading skeleton state and empty state
+   112→
+   113→3. **Recipe Detail Dialog:**
+   114→   - Full recipe information: name, description, meal type, base servings
+   115→   - Instructions display (if any)
+   116→   - Ingredients table with: Name, Quantity, Unit, Unit Cost, Total Cost
+   117→   - Alternating row colors in ingredients table
+   118→   - Cost summary cards: Total Ingredient Cost, Cost per Meal (highlighted), Cost for 600
+   119→   - Scaling calculator: input custom servings, auto-calculate total cost
+   120→   - Edit and Delete actions within detail view
+   121→
+   122→4. **Add/Edit Recipe Dialog:**
+   123→   - Form fields: Name, Description, Meal Type (select), Base Servings (default 100), Instructions
+   124→   - Dynamic ingredients section with add/remove rows
+   125→   - Ingredient dropdown populated from `/api/ingredients`
+   126→   - Auto-fill unit when ingredient is selected
+   127→   - Real-time cost preview panel showing Total Cost, Per Meal, For 600
+   128→   - Form validation (name, meal type, at least one ingredient required)
+   129→
+   130→5. **Delete Confirmation Dialog:**
+   131→   - Warning dialog with recipe name
+   132→   - Cancel and Delete buttons
+   133→
+   134→6. **Cost Calculation:**
+   135→   - Total ingredient cost = sum of (quantity × ingredient.avgCost)
+   136→   - Cost per meal = total / baseServings
+   137→   - Cost for 600 = cost per meal × 600
+   138→   - Indian Rupee (₹) format with `toLocaleString("en-IN")`
+   139→
+   140→### Styling
+   141→- Orange/amber accent colors throughout (buttons, highlights, cost displays)
+   142→- Meal type badges: Breakfast=yellow, Lunch=orange, Dinner=green, Snack=purple
+   143→- Cost per meal shown in large bold text with ₹ icon
+   144→- Dark mode support with appropriate dark variants
+   145→- Responsive layout for mobile and desktop
+   146→
+   147→### State Management
+   148→- `useState` for recipes, ingredients, search, filters, dialog states
+   149→- `useEffect` for data fetching on mount and filter changes
+   150→- `useCallback` for memoized fetch functions
+   151→- Auto-refresh after CRUD operations
+   152→
+   153→### Testing
+   154→- ✅ Lint check passed
+   155→- ✅ Dev server compiling successfully
+   156→
+   157→---
+   158→
+   159→## Task 4: Build Dashboard View Component
+   160→
+   161→**Agent:** Dashboard View Builder
+   162→**Date:** 2026-07-31
+   163→**Status:** ✅ Completed
+   164→
+   165→### Summary
+   166→Built the complete Dashboard view component with real data from the `/api/dashboard` API endpoint, replacing the placeholder content in `dashboard-view.tsx`. The component provides a comprehensive overview of canteen operations with metric cards, charts, alerts, and tables.
+   167→
+   168→### File Modified
+   169→- `/src/components/module-views/dashboard-view.tsx`
+   170→
+   171→### Features Implemented
+   172→
+   173→1. **Top Metric Cards (4 cards, responsive grid):**
+   174→   - Today's Food Cost (₹) with IndianRupee icon, amber accent
+   175→   - This Week's Food Cost (₹) with DollarSign icon, orange accent
+   176→   - This Month's Food Cost (₹) with ShoppingCart icon, amber accent
+   177→   - Cost Per Meal (₹) with Utensils icon, green accent
+   178→   - Each card shows trend indicator (TrendingUp/TrendingDown) and contextual status text
+   179→
+   180→2. **Second Row (2 cards):**
+   181→   - Total Meals Served — 3-column grid showing Today/Week/Month counts with amber/orange backgrounds
+   182→   - Operating Cost Overview — Total Operating Cost (₹) with Food Cost vs Expenses progress bars
+   183→
+   184→3. **Third Row (2 cards):**
+   185→   - Low Stock Alerts — scrollable list of ingredients below minimum stock level, with:
+   186→     - Color-coded severity (red=critical at 0, orange=warning <50%, amber=low)
+   187→     - Progress bar showing current vs min stock percentage
+   188→     - Category label and badge showing "current / min unit"
+   189→     - "All Stock Levels OK" empty state with green check
+   190→   - Today's Meals Served — table with meal type badge, recipe name, meals count, plus total summary
+   191→
+   192→4. **Fourth Row (2 cards):**
+   193→   - Top Consuming Ingredients — horizontal BarChart (recharts) showing top 8 ingredients by quantity
+   194→     - Custom tooltip with ingredient name, quantity, unit, and cost
+   195→     - Amber/orange gradient bar colors
+   196→   - Expense Breakdown — vertical BarChart for expense categories + itemized list below
+   197→     - Y-axis formatted as "₹Xk" for readability
+   198→     - Orange bar color matching theme
+   199→
+   200→### Styling
+   201→- Orange/amber accent colors for canteen theme throughout
+   202→- Cards with subtle shadows and hover:shadow-md transition
+   203→- Responsive grid: 4 cols on desktop, 2 on tablet, 1 on mobile
+   204→- Currency formatted as ₹ (Indian Rupee) with 2 decimal places using `Intl.NumberFormat("en-IN")`
+   205→- Numbers formatted with Indian comma style (e.g., 1,00,000)
+   206→- Dark mode support with appropriate dark variant classes
+   207→- Loading skeleton state for all sections
+   208→- Error state with retry button and destructive styling
+   209→- Custom scrollbar styling on scrollable lists
+   210→- Empty states with icons and descriptive text
+   211→
+   212→### State Management
+   213→- `useState` for dashboard data, loading, and error states
+   214→- `useEffect` to fetch from `/api/dashboard` on mount
+   215→- TypeScript interfaces matching actual API response format
+   216→
+   217→### API Integration
+   218→- Fetches from `/api/dashboard` which returns:
+   219→  - `foodCost` (today/week/month)
+   220→  - `meals` (today/month)
+   221→  - `costPerMeal` (number)
+   222→  - `lowStockAlerts` (array of ingredients below min stock)
+   223→  - `topConsumingIngredients` (with nested ingredient object)
+   224→  - `todayMeals` (with nested recipe object)
+   225→  - `expenses` (month total + breakdown by category)
+   226→  - `totalOperatingCost` (food cost + expenses)
+   227→
+   228→### Testing
+   229→- ✅ Lint check passed
+   230→- ✅ Dev server compiling successfully
+   231→- ✅ API endpoint responding with 200 status
+   232→
+   233→---
+   234→
+   235→## Task 5: Build Stock/Raw Materials View Component
+   236→
+   237→**Agent:** Stock View Builder
+   238→**Date:** 2026-07-31
+   239→**Status:** ✅ Completed
+   240→
+   241→### Summary
+   242→Built the complete Stock/Raw Materials view component with full CRUD functionality, replacing the placeholder content in `stock-view.tsx`. The component provides inventory management with search, filtering, sorting, pagination, and detailed ingredient views.
+   243→
+   244→### File Modified
+   245→- `/src/components/module-views/stock-view.tsx`
+   246→
+   247→### Features Implemented
+   248→
+   249→1. **Header with Search & Filters:**
+   250→   - Search input with clear button (filters by name via API)
+   251→   - Category filter dropdown (All, Vegetables, Grains, Oil, Spices, Dairy, Meat, Pulses, Other)
+   252→   - "Low Stock" toggle button to filter only items below minimum stock level
+   253→   - "Add Ingredient" button with orange accent
+   254→
+   255→2. **Summary Cards:**
+   256→   - Total Items count
+   257→   - Low Stock count (red accent)
+   258→   - In Stock count (green accent)
+   259→
+   260→3. **Stock Table (shadcn/ui Table):**
+   261→   - Columns: Name, Category, Unit, Current Stock, Min Stock, Last Price, Avg Cost, Supplier, Status, Actions
+   262→   - Sortable columns (click header to sort asc/desc, toggle direction)
+   263→   - Category badges with distinct colors per category
+   264→   - Status column: green "In Stock" badge or red "Low Stock" badge with warning icon
+   265→   - Low stock rows highlighted with subtle red/orange background
+   266→   - Edit and Delete action buttons per row
+   267→   - Row click opens detail dialog
+   268→   - Pagination with page numbers, previous/next, and item count display
+   269→
+   270→4. **Add/Edit Ingredient Dialog:**
+   271→   - Form fields: Name, Unit (select: kg, gram, litre, ml, pcs, dozen, packet), Category (select), Current Stock, Min Stock/Par Level, Last Purchase Price, Avg Cost, Supplier
+   272→   - Uses react-hook-form with zod validation (zod v4 compatible)
+   273→   - Currency inputs with ₹ prefix in labels
+   274→   - Number inputs with step="0.01" and min="0"
+   275→   - On submit: POST to /api/ingredients (create) or PUT to /api/ingredients/[id] (update)
+   276→   - Loading spinner during submission
+   277→   - Auto-refresh list after successful operation
+   278→
+   279→5. **Delete Confirmation:**
+   280→   - AlertDialog with ingredient name displayed
+   281→   - Warning about cascading deletion of related records
+   282→   - Cancel and Delete (destructive) buttons
+   283→   - DELETE to /api/ingredients/[id]
+   284→
+   285→6. **Detail View Dialog:**
+   286→   - Full ingredient information grid: Category, Unit, Current Stock, Min Stock, Last Price, Avg Cost, Supplier, Status
+   287→   - Recent Stock Movements section with type badges (PURCHASE=default, CONSUMPTION=secondary, WASTAGE=destructive, ADJUSTMENT=outline)
+   288→   - Recipe Usage section showing which recipes use this ingredient
+   289→   - Edit button from detail view
+   290→
+   291→### Styling
+   292→- Orange/amber accent colors (buttons, header icon, highlights)
+   293→- Category-specific badge colors: Vegetables=green, Grains=amber, Oil=yellow, Spices=red, Dairy=blue, Meat=rose, Pulses=orange, Other=gray
+   294→- Low stock rows: subtle red background (bg-red-50/50, dark:bg-red-950/20)
+   295→- Currency format: ₹ with 2 decimals
+   296→- Stock quantities displayed with unit (e.g., "50 kg")
+   297→- Dark mode support with appropriate dark variants
+   298→- Responsive layout for mobile and desktop
+   299→
+   300→### State Management
+   301→- `useState` for ingredients list, search, category filter, low stock toggle, dialog states, pagination, sorting
+   302→- `useEffect` for data fetching when filters change
+   303→- `useCallback` for memoized fetch function
+   304→- `useForm` (react-hook-form) with zod resolver for add/edit form
+   305→- Auto-refresh after CRUD operations
+   306→- Page reset when filters change
+   307→
+   308→### Technical Details
+   309→- Uses Zod v4 with `z.coerce.number()` for numeric form fields
+   310→- `@hookform/resolvers/zod` v5 for form validation
+   311→- API queries: `GET /api/ingredients?search=&category=&lowStock=true`
+   312→- Sorting done client-side on all fields
+   313→- Pagination: 10 items per page with smart page number display
+   314→
+   315→### Testing
+   316→- ✅ Lint check passed (no errors)
+   317→- ✅ Dev server compiling successfully
+   318→- ✅ API endpoints confirmed working via dev.log
+   319→
+   320→---
+   321→
+   322→## Task 9: Build Wastage View Component
+   323→
+   324→**Agent:** Wastage View Builder
+   325→**Date:** 2026-07-31
+   326→**Status:** ✅ Completed
+   327→
+   328→### Summary
+   329→Built the complete Wastage view component for recording spoilage and waste, replacing the placeholder content in `wastage-view.tsx`. The component provides wastage tracking with summary cards, sortable table, date/category filters, and a full-featured record wastage dialog with quick reason selection and total loss preview.
+   330→
+   331→### File Modified
+   332→- `/src/components/module-views/wastage-view.tsx`
+   333→
+   334→### Features Implemented
+   335→
+   336→1. **Header with Filters & Actions:**
+   337→   - Red/orange themed "Record Wastage" button
+   338→   - Date filter input with clear button (X icon)
+   339→   - Category filter dropdown (All, Vegetables, Grains, Oil, Spices, Dairy, Meat, Pulses, Other)
+   340→   - Responsive layout — stacks on mobile, row on desktop
+   341→
+   342→2. **Summary Cards (3 cards, responsive grid):**
+   343→   - Total Wastage This Month (₹) — red accent with IndianRupee icon
+   344→   - Total Wastage Today (₹) — orange accent with Flame icon
+   345→   - Number of Wastage Entries This Month — red accent with AlertTriangle icon
+   346→   - Loading skeleton state for each card
+   347→   - Descriptive subtext under each metric
+   348→
+   349→3. **Wastage Table:**
+   350→   - Columns: Date, Ingredient, Quantity, Unit, Unit Cost, Total Loss, Reason/Notes
+   351→   - Sortable by date (click header to toggle asc/desc with ArrowUpDown icon)
+   352→   - Category badges with distinct colors per ingredient category
+   353→   - Red/orange styling for loss amounts (text-red-600/dark:text-red-400)
+   354→   - Row hover with red-50/50 background
+   355→   - Date format: DD/MM/YYYY
+   356→   - Currency format: ₹ with Indian locale (en-IN)
+   357→   - Empty state with icon and contextual message
+   358→   - Loading skeleton state
+   359→
+   360→4. **Record Wastage Dialog:**
+   361→   - Ingredient dropdown populated from `/api/ingredients` — shows name, unit, and current stock
+   362→   - Auto-fills unit price from ingredient avgCost (falls back to lastPurchasePrice)
+   363→   - Shows current stock info below ingredient selector
+   364→   - Quantity input (number, step 0.01)
+   365→   - Unit Price input (auto-filled, editable)
+   366→   - Date picker (defaults to today)
+   367→   - Quick Reason buttons: Spoiled, Expired, Dropped, Overcooked, Burnt, Spillage, Contamination, Pest damage
+   368→   - Selected reasons highlighted with red border/background
+   369→   - Multiple reasons can be selected (appended with "; ")
+   370→   - Notes/Reason textarea for additional details
+   371→   - Total Loss Preview panel with red background showing calculated loss
+   372→   - Breakdown: quantity × unit price = total
+   373→   - Form validation with error messages
+   374→   - Loading spinner during submission
+   375→   - Auto-refreshes wastage list after successful recording
+   376→
+   377→### API Integration
+   378→- `GET /api/stock-movements?type=WASTAGE` — Fetch wastage entries (with optional startDate/endDate params)
+   379→- `POST /api/stock-movements` — Create wastage entry (body: { ingredientId, type: "WASTAGE", quantity, unitPrice, totalAmount, date, notes })
+   380→- `GET /api/ingredients` — Fetch ingredients for dropdown selection
+   381→
+   382→### Styling
+   383→- Red/orange accent colors for wastage theme (not the usual amber)
+   384→- Loss amounts in red text (text-red-600 dark:text-red-400)
+   385→- Summary cards with red/orange borders and icon backgrounds
+   386→- Record Wastage button: bg-red-600 hover:bg-red-700
+   387→- Dialog: red-themed header and submit button
+   388→- Total Loss Preview: red border, red-50 background, dark mode variant
+   389→- Quick reason buttons: red highlight when selected
+   390→- Category badges with distinct colors per category
+   391→- Date format: DD/MM/YYYY
+   392→- Currency format: ₹ with `Intl.NumberFormat("en-IN")`
+   393→- Dark mode support with appropriate dark variants
+   394→- Responsive layout for mobile and desktop
+   395→
+   396→### State Management
+   397→- `useState` for wastage entries, ingredients, loading, submitting, filters, sort direction, dialog state, and form fields
+   398→- `useEffect` for data fetching on mount and filter changes
+   399→- `useCallback` for memoized fetch functions
+   400→- Derived computed values for today/month summaries
+   401→- Auto-refresh after successful form submission
+   402→
+   403→### Testing
+   404→- ✅ Lint check passed (no errors)
+   405→- ✅ Dev server compiling successfully
+   406→
+   407→---
+   408→
+   409→## Task 8: Build Purchases View Component
+   410→
+   411→**Agent:** Purchases View Builder
+   412→**Date:** 2026-07-31
+   413→**Status:** ✅ Completed
+   414→
+   415→### Summary
+   416→Built the complete Purchases view component for recording inward stock and invoices, replacing the placeholder content in `purchases-view.tsx`. The component provides purchase tracking with summary cards, date range filters, search, paginated table, detail dialog, and a full-featured new purchase dialog with dynamic line items.
+   417→
+   418→### File Modified
+   419→- `/src/components/module-views/purchases-view.tsx`
+   420→
+   421→### Features Implemented
+   422→
+   423→1. **Header with Actions:**
+   424→   - "New Purchase" button with orange/amber accent (bg-amber-600)
+   425→   - ShoppingCart icon with amber-themed header
+   426→   - Description text for context
+   427→
+   428→2. **Summary Cards (3 cards, responsive grid):**
+   429→   - Total Purchases count (FileText icon, amber accent)
+   430→   - Page Total amount in ₹ (IndianRupee icon, orange accent)
+   431→   - Items on Page count (Package icon, amber accent)
+   432→
+   433→3. **Filters Card:**
+   434→   - Search input for supplier/invoice with clear button (X icon)
+   435→   - Date range filter (From/To date inputs)
+   436→   - "Clear" button to reset all filters
+   437→   - Filters trigger page reset and re-fetch
+   438→
+   439→4. **Purchases Table (dual layout):**
+   440→   - **Desktop Table:** Columns: Date, Supplier, Invoice No, Items Count, Total Amount, Actions
+   441→     - Date shown with CalendarDays icon in DD/MM/YYYY format
+   442→     - Invoice No shown as monospace badge
+   443→     - Items count as amber-tinted outline badge
+   444→     - Total Amount in amber-700 text with ₹ format
+   445→     - Row click opens detail dialog
+   446→     - Hover effect with amber-50 background
+   447→     - View (Eye) and Delete (Trash2) action buttons per row
+   448→   - **Mobile Cards:** Responsive card layout for smaller screens
+   449→     - Each card shows supplier, date, invoice, total, items count
+   450→     - Tap to view details, action buttons for view/delete
+   451→
+   452→5. **Pagination:**
+   453→   - Page numbers with smart display (max 5 visible)
+   454→   - Previous/Next buttons with ChevronLeft/ChevronRight
+   455→   - Current page highlighted with amber-600
+   456→   - "Page X of Y · Z total records" indicator
+   457→
+   458→6. **Purchase Detail Dialog:**
+   459→   - Full purchase info grid: Date, Supplier, Invoice No, Notes
+   460→   - Items table with: Ingredient (with unit), Quantity, Unit Price, Total
+   461→   - Alternating row colors (amber-50/40 on odd rows)
+   462→   - Grand Total in amber-50 background panel with prominent ₹ display
+   463→   - Scrollable for long item lists
+   464→
+   465→7. **New Purchase Dialog:**
+   466→   - Date input (defaults to today)
+   467→   - Supplier name (required)
+   468→   - Invoice No (optional)
+   469→   - Notes (optional)
+   470→   - **Dynamic Items Section:**
+   471→     - "Add Item" button with amber border
+   472→     - Each item row: Ingredient (select dropdown showing name, unit, last price), Quantity, Unit Price, Row Total
+   473→     - Ingredient select auto-fills unit price from `lastPurchasePrice`
+   474→     - Shows unit hint below quantity input when ingredient selected
+   475→     - "Remove" button per row (Minus icon, disabled when only 1 row)
+   476→     - Row total auto-calculated as quantity × unitPrice
+   477→   - Grand Total preview panel with amber background
+   478→   - Info note about auto stock movement creation
+   479→   - Form validation: supplier required, at least one item with ingredient and quantity
+   480→   - Loading spinner during submission
+   481→   - Auto-refreshes list after successful creation
+   482→
+   483→8. **Delete Confirmation Dialog (AlertDialog):**
+   484→   - Warning about permanent deletion
+   485→   - Note that stock movements are NOT reversed
+   486→   - Cancel and Delete buttons
+   487→   - Loading spinner during deletion
+   488→
+   489→### API Integration
+   490→- `GET /api/purchases?limit=&offset=&startDate=&endDate=&supplier=` — List purchases with pagination and filters
+   491→- `GET /api/purchases/[id]` — Get single purchase with items for detail view
+   492→- `POST /api/purchases` — Create purchase with items (auto-creates stock movements and updates ingredient stock)
+   493→- `DELETE /api/purchases/[id]` — Delete purchase record
+   494→- `GET /api/ingredients` — Fetch ingredients for dropdown selection in new purchase form
+   495→
+   496→### Styling
+   497→- Orange/amber accent colors throughout (buttons, highlights, totals)
+   498→- Total amounts in ₹ format using `Intl.NumberFormat("en-IN")` with 2 decimal places
+   499→- Date format: DD/MM/YYYY
+   500→- Invoice numbers shown as monospace badges
+   501→- Items count badges with amber tint
+   502→- Grand total panels with amber-50 background and amber border
+   503→- Alternating row colors in detail view items table
+   504→- Loading state with Loader2 spinner
+   505→- Empty state with icon and contextual message
+   506→- Dark mode support with appropriate dark variants
+   507→- Responsive layout: desktop table + mobile cards
+   508→- Custom scrollbar styling on scrollable dialogs
+   509→
+   510→### State Management
+   511→- `useState` for purchases list, ingredients, loading, filters (search, startDate, endDate), pagination, dialog states, form fields, submitting/deleting flags
+   512→- `useEffect` for data fetching on mount and filter/pagination changes
+   513→- `useCallback` for memoized fetch functions
+   514→- Auto-refresh after CRUD operations
+   515→- Page reset when filters change
+   516→
+   517→### Testing
+   518→- ✅ Lint check passed (no errors)
+   519→- ✅ Dev server compiling successfully
+   520→
+   521→---
+   522→
+   523→## Task 11: Build Expenses View Component
+   524→
+   525→**Agent:** Expenses View Builder
+   526→**Date:** 2026-07-31
+   527→**Status:** ✅ Completed
+   528→
+   529→### Summary
+   530→Built the complete Expenses view component for tracking overhead expenses (gas, electricity, water, maintenance, etc.), replacing the placeholder content in `expenses-view.tsx`. The component provides full CRUD operations with category filtering, date range filtering, summary cards, sortable table, and a pie chart breakdown by category.
+   531→
+   532→### File Modified
+   533→- `/src/components/module-views/expenses-view.tsx`
+   534→
+   535→### Features Implemented
+   536→
+   537→1. **Header:**
+   538→   - Orange-themed "Add Expense" button (bg-orange-600)
+   539→   - Receipt icon with orange background
+   540→   - Page title and description
+   541→
+   542→2. **Filters Row:**
+   543→   - Category filter dropdown (All, Gas, Electricity, Water, Maintenance, Other)
+   544→   - Date range filter (From/To date inputs)
+   545→   - Clear filters button (appears when any filter is active)
+   546→   - Responsive layout — stacks on mobile, row on desktop
+   547→
+   548→3. **Summary Cards (3 cards, responsive grid):**
+   549→   - Total Expenses This Month (₹) — orange accent with CalendarDays icon
+   550→   - Total Expenses Today (₹) — amber accent with IndianRupee icon
+   551→   - By Category Breakdown — inline list showing each category with icon and total
+   552→   - Loading skeleton state for each card
+   553→   - TrendingUp icon on monthly card
+   554→
+   555→4. **Main Content Area (2-column layout on desktop):**
+   556→   - **Left: Expenses Table**
+   557→     - Columns: Date, Category, Amount, Description, Actions
+   558→     - Sortable columns (Date, Category, Amount) — click header to toggle asc/desc with ArrowUpDown icon
+   559→     - Category badges with distinct colors: Gas=orange, Electricity=yellow, Water=blue, Maintenance=green, Other=gray
+   560→     - Category icons in badges (Flame, Zap, Droplets, Wrench, MoreHorizontal)
+   561→     - Row hover with orange-50/50 background
+   562→     - Edit and Delete action buttons per row
+   563→     - Date format: DD/MM/YYYY
+   564→     - Currency format: ₹ with Indian locale (en-IN)
+   565→     - Empty state with icon and "Add Expense" button
+   566→     - Loading skeleton state
+   567→   - **Right: Category Breakdown Pie Chart**
+   568→     - Donut-style PieChart (recharts) with innerRadius=50, outerRadius=85
+   569→     - Category-specific colors matching badge theme
+   570→     - Custom tooltip showing category name and formatted amount
+   571→     - Legend below chart with category name, amount, and percentage
+   572→     - Uses ChartContainer from shadcn/ui chart component
+   573→     - Empty state when no data
+   574→     - Loading skeleton state
+   575→
+   576→5. **Add/Edit Expense Dialog:**
+   577→   - Date input (defaults to today)
+   578→   - Category select dropdown with icons (Gas, Electricity, Water, Maintenance, Other)
+   579→   - Amount input with ₹ prefix icon (IndianRupee)
+   580→   - Description textarea
+   581→   - Required fields marked with red asterisk
+   582→   - Form validation (date, category, amount > 0 required)
+   583→   - Submit button disabled until valid
+   584→   - Loading spinner during submission
+   585→   - On submit: POST to /api/expenses (create) or PUT to /api/expenses/[id] (update)
+   586→   - Auto-refresh list after successful operation
+   587→
+   588→6. **Delete Confirmation Dialog:**
+   589→   - AlertDialog showing expense details (category, amount, date)
+   590→   - "This action cannot be undone" warning
+   591→   - Red Delete button (bg-red-600)
+   592→   - Cancel and Delete buttons
+   593→   - DELETE to /api/expenses/[id]
+   594→
+   595→### API Integration
+   596→- `GET /api/expenses?category=&startDate=&endDate=&limit=200` — List expenses with filters
+   597→- `POST /api/expenses` — Create expense (body: { date, category, amount, description })
+   598→- `PUT /api/expenses/[id]` — Update expense
+   599→- `DELETE /api/expenses/[id]` — Delete expense
+   600→
+   601→### Styling
+   602→- Orange/amber accent colors for canteen theme throughout
+   603→- Category badges with distinct colors: Gas=orange, Electricity=yellow, Water=blue, Maintenance=green, Other=gray
+   604→- Category icons in badges (Flame, Zap, Droplets, Wrench, MoreHorizontal)
+   605→- Pie chart colors matching badge theme
+   606→- Currency format: ₹ with `Intl.NumberFormat("en-IN")`
+   607→- Date format: DD/MM/YYYY
+   608→- Dark mode support with appropriate dark variants
+   609→- Responsive layout: 3-col summary cards, 2-col main content (table + chart)
+   610→- Loading skeleton states for all sections
+   611→- Empty states with icons and descriptive text
+   612→- Row hover transitions with orange-50/50 background
+   613→
+   614→### State Management
+   615→- `useState` for expenses list, loading, category filter, date range, dialog states, sort field/direction, form fields
+   616→- `useEffect` for data fetching when filters change
+   617→- `useCallback` for memoized fetch function
+   618→- Derived computed values for today/month summaries and category breakdown
+   619→- Auto-refresh after CRUD operations
+   620→
+   621→### Testing
+   622→- ✅ Lint check passed (no errors)
+   623→- ✅ Dev server compiling successfully
+   624→

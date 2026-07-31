@@ -1,0 +1,1323 @@
+     1→'use client';
+     2→
+     3→import { useState, useEffect, useCallback } from 'react';
+     4→import { format } from 'date-fns';
+     5→
+     6→import {
+     7→  Card,
+     8→  CardContent,
+     9→  CardDescription,
+    10→  CardHeader,
+    11→  CardTitle,
+    12→} from '@/components/ui/card';
+    13→import {
+    14→  Table,
+    15→  TableBody,
+    16→  TableCell,
+    17→  TableHead,
+    18→  TableHeader,
+    19→  TableRow,
+    20→} from '@/components/ui/table';
+    21→import {
+    22→  Dialog,
+    23→  DialogContent,
+    24→  DialogDescription,
+    25→  DialogFooter,
+    26→  DialogHeader,
+    27→  DialogTitle,
+    28→} from '@/components/ui/dialog';
+    29→import {
+    30→  Select,
+    31→  SelectContent,
+    32→  SelectItem,
+    33→  SelectTrigger,
+    34→  SelectValue,
+    35→} from '@/components/ui/select';
+    36→import {
+    37→  Tabs,
+    38→  TabsContent,
+    39→  TabsList,
+    40→  TabsTrigger,
+    41→} from '@/components/ui/tabs';
+    42→import { Input } from '@/components/ui/input';
+    43→import { Button } from '@/components/ui/button';
+    44→import { Badge } from '@/components/ui/badge';
+    45→import { Label } from '@/components/ui/label';
+    46→import { Textarea } from '@/components/ui/textarea';
+    47→import { Separator } from '@/components/ui/separator';
+    48→import { Skeleton } from '@/components/ui/skeleton';
+    49→import {
+    50→  Popover,
+    51→  PopoverContent,
+    52→  PopoverTrigger,
+    53→} from '@/components/ui/popover';
+    54→import { Calendar } from '@/components/ui/calendar';
+    55→
+    56→import {
+    57→  ClipboardList,
+    58→  Plus,
+    59→  UtensilsCrossed,
+    60→  Package,
+    61→  CalendarIcon,
+    62→  Loader2,
+    63→  AlertTriangle,
+    64→  CheckCircle2,
+    65→  ArrowDown,
+    66→  ArrowUp,
+    67→  RefreshCw,
+    68→  Info,
+    69→} from 'lucide-react';
+    70→
+    71→// ─── Types ───────────────────────────────────────────────────────────────────
+    72→
+    73→interface RecipeIngredient {
+    74→  id: string;
+    75→  ingredientId: string;
+    76→  quantity: number;
+    77→  unit: string;
+    78→  ingredient: {
+    79→    id: string;
+    80→    name: string;
+    81→    unit: string;
+    82→    avgCost: number;
+    83→    currentStock: number;
+    84→  };
+    85→}
+    86→
+    87→interface Recipe {
+    88→  id: string;
+    89→  name: string;
+    90→  description?: string;
+    91→  mealType: string;
+    92→  baseServings: number;
+    93→  ingredients: RecipeIngredient[];
+    94→}
+    95→
+    96→interface DailyMeal {
+    97→  id: string;
+    98→  date: string;
+    99→  mealType: string;
+   100→  mealsServed: number;
+   101→  recipeId: string;
+   102→  notes?: string;
+   103→  createdAt: string;
+   104→  recipe: {
+   105→    id: string;
+   106→    name: string;
+   107→    mealType: string;
+   108→    baseServings: number;
+   109→  };
+   110→}
+   111→
+   112→interface Ingredient {
+   113→  id: string;
+   114→  name: string;
+   115→  unit: string;
+   116→  category: string;
+   117→  currentStock: number;
+   118→  minStock: number;
+   119→  avgCost: number;
+   120→  lastPurchasePrice: number;
+   121→}
+   122→
+   123→interface StockMovement {
+   124→  id: string;
+   125→  ingredientId: string;
+   126→  type: string;
+   127→  quantity: number;
+   128→  unitPrice: number;
+   129→  totalAmount: number;
+   130→  date: string;
+   131→  notes?: string;
+   132→  createdAt: string;
+   133→  ingredient: {
+   134→    id: string;
+   135→    name: string;
+   136→    unit: string;
+   137→    category: string;
+   138→  };
+   139→}
+   140→
+   141→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   142→
+   143→const formatCurrency = (amount: number) =>
+   144→  new Intl.NumberFormat('en-IN', {
+   145→    style: 'currency',
+   146→    currency: 'INR',
+   147→    minimumFractionDigits: 2,
+   148→    maximumFractionDigits: 2,
+   149→  }).format(amount);
+   150→
+   151→const formatDate = (dateStr: string) => {
+   152→  const d = new Date(dateStr);
+   153→  return format(d, 'dd/MM/yyyy');
+   154→};
+   155→
+   156→const formatDateISO = (date: Date) => format(date, 'yyyy-MM-dd');
+   157→
+   158→const getToday = () => {
+   159→  const d = new Date();
+   160→  d.setHours(0, 0, 0, 0);
+   161→  return d;
+   162→};
+   163→
+   164→const mealTypeBadgeVariant = (type: string) => {
+   165→  switch (type) {
+   166→    case 'Breakfast':
+   167→      return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 hover:bg-yellow-100';
+   168→    case 'Lunch':
+   169→      return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 hover:bg-orange-100';
+   170→    case 'Dinner':
+   171→      return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-100';
+   172→    default:
+   173→      return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400 hover:bg-gray-100';
+   174→  }
+   175→};
+   176→
+   177→const movementTypeBadge = (type: string) => {
+   178→  switch (type) {
+   179→    case 'PURCHASE':
+   180→      return (
+   181→        <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 hover:bg-blue-100">
+   182→          <ArrowUp className="mr-1 h-3 w-3" />
+   183→          Purchase
+   184→        </Badge>
+   185→      );
+   186→    case 'CONSUMPTION':
+   187→      return (
+   188→        <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-100">
+   189→          <ArrowDown className="mr-1 h-3 w-3" />
+   190→          Consumption
+   191→        </Badge>
+   192→      );
+   193→    case 'WASTAGE':
+   194→      return (
+   195→        <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-100">
+   196→          <AlertTriangle className="mr-1 h-3 w-3" />
+   197→          Wastage
+   198→        </Badge>
+   199→      );
+   200→    case 'ADJUSTMENT':
+   201→      return (
+   202→        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400 hover:bg-purple-100">
+   203→          <RefreshCw className="mr-1 h-3 w-3" />
+   204→          Adjustment
+   205→        </Badge>
+   206→      );
+   207→    default:
+   208→      return <Badge variant="secondary">{type}</Badge>;
+   209→  }
+   210→};
+   211→
+   212→// ─── Component ───────────────────────────────────────────────────────────────
+   213→
+   214→export function DailyEntryView() {
+   215→  // ── Shared state ─────────────────────────────────────────────────────────
+   216→  const [activeTab, setActiveTab] = useState('meals');
+   217→
+   218→  // ── Meals Served state ───────────────────────────────────────────────────
+   219→  const [selectedDate, setSelectedDate] = useState<Date>(getToday());
+   220→  const [mealTypeFilter, setMealTypeFilter] = useState<string>('all');
+   221→  const [meals, setMeals] = useState<DailyMeal[]>([]);
+   222→  const [mealsLoading, setMealsLoading] = useState(true);
+   223→  const [showAddMealDialog, setShowAddMealDialog] = useState(false);
+   224→  const [mealForm, setMealForm] = useState({
+   225→    date: formatDateISO(getToday()),
+   226→    mealType: '',
+   227→    recipeId: '',
+   228→    mealsServed: '',
+   229→    notes: '',
+   230→  });
+   231→  const [recipes, setRecipes] = useState<Recipe[]>([]);
+   232→  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+   233→  const [mealSubmitting, setMealSubmitting] = useState(false);
+   234→  const [showMealConfirmation, setShowMealConfirmation] = useState(false);
+   235→  const [mealDeduction, setMealDeduction] = useState<
+   236→    { name: string; unit: string; consumed: number; currentStock: number }[]
+   237→  >([]);
+   238→
+   239→  // ── Stock Adjustment state ───────────────────────────────────────────────
+   240→  const [adjustments, setAdjustments] = useState<StockMovement[]>([]);
+   241→  const [adjustmentsLoading, setAdjustmentsLoading] = useState(true);
+   242→  const [showAddAdjustmentDialog, setShowAddAdjustmentDialog] = useState(false);
+   243→  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
+   244→  const [adjustmentForm, setAdjustmentForm] = useState({
+   245→    ingredientId: '',
+   246→    type: '',
+   247→    quantity: '',
+   248→    unitPrice: '',
+   249→    date: formatDateISO(getToday()),
+   250→    notes: '',
+   251→  });
+   252→  const [adjustmentSubmitting, setAdjustmentSubmitting] = useState(false);
+   253→
+   254→  // ── Calendar popovers ────────────────────────────────────────────────────
+   255→  const [mealCalendarOpen, setMealCalendarOpen] = useState(false);
+   256→  const [mainCalendarOpen, setMainCalendarOpen] = useState(false);
+   257→
+   258→  // ── Fetch Meals ──────────────────────────────────────────────────────────
+   259→  const fetchMeals = useCallback(async () => {
+   260→    setMealsLoading(true);
+   261→    try {
+   262→      const params = new URLSearchParams();
+   263→      params.set('date', formatDateISO(selectedDate));
+   264→      if (mealTypeFilter && mealTypeFilter !== 'all') {
+   265→        params.set('mealType', mealTypeFilter);
+   266→      }
+   267→      const res = await fetch(`/api/daily-meals?${params.toString()}`);
+   268→      if (res.ok) {
+   269→        const json = await res.json();
+   270→        setMeals(json.data || []);
+   271→      }
+   272→    } catch (err) {
+   273→      console.error('Error fetching meals:', err);
+   274→    } finally {
+   275→      setMealsLoading(false);
+   276→    }
+   277→  }, [selectedDate, mealTypeFilter]);
+   278→
+   279→  // ── Fetch Recipes ────────────────────────────────────────────────────────
+   280→  const fetchRecipes = useCallback(async () => {
+   281→    try {
+   282→      const res = await fetch('/api/recipes');
+   283→      if (res.ok) {
+   284→        const data = await res.json();
+   285→        setRecipes(data);
+   286→      }
+   287→    } catch (err) {
+   288→      console.error('Error fetching recipes:', err);
+   289→    }
+   290→  }, []);
+   291→
+   292→  // ── Fetch Adjustments ────────────────────────────────────────────────────
+   293→  const fetchAdjustments = useCallback(async () => {
+   294→    setAdjustmentsLoading(true);
+   295→    try {
+   296→      const params = new URLSearchParams();
+   297→      params.set('type', 'CONSUMPTION,WASTAGE,ADJUSTMENT');
+   298→      const today = formatDateISO(getToday());
+   299→      params.set('startDate', today);
+   300→      params.set('endDate', today);
+   301→      params.set('limit', '50');
+   302→      const res = await fetch(`/api/stock-movements?${params.toString()}`);
+   303→      if (res.ok) {
+   304→        const json = await res.json();
+   305→        setAdjustments(json.data || []);
+   306→      }
+   307→    } catch (err) {
+   308→      console.error('Error fetching adjustments:', err);
+   309→    } finally {
+   310→      setAdjustmentsLoading(false);
+   311→    }
+   312→  }, []);
+   313→
+   314→  // ── Fetch Ingredients ────────────────────────────────────────────────────
+   315→  const fetchIngredients = useCallback(async () => {
+   316→    try {
+   317→      const res = await fetch('/api/ingredients');
+   318→      if (res.ok) {
+   319→        const data = await res.json();
+   320→        setIngredients(data);
+   321→      }
+   322→    } catch (err) {
+   323→      console.error('Error fetching ingredients:', err);
+   324→    }
+   325→  }, []);
+   326→
+   327→  // ── Effects ──────────────────────────────────────────────────────────────
+   328→  useEffect(() => {
+   329→    fetchMeals();
+   330→  }, [fetchMeals]);
+   331→
+   332→  useEffect(() => {
+   333→    if (activeTab === 'adjustments') {
+   334→      fetchAdjustments();
+   335→    }
+   336→  }, [activeTab, fetchAdjustments]);
+   337→
+   338→  useEffect(() => {
+   339→    fetchRecipes();
+   340→    fetchIngredients();
+   341→  }, [fetchRecipes, fetchIngredients]);
+   342→
+   343→  // ── Calculate stock deduction preview ────────────────────────────────────
+   344→  const calculateDeduction = () => {
+   345→    if (!selectedRecipe || !mealForm.mealsServed) return [];
+   346→    const ratio = parseInt(mealForm.mealsServed) / selectedRecipe.baseServings;
+   347→    return selectedRecipe.ingredients.map((ri) => ({
+   348→      name: ri.ingredient.name,
+   349→      unit: ri.ingredient.unit,
+   350→      consumed: ratio * ri.quantity,
+   351→      currentStock: ri.ingredient.currentStock,
+   352→    }));
+   353→  };
+   354→
+   355→  // ── Handle Add Meal ─────────────────────────────────────────────────────
+   356→  const handleAddMeal = () => {
+   357→    if (!mealForm.mealType || !mealForm.recipeId || !mealForm.mealsServed) return;
+   358→    const deduction = calculateDeduction();
+   359→    setMealDeduction(deduction);
+   360→    setShowMealConfirmation(true);
+   361→  };
+   362→
+   363→  const confirmAddMeal = async () => {
+   364→    setMealSubmitting(true);
+   365→    try {
+   366→      const res = await fetch('/api/daily-meals', {
+   367→        method: 'POST',
+   368→        headers: { 'Content-Type': 'application/json' },
+   369→        body: JSON.stringify({
+   370→          date: mealForm.date,
+   371→          mealType: mealForm.mealType,
+   372→          mealsServed: parseInt(mealForm.mealsServed),
+   373→          recipeId: mealForm.recipeId,
+   374→          notes: mealForm.notes || undefined,
+   375→        }),
+   376→      });
+   377→      if (res.ok) {
+   378→        setShowMealConfirmation(false);
+   379→        setShowAddMealDialog(false);
+   380→        resetMealForm();
+   381→        fetchMeals();
+   382→      } else {
+   383→        const err = await res.json();
+   384→        alert(err.error || 'Failed to record meal');
+   385→      }
+   386→    } catch (err) {
+   387→      console.error('Error creating meal:', err);
+   388→      alert('Failed to record meal');
+   389→    } finally {
+   390→      setMealSubmitting(false);
+   391→    }
+   392→  };
+   393→
+   394→  const resetMealForm = () => {
+   395→    setMealForm({
+   396→      date: formatDateISO(getToday()),
+   397→      mealType: '',
+   398→      recipeId: '',
+   399→      mealsServed: '',
+   400→      notes: '',
+   401→    });
+   402→    setSelectedRecipe(null);
+   403→  };
+   404→
+   405→  // ── Handle Add Adjustment ────────────────────────────────────────────────
+   406→  const handleAddAdjustment = async () => {
+   407→    if (
+   408→      !adjustmentForm.ingredientId ||
+   409→      !adjustmentForm.type ||
+   410→      !adjustmentForm.quantity
+   411→    )
+   412→      return;
+   413→
+   414→    setAdjustmentSubmitting(true);
+   415→    try {
+   416→      const res = await fetch('/api/stock-movements', {
+   417→        method: 'POST',
+   418→        headers: { 'Content-Type': 'application/json' },
+   419→        body: JSON.stringify({
+   420→          ingredientId: adjustmentForm.ingredientId,
+   421→          type: adjustmentForm.type,
+   422→          quantity: parseFloat(adjustmentForm.quantity),
+   423→          unitPrice: parseFloat(adjustmentForm.unitPrice) || 0,
+   424→          totalAmount:
+   425→            (parseFloat(adjustmentForm.unitPrice) || 0) *
+   426→            parseFloat(adjustmentForm.quantity),
+   427→          date: adjustmentForm.date,
+   428→          notes: adjustmentForm.notes || undefined,
+   429→        }),
+   430→      });
+   431→      if (res.ok) {
+   432→        setShowAddAdjustmentDialog(false);
+   433→        resetAdjustmentForm();
+   434→        fetchAdjustments();
+   435→      } else {
+   436→        const err = await res.json();
+   437→        alert(err.error || 'Failed to add adjustment');
+   438→      }
+   439→    } catch (err) {
+   440→      console.error('Error creating adjustment:', err);
+   441→      alert('Failed to add adjustment');
+   442→    } finally {
+   443→      setAdjustmentSubmitting(false);
+   444→    }
+   445→  };
+   446→
+   447→  const resetAdjustmentForm = () => {
+   448→    setAdjustmentForm({
+   449→      ingredientId: '',
+   450→      type: '',
+   451→      quantity: '',
+   452→      unitPrice: '',
+   453→      date: formatDateISO(getToday()),
+   454→      notes: '',
+   455→    });
+   456→  };
+   457→
+   458→  // ── Selected ingredient for auto-fill ────────────────────────────────────
+   459→  const selectedIngredient = ingredients.find(
+   460→    (i) => i.id === adjustmentForm.ingredientId
+   461→  );
+   462→
+   463→  // ── Totals ───────────────────────────────────────────────────────────────
+   464→  const totalMealsServed = meals.reduce((sum, m) => sum + m.mealsServed, 0);
+   465→
+   466→  // ── Render ───────────────────────────────────────────────────────────────
+   467→  return (
+   468→    <div className="space-y-6">
+   469→      {/* Header */}
+   470→      <div className="flex items-center gap-3">
+   471→        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   472→          <ClipboardList className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+   473→        </div>
+   474→        <div>
+   475→          <h1 className="text-2xl font-bold tracking-tight">Daily Entry</h1>
+   476→          <p className="text-muted-foreground">
+   477→            Record meals served and manage stock adjustments
+   478→          </p>
+   479→        </div>
+   480→      </div>
+   481→
+   482→      {/* Tabs */}
+   483→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   484→        <TabsList>
+   485→          <TabsTrigger value="meals" className="gap-1.5">
+   486→            <UtensilsCrossed className="h-4 w-4" />
+   487→            Meals Served
+   488→          </TabsTrigger>
+   489→          <TabsTrigger value="adjustments" className="gap-1.5">
+   490→            <Package className="h-4 w-4" />
+   491→            Stock Adjustment
+   492→          </TabsTrigger>
+   493→        </TabsList>
+   494→
+   495→        {/* ─── Meals Served Tab ─────────────────────────────────────────── */}
+   496→        <TabsContent value="meals" className="space-y-4">
+   497→          {/* Filters */}
+   498→          <Card>
+   499→            <CardContent className="p-4">
+   500→              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   501→                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+   502→                  {/* Date Picker */}
+   503→                  <div className="flex items-center gap-2">
+   504→                    <Label className="text-sm font-medium whitespace-nowrap">
+   505→                      Date:
+   506→                    </Label>
+   507→                    <Popover
+   508→                      open={mainCalendarOpen}
+   509→                      onOpenChange={setMainCalendarOpen}
+   510→                    >
+   511→                      <PopoverTrigger asChild>
+   512→                        <Button
+   513→                          variant="outline"
+   514→                          className="w-[160px] justify-start text-left font-normal"
+   515→                        >
+   516→                          <CalendarIcon className="mr-2 h-4 w-4" />
+   517→                          {format(selectedDate, 'dd/MM/yyyy')}
+   518→                        </Button>
+   519→                      </PopoverTrigger>
+   520→                      <PopoverContent className="w-auto p-0" align="start">
+   521→                        <Calendar
+   522→                          mode="single"
+   523→                          selected={selectedDate}
+   524→                          onSelect={(date) => {
+   525→                            if (date) {
+   526→                              setSelectedDate(date);
+   527→                              setMainCalendarOpen(false);
+   528→                            }
+   529→                          }}
+   530→                          initialFocus
+   531→                        />
+   532→                      </PopoverContent>
+   533→                    </Popover>
+   534→                  </div>
+   535→
+   536→                  {/* Meal Type Filter */}
+   537→                  <div className="flex items-center gap-2">
+   538→                    <Label className="text-sm font-medium whitespace-nowrap">
+   539→                      Meal:
+   540→                    </Label>
+   541→                    <Select
+   542→                      value={mealTypeFilter}
+   543→                      onValueChange={setMealTypeFilter}
+   544→                    >
+   545→                      <SelectTrigger className="w-[140px]">
+   546→                        <SelectValue />
+   547→                      </SelectTrigger>
+   548→                      <SelectContent>
+   549→                        <SelectItem value="all">All Meals</SelectItem>
+   550→                        <SelectItem value="Breakfast">Breakfast</SelectItem>
+   551→                        <SelectItem value="Lunch">Lunch</SelectItem>
+   552→                        <SelectItem value="Dinner">Dinner</SelectItem>
+   553→                      </SelectContent>
+   554→                    </Select>
+   555→                  </div>
+   556→                </div>
+   557→
+   558→                <Button
+   559→                  onClick={() => setShowAddMealDialog(true)}
+   560→                  className="bg-amber-600 hover:bg-amber-700 text-white"
+   561→                >
+   562→                  <Plus className="mr-2 h-4 w-4" />
+   563→                  Record Meal
+   564→                </Button>
+   565→              </div>
+   566→            </CardContent>
+   567→          </Card>
+   568→
+   569→          {/* Meals Table */}
+   570→          <Card>
+   571→            <CardHeader className="pb-3">
+   572→              <CardTitle className="text-lg">
+   573→                Meals for {format(selectedDate, 'dd/MM/yyyy')}
+   574→              </CardTitle>
+   575→              <CardDescription>
+   576→                Showing {meals.length} meal{meals.length !== 1 ? 's' : ''}{' '}
+   577→                recorded
+   578→              </CardDescription>
+   579→            </CardHeader>
+   580→            <CardContent>
+   581→              {mealsLoading ? (
+   582→                <div className="space-y-3">
+   583→                  {[1, 2, 3].map((i) => (
+   584→                    <div key={i} className="flex items-center gap-4">
+   585→                      <Skeleton className="h-5 w-24" />
+   586→                      <Skeleton className="h-5 w-20" />
+   587→                      <Skeleton className="h-5 w-32" />
+   588→                      <Skeleton className="h-5 w-16" />
+   589→                      <Skeleton className="h-5 w-24" />
+   590→                    </div>
+   591→                  ))}
+   592→                </div>
+   593→              ) : meals.length === 0 ? (
+   594→                <div className="flex flex-col items-center justify-center py-12 text-center">
+   595→                  <UtensilsCrossed className="h-12 w-12 text-muted-foreground/40 mb-3" />
+   596→                  <p className="text-muted-foreground text-sm">
+   597→                    No meals recorded for this date
+   598→                  </p>
+   599→                  <p className="text-muted-foreground/60 text-xs mt-1">
+   600→                    Click &quot;Record Meal&quot; to add a meal entry
+   601→                  </p>
+   602→                </div>
+   603→              ) : (
+   604→                <div className="overflow-x-auto">
+   605→                  <Table>
+   606→                    <TableHeader>
+   607→                      <TableRow>
+   608→                        <TableHead>Date</TableHead>
+   609→                        <TableHead>Meal Type</TableHead>
+   610→                        <TableHead>Recipe</TableHead>
+   611→                        <TableHead className="text-right">
+   612→                          Meals Served
+   613→                        </TableHead>
+   614→                        <TableHead>Notes</TableHead>
+   615→                      </TableRow>
+   616→                    </TableHeader>
+   617→                    <TableBody>
+   618→                      {meals.map((meal) => (
+   619→                        <TableRow key={meal.id}>
+   620→                          <TableCell className="font-medium">
+   621→                            {formatDate(meal.date)}
+   622→                          </TableCell>
+   623→                          <TableCell>
+   624→                            <Badge
+   625→                              className={mealTypeBadgeVariant(meal.mealType)}
+   626→                            >
+   627→                              {meal.mealType}
+   628→                            </Badge>
+   629→                          </TableCell>
+   630→                          <TableCell>{meal.recipe.name}</TableCell>
+   631→                          <TableCell className="text-right font-semibold">
+   632→                            {meal.mealsServed}
+   633→                          </TableCell>
+   634→                          <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
+   635→                            {meal.notes || '—'}
+   636→                          </TableCell>
+   637→                        </TableRow>
+   638→                      ))}
+   639→                    </TableBody>
+   640→                  </Table>
+   641→                </div>
+   642→              )}
+   643→
+   644→              {/* Summary */}
+   645→              {meals.length > 0 && (
+   646→                <>
+   647→                  <Separator className="my-4" />
+   648→                  <div className="flex items-center justify-between">
+   649→                    <span className="text-sm font-medium text-muted-foreground">
+   650→                      Total Meals Served
+   651→                    </span>
+   652→                    <span className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+   653→                      {totalMealsServed}
+   654→                    </span>
+   655→                  </div>
+   656→                </>
+   657→              )}
+   658→            </CardContent>
+   659→          </Card>
+   660→        </TabsContent>
+   661→
+   662→        {/* ─── Stock Adjustment Tab ─────────────────────────────────────── */}
+   663→        <TabsContent value="adjustments" className="space-y-4">
+   664→          {/* Header */}
+   665→          <Card>
+   666→            <CardContent className="p-4">
+   667→              <div className="flex items-center justify-between">
+   668→                <div>
+   669→                  <p className="text-sm font-medium">
+   670→                    Today&apos;s Stock Adjustments
+   671→                  </p>
+   672→                  <p className="text-xs text-muted-foreground">
+   673→                    {formatDateISO(getToday())}
+   674→                  </p>
+   675→                </div>
+   676→                <Button
+   677→                  onClick={() => setShowAddAdjustmentDialog(true)}
+   678→                  className="bg-amber-600 hover:bg-amber-700 text-white"
+   679→                >
+   680→                  <Plus className="mr-2 h-4 w-4" />
+   681→                  Add Adjustment
+   682→                </Button>
+   683→              </div>
+   684→            </CardContent>
+   685→          </Card>
+   686→
+   687→          {/* Adjustments Table */}
+   688→          <Card>
+   689→            <CardHeader className="pb-3">
+   690→              <CardTitle className="text-lg">Recent Adjustments</CardTitle>
+   691→              <CardDescription>
+   692→                Stock consumption, wastage, and manual adjustments
+   693→              </CardDescription>
+   694→            </CardHeader>
+   695→            <CardContent>
+   696→              {adjustmentsLoading ? (
+   697→                <div className="space-y-3">
+   698→                  {[1, 2, 3].map((i) => (
+   699→                    <div key={i} className="flex items-center gap-4">
+   700→                      <Skeleton className="h-5 w-24" />
+   701→                      <Skeleton className="h-5 w-28" />
+   702→                      <Skeleton className="h-5 w-20" />
+   703→                      <Skeleton className="h-5 w-16" />
+   704→                      <Skeleton className="h-5 w-20" />
+   705→                      <Skeleton className="h-5 w-20" />
+   706→                    </div>
+   707→                  ))}
+   708→                </div>
+   709→              ) : adjustments.length === 0 ? (
+   710→                <div className="flex flex-col items-center justify-center py-12 text-center">
+   711→                  <Package className="h-12 w-12 text-muted-foreground/40 mb-3" />
+   712→                  <p className="text-muted-foreground text-sm">
+   713→                    No stock adjustments recorded today
+   714→                  </p>
+   715→                  <p className="text-muted-foreground/60 text-xs mt-1">
+   716→                    Click &quot;Add Adjustment&quot; to record a stock change
+   717→                  </p>
+   718→                </div>
+   719→              ) : (
+   720→                <div className="overflow-x-auto">
+   721→                  <Table>
+   722→                    <TableHeader>
+   723→                      <TableRow>
+   724→                        <TableHead>Date</TableHead>
+   725→                        <TableHead>Ingredient</TableHead>
+   726→                        <TableHead>Type</TableHead>
+   727→                        <TableHead className="text-right">Quantity</TableHead>
+   728→                        <TableHead className="text-right">Unit Price</TableHead>
+   729→                        <TableHead className="text-right">Total</TableHead>
+   730→                        <TableHead>Notes</TableHead>
+   731→                      </TableRow>
+   732→                    </TableHeader>
+   733→                    <TableBody>
+   734→                      {adjustments.map((adj) => (
+   735→                        <TableRow key={adj.id}>
+   736→                          <TableCell className="font-medium">
+   737→                            {formatDate(adj.date)}
+   738→                          </TableCell>
+   739→                          <TableCell>{adj.ingredient.name}</TableCell>
+   740→                          <TableCell>{movementTypeBadge(adj.type)}</TableCell>
+   741→                          <TableCell className="text-right">
+   742→                            {adj.type === 'ADJUSTMENT'
+   743→                              ? `→ ${adj.quantity}`
+   744→                              : adj.quantity}{' '}
+   745→                            <span className="text-muted-foreground text-xs">
+   746→                              {adj.ingredient.unit}
+   747→                            </span>
+   748→                          </TableCell>
+   749→                          <TableCell className="text-right">
+   750→                            {formatCurrency(adj.unitPrice)}
+   751→                          </TableCell>
+   752→                          <TableCell className="text-right font-medium">
+   753→                            {formatCurrency(adj.totalAmount)}
+   754→                          </TableCell>
+   755→                          <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
+   756→                            {adj.notes || '—'}
+   757→                          </TableCell>
+   758→                        </TableRow>
+   759→                      ))}
+   760→                    </TableBody>
+   761→                  </Table>
+   762→                </div>
+   763→              )}
+   764→            </CardContent>
+   765→          </Card>
+   766→        </TabsContent>
+   767→      </Tabs>
+   768→
+   769→      {/* ─── Add Meal Dialog ─────────────────────────────────────────────── */}
+   770→      <Dialog open={showAddMealDialog} onOpenChange={setShowAddMealDialog}>
+   771→        <DialogContent className="sm:max-w-[500px]">
+   772→          <DialogHeader>
+   773→            <DialogTitle className="flex items-center gap-2">
+   774→              <UtensilsCrossed className="h-5 w-5 text-amber-600" />
+   775→              Record Meal Served
+   776→            </DialogTitle>
+   777→            <DialogDescription>
+   778→              Record the meals served. Stock will be automatically deducted
+   779→              based on the recipe.
+   780→            </DialogDescription>
+   781→          </DialogHeader>
+   782→
+   783→          <div className="grid gap-4 py-4">
+   784→            {/* Date */}
+   785→            <div className="grid gap-2">
+   786→              <Label htmlFor="meal-date">Date</Label>
+   787→              <Popover open={mealCalendarOpen} onOpenChange={setMealCalendarOpen}>
+   788→                <PopoverTrigger asChild>
+   789→                  <Button
+   790→                    variant="outline"
+   791→                    className="w-full justify-start text-left font-normal"
+   792→                    id="meal-date"
+   793→                  >
+   794→                    <CalendarIcon className="mr-2 h-4 w-4" />
+   795→                    {mealForm.date
+   796→                      ? format(new Date(mealForm.date), 'dd/MM/yyyy')
+   797→                      : 'Pick a date'}
+   798→                  </Button>
+   799→                </PopoverTrigger>
+   800→                <PopoverContent className="w-auto p-0" align="start">
+   801→                  <Calendar
+   802→                    mode="single"
+   803→                    selected={
+   804→                      mealForm.date ? new Date(mealForm.date) : undefined
+   805→                    }
+   806→                    onSelect={(date) => {
+   807→                      if (date) {
+   808→                        setMealForm((prev) => ({
+   809→                          ...prev,
+   810→                          date: formatDateISO(date),
+   811→                        }));
+   812→                        setMealCalendarOpen(false);
+   813→                      }
+   814→                    }}
+   815→                    initialFocus
+   816→                  />
+   817→                </PopoverContent>
+   818→              </Popover>
+   819→            </div>
+   820→
+   821→            {/* Meal Type */}
+   822→            <div className="grid gap-2">
+   823→              <Label htmlFor="meal-type">Meal Type *</Label>
+   824→              <Select
+   825→                value={mealForm.mealType}
+   826→                onValueChange={(val) =>
+   827→                  setMealForm((prev) => ({ ...prev, mealType: val }))
+   828→                }
+   829→              >
+   830→                <SelectTrigger id="meal-type">
+   831→                  <SelectValue placeholder="Select meal type" />
+   832→                </SelectTrigger>
+   833→                <SelectContent>
+   834→                  <SelectItem value="Breakfast">Breakfast</SelectItem>
+   835→                  <SelectItem value="Lunch">Lunch</SelectItem>
+   836→                  <SelectItem value="Dinner">Dinner</SelectItem>
+   837→                </SelectContent>
+   838→              </Select>
+   839→            </div>
+   840→
+   841→            {/* Recipe */}
+   842→            <div className="grid gap-2">
+   843→              <Label htmlFor="meal-recipe">Recipe *</Label>
+   844→              <Select
+   845→                value={mealForm.recipeId}
+   846→                onValueChange={(val) => {
+   847→                  setMealForm((prev) => ({ ...prev, recipeId: val }));
+   848→                  const recipe = recipes.find((r) => r.id === val);
+   849→                  setSelectedRecipe(recipe || null);
+   850→                }}
+   851→              >
+   852→                <SelectTrigger id="meal-recipe">
+   853→                  <SelectValue placeholder="Select recipe" />
+   854→                </SelectTrigger>
+   855→                <SelectContent>
+   856→                  {recipes.map((recipe) => (
+   857→                    <SelectItem key={recipe.id} value={recipe.id}>
+   858→                      {recipe.name} ({recipe.mealType} — {recipe.baseServings}{' '}
+   859→                      servings)
+   860→                    </SelectItem>
+   861→                  ))}
+   862→                </SelectContent>
+   863→              </Select>
+   864→            </div>
+   865→
+   866→            {/* Recipe Info */}
+   867→            {selectedRecipe && (
+   868→              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+   869→                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+   870→                  {selectedRecipe.name}
+   871→                </p>
+   872→                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+   873→                  Base Servings: {selectedRecipe.baseServings} ·{' '}
+   874→                  {selectedRecipe.ingredients.length} ingredients
+   875→                </p>
+   876→              </div>
+   877→            )}
+   878→
+   879→            {/* Meals Served */}
+   880→            <div className="grid gap-2">
+   881→              <Label htmlFor="meals-served">Meals Served *</Label>
+   882→              <Input
+   883→                id="meals-served"
+   884→                type="number"
+   885→                min="1"
+   886→                placeholder="Enter number of meals served"
+   887→                value={mealForm.mealsServed}
+   888→                onChange={(e) =>
+   889→                  setMealForm((prev) => ({
+   890→                    ...prev,
+   891→                    mealsServed: e.target.value,
+   892→                  }))
+   893→                }
+   894→              />
+   895→            </div>
+   896→
+   897→            {/* Notes */}
+   898→            <div className="grid gap-2">
+   899→              <Label htmlFor="meal-notes">Notes (optional)</Label>
+   900→              <Textarea
+   901→                id="meal-notes"
+   902→                placeholder="Any additional notes..."
+   903→                value={mealForm.notes}
+   904→                onChange={(e) =>
+   905→                  setMealForm((prev) => ({ ...prev, notes: e.target.value }))
+   906→                }
+   907→                rows={2}
+   908→              />
+   909→            </div>
+   910→          </div>
+   911→
+   912→          <DialogFooter>
+   913→            <Button
+   914→              variant="outline"
+   915→              onClick={() => {
+   916→                setShowAddMealDialog(false);
+   917→                resetMealForm();
+   918→              }}
+   919→            >
+   920→              Cancel
+   921→            </Button>
+   922→            <Button
+   923→              onClick={handleAddMeal}
+   924→              disabled={
+   925→                !mealForm.mealType ||
+   926→                !mealForm.recipeId ||
+   927→                !mealForm.mealsServed
+   928→              }
+   929→              className="bg-amber-600 hover:bg-amber-700 text-white"
+   930→            >
+   931→              <CheckCircle2 className="mr-2 h-4 w-4" />
+   932→              Record Meal
+   933→            </Button>
+   934→          </DialogFooter>
+   935→        </DialogContent>
+   936→      </Dialog>
+   937→
+   938→      {/* ─── Meal Confirmation Dialog ────────────────────────────────────── */}
+   939→      <Dialog
+   940→        open={showMealConfirmation}
+   941→        onOpenChange={setShowMealConfirmation}
+   942→      >
+   943→        <DialogContent className="sm:max-w-[550px]">
+   944→          <DialogHeader>
+   945→            <DialogTitle className="flex items-center gap-2">
+   946→              <AlertTriangle className="h-5 w-5 text-amber-600" />
+   947→              Confirm Stock Deduction
+   948→            </DialogTitle>
+   949→            <DialogDescription>
+   950→              The following stock will be deducted based on the recipe and
+   951→              servings:
+   952→            </DialogDescription>
+   953→          </DialogHeader>
+   954→
+   955→          <div className="space-y-4 py-4">
+   956→            {/* Meal Info */}
+   957→            <div className="rounded-lg border bg-muted/50 p-3">
+   958→              <div className="grid grid-cols-2 gap-2 text-sm">
+   959→                <div>
+   960→                  <span className="text-muted-foreground">Recipe:</span>{' '}
+   961→                  <span className="font-medium">{selectedRecipe?.name}</span>
+   962→                </div>
+   963→                <div>
+   964→                  <span className="text-muted-foreground">Meal Type:</span>{' '}
+   965→                  <Badge
+   966→                    className={mealTypeBadgeVariant(mealForm.mealType)}
+   967→                  >
+   968→                    {mealForm.mealType}
+   969→                  </Badge>
+   970→                </div>
+   971→                <div>
+   972→                  <span className="text-muted-foreground">Meals Served:</span>{' '}
+   973→                  <span className="font-medium">{mealForm.mealsServed}</span>
+   974→                </div>
+   975→                <div>
+   976→                  <span className="text-muted-foreground">Base Servings:</span>{' '}
+   977→                  <span className="font-medium">
+   978→                    {selectedRecipe?.baseServings}
+   979→                  </span>
+   980→                </div>
+   981→              </div>
+   982→            </div>
+   983→
+   984→            {/* Deduction Table */}
+   985→            <div className="overflow-x-auto">
+   986→              <Table>
+   987→                <TableHeader>
+   988→                  <TableRow>
+   989→                    <TableHead>Ingredient</TableHead>
+   990→                    <TableHead className="text-right">To Consume</TableHead>
+   991→                    <TableHead className="text-right">Current Stock</TableHead>
+   992→                    <TableHead className="text-right">After</TableHead>
+   993→                    <TableHead>Status</TableHead>
+   994→                  </TableRow>
+   995→                </TableHeader>
+   996→                <TableBody>
+   997→                  {mealDeduction.map((item, idx) => {
+   998→                    const afterStock = item.currentStock - item.consumed;
+   999→                    const isLow = afterStock < 0;
+  1000→                    const isWarning = afterStock >= 0 && afterStock < item.currentStock * 0.2;
+  1001→                    return (
+  1002→                      <TableRow key={idx}>
+  1003→                        <TableCell className="font-medium">
+  1004→                          {item.name}
+  1005→                        </TableCell>
+  1006→                        <TableCell className="text-right text-amber-600 dark:text-amber-400 font-medium">
+  1007→                          {item.consumed.toFixed(2)} {item.unit}
+  1008→                        </TableCell>
+  1009→                        <TableCell className="text-right">
+  1010→                          {item.currentStock.toFixed(2)} {item.unit}
+  1011→                        </TableCell>
+  1012→                        <TableCell
+  1013→                          className={`text-right font-medium ${
+  1014→                            isLow
+  1015→                              ? 'text-red-600 dark:text-red-400'
+  1016→                              : isWarning
+  1017→                                ? 'text-amber-600 dark:text-amber-400'
+  1018→                                : 'text-green-600 dark:text-green-400'
+  1019→                          }`}
+  1020→                        >
+  1021→                          {Math.max(0, afterStock).toFixed(2)} {item.unit}
+  1022→                        </TableCell>
+  1023→                        <TableCell>
+  1024→                          {isLow ? (
+  1025→                            <Badge className="bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-100">
+  1026→                              Insufficient
+  1027→                            </Badge>
+  1028→                          ) : isWarning ? (
+  1029→                            <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 hover:bg-amber-100">
+  1030→                              Low
+  1031→                            </Badge>
+  1032→                          ) : (
+  1033→                            <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-100">
+  1034→                              OK
+  1035→                            </Badge>
+  1036→                          )}
+  1037→                        </TableCell>
+  1038→                      </TableRow>
+  1039→                    );
+  1040→                  })}
+  1041→                </TableBody>
+  1042→              </Table>
+  1043→            </div>
+  1044→
+  1045→            {mealDeduction.some((item) => item.currentStock - item.consumed < 0) && (
+  1046→              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/20">
+  1047→                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5 shrink-0" />
+  1048→                <div className="text-sm text-red-800 dark:text-red-300">
+  1049→                  <p className="font-medium">Insufficient Stock Warning</p>
+  1050→                  <p className="text-xs mt-1">
+  1051→                    Some ingredients don&apos;t have enough stock. Stock will be
+  1052→                    deducted to 0 (minimum) for those items.
+  1053→                  </p>
+  1054→                </div>
+  1055→              </div>
+  1056→            )}
+  1057→          </div>
+  1058→
+  1059→          <DialogFooter>
+  1060→            <Button
+  1061→              variant="outline"
+  1062→              onClick={() => setShowMealConfirmation(false)}
+  1063→            >
+  1064→              Cancel
+  1065→            </Button>
+  1066→            <Button
+  1067→              onClick={confirmAddMeal}
+  1068→              disabled={mealSubmitting}
+  1069→              className="bg-amber-600 hover:bg-amber-700 text-white"
+  1070→            >
+  1071→              {mealSubmitting ? (
+  1072→                <>
+  1073→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1074→                  Saving...
+  1075→                </>
+  1076→              ) : (
+  1077→                <>
+  1078→                  <CheckCircle2 className="mr-2 h-4 w-4" />
+  1079→                  Confirm & Record
+  1080→                </>
+  1081→              )}
+  1082→            </Button>
+  1083→          </DialogFooter>
+  1084→        </DialogContent>
+  1085→      </Dialog>
+  1086→
+  1087→      {/* ─── Add Adjustment Dialog ───────────────────────────────────────── */}
+  1088→      <Dialog
+  1089→        open={showAddAdjustmentDialog}
+  1090→        onOpenChange={setShowAddAdjustmentDialog}
+  1091→      >
+  1092→        <DialogContent className="sm:max-w-[500px]">
+  1093→          <DialogHeader>
+  1094→            <DialogTitle className="flex items-center gap-2">
+  1095→              <Package className="h-5 w-5 text-amber-600" />
+  1096→              Add Stock Adjustment
+  1097→            </DialogTitle>
+  1098→            <DialogDescription>
+  1099→              Record a stock change: consumption, wastage, or manual adjustment.
+  1100→            </DialogDescription>
+  1101→          </DialogHeader>
+  1102→
+  1103→          <div className="grid gap-4 py-4">
+  1104→            {/* Ingredient */}
+  1105→            <div className="grid gap-2">
+  1106→              <Label htmlFor="adj-ingredient">Ingredient *</Label>
+  1107→              <Select
+  1108→                value={adjustmentForm.ingredientId}
+  1109→                onValueChange={(val) => {
+  1110→                  const ing = ingredients.find((i) => i.id === val);
+  1111→                  setAdjustmentForm((prev) => ({
+  1112→                    ...prev,
+  1113→                    ingredientId: val,
+  1114→                    unitPrice: ing ? ing.avgCost.toString() : '',
+  1115→                  }));
+  1116→                }}
+  1117→              >
+  1118→                <SelectTrigger id="adj-ingredient">
+  1119→                  <SelectValue placeholder="Select ingredient" />
+  1120→                </SelectTrigger>
+  1121→                <SelectContent>
+  1122→                  {ingredients.map((ing) => (
+  1123→                    <SelectItem key={ing.id} value={ing.id}>
+  1124→                      {ing.name} ({ing.currentStock} {ing.unit} in stock)
+  1125→                    </SelectItem>
+  1126→                  ))}
+  1127→                </SelectContent>
+  1128→              </Select>
+  1129→            </div>
+  1130→
+  1131→            {/* Current Stock Info */}
+  1132→            {selectedIngredient && (
+  1133→              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/20">
+  1134→                <div className="grid grid-cols-2 gap-2 text-sm">
+  1135→                  <div>
+  1136→                    <span className="text-muted-foreground">Current Stock:</span>{' '}
+  1137→                    <span className="font-medium">
+  1138→                      {selectedIngredient.currentStock} {selectedIngredient.unit}
+  1139→                    </span>
+  1140→                  </div>
+  1141→                  <div>
+  1142→                    <span className="text-muted-foreground">Avg Cost:</span>{' '}
+  1143→                    <span className="font-medium">
+  1144→                      {formatCurrency(selectedIngredient.avgCost)}/{selectedIngredient.unit}
+  1145→                    </span>
+  1146→                  </div>
+  1147→                </div>
+  1148→              </div>
+  1149→            )}
+  1150→
+  1151→            {/* Type */}
+  1152→            <div className="grid gap-2">
+  1153→              <Label htmlFor="adj-type">Type *</Label>
+  1154→              <Select
+  1155→                value={adjustmentForm.type}
+  1156→                onValueChange={(val) =>
+  1157→                  setAdjustmentForm((prev) => ({ ...prev, type: val }))
+  1158→                }
+  1159→              >
+  1160→                <SelectTrigger id="adj-type">
+  1161→                  <SelectValue placeholder="Select adjustment type" />
+  1162→                </SelectTrigger>
+  1163→                <SelectContent>
+  1164→                  <SelectItem value="CONSUMPTION">Consumption</SelectItem>
+  1165→                  <SelectItem value="WASTAGE">Wastage</SelectItem>
+  1166→                  <SelectItem value="ADJUSTMENT">Adjustment</SelectItem>
+  1167→                </SelectContent>
+  1168→              </Select>
+  1169→            </div>
+  1170→
+  1171→            {/* ADJUSTMENT type note */}
+  1172→            {adjustmentForm.type === 'ADJUSTMENT' && (
+  1173→              <div className="flex items-start gap-2 rounded-lg border border-purple-200 bg-purple-50 p-3 dark:border-purple-800 dark:bg-purple-950/20">
+  1174→                <Info className="h-4 w-4 text-purple-600 mt-0.5 shrink-0" />
+  1175→                <p className="text-xs text-purple-800 dark:text-purple-300">
+  1176→                  <strong>Adjustment</strong> sets the absolute stock level. The
+  1177→                  quantity you enter will become the new current stock for this
+  1178→                  ingredient.
+  1179→                </p>
+  1180→              </div>
+  1181→            )}
+  1182→
+  1183→            {/* Quantity */}
+  1184→            <div className="grid gap-2">
+  1185→              <Label htmlFor="adj-quantity">
+  1186→                Quantity{' '}
+  1187→                {adjustmentForm.type === 'ADJUSTMENT'
+  1188→                  ? '(new stock level)'
+  1189→                  : adjustmentForm.type === 'CONSUMPTION'
+  1190→                    ? '(consumed)'
+  1191→                    : adjustmentForm.type === 'WASTAGE'
+  1192→                      ? '(wasted)'
+  1193→                      : ''}{' '}
+  1194→                *
+  1195→              </Label>
+  1196→              <Input
+  1197→                id="adj-quantity"
+  1198→                type="number"
+  1199→                min="0"
+  1200→                step="0.01"
+  1201→                placeholder={
+  1202→                  adjustmentForm.type === 'ADJUSTMENT'
+  1203→                    ? 'Enter new stock level'
+  1204→                    : 'Enter quantity'
+  1205→                }
+  1206→                value={adjustmentForm.quantity}
+  1207→                onChange={(e) =>
+  1208→                  setAdjustmentForm((prev) => ({
+  1209→                    ...prev,
+  1210→                    quantity: e.target.value,
+  1211→                  }))
+  1212→                }
+  1213→              />
+  1214→            </div>
+  1215→
+  1216→            {/* Unit Price */}
+  1217→            <div className="grid gap-2">
+  1218→              <Label htmlFor="adj-unit-price">
+  1219→                Unit Price (₹) — auto-filled from avg cost
+  1220→              </Label>
+  1221→              <Input
+  1222→                id="adj-unit-price"
+  1223→                type="number"
+  1224→                min="0"
+  1225→                step="0.01"
+  1226→                placeholder="0.00"
+  1227→                value={adjustmentForm.unitPrice}
+  1228→                onChange={(e) =>
+  1229→                  setAdjustmentForm((prev) => ({
+  1230→                    ...prev,
+  1231→                    unitPrice: e.target.value,
+  1232→                  }))
+  1233→                }
+  1234→              />
+  1235→            </div>
+  1236→
+  1237→            {/* Total Preview */}
+  1238→            {adjustmentForm.quantity && adjustmentForm.unitPrice && (
+  1239→              <div className="rounded-lg border bg-muted/50 p-3">
+  1240→                <div className="flex items-center justify-between text-sm">
+  1241→                  <span className="text-muted-foreground">Total Amount:</span>
+  1242→                  <span className="font-bold text-amber-600 dark:text-amber-400">
+  1243→                    {formatCurrency(
+  1244→                      parseFloat(adjustmentForm.quantity) *
+  1245→                        parseFloat(adjustmentForm.unitPrice)
+  1246→                    )}
+  1247→                  </span>
+  1248→                </div>
+  1249→              </div>
+  1250→            )}
+  1251→
+  1252→            {/* Date */}
+  1253→            <div className="grid gap-2">
+  1254→              <Label>Date</Label>
+  1255→              <Input
+  1256→                type="date"
+  1257→                value={adjustmentForm.date}
+  1258→                onChange={(e) =>
+  1259→                  setAdjustmentForm((prev) => ({
+  1260→                    ...prev,
+  1261→                    date: e.target.value,
+  1262→                  }))
+  1263→                }
+  1264→              />
+  1265→            </div>
+  1266→
+  1267→            {/* Notes */}
+  1268→            <div className="grid gap-2">
+  1269→              <Label htmlFor="adj-notes">Notes (optional)</Label>
+  1270→              <Textarea
+  1271→                id="adj-notes"
+  1272→                placeholder="Reason for adjustment..."
+  1273→                value={adjustmentForm.notes}
+  1274→                onChange={(e) =>
+  1275→                  setAdjustmentForm((prev) => ({
+  1276→                    ...prev,
+  1277→                    notes: e.target.value,
+  1278→                  }))
+  1279→                }
+  1280→                rows={2}
+  1281→              />
+  1282→            </div>
+  1283→          </div>
+  1284→
+  1285→          <DialogFooter>
+  1286→            <Button
+  1287→              variant="outline"
+  1288→              onClick={() => {
+  1289→                setShowAddAdjustmentDialog(false);
+  1290→                resetAdjustmentForm();
+  1291→              }}
+  1292→            >
+  1293→              Cancel
+  1294→            </Button>
+  1295→            <Button
+  1296→              onClick={handleAddAdjustment}
+  1297→              disabled={
+  1298→                !adjustmentForm.ingredientId ||
+  1299→                !adjustmentForm.type ||
+  1300→                !adjustmentForm.quantity ||
+  1301→                adjustmentSubmitting
+  1302→              }
+  1303→              className="bg-amber-600 hover:bg-amber-700 text-white"
+  1304→            >
+  1305→              {adjustmentSubmitting ? (
+  1306→                <>
+  1307→                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+  1308→                  Saving...
+  1309→                </>
+  1310→              ) : (
+  1311→                <>
+  1312→                  <CheckCircle2 className="mr-2 h-4 w-4" />
+  1313→                  Add Adjustment
+  1314→                </>
+  1315→              )}
+  1316→            </Button>
+  1317→          </DialogFooter>
+  1318→        </DialogContent>
+  1319→      </Dialog>
+  1320→    </div>
+  1321→  );
+  1322→}
+  1323→

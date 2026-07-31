@@ -1,0 +1,926 @@
+     1→"use client";
+     2→
+     3→import { useState, useEffect } from "react";
+     4→import {
+     5→  Card,
+     6→  CardContent,
+     7→  CardDescription,
+     8→  CardHeader,
+     9→  CardTitle,
+    10→} from "@/components/ui/card";
+    11→import { Badge } from "@/components/ui/badge";
+    12→import { Progress } from "@/components/ui/progress";
+    13→import { Skeleton } from "@/components/ui/skeleton";
+    14→import {
+    15→  Table,
+    16→  TableBody,
+    17→  TableCell,
+    18→  TableHead,
+    19→  TableHeader,
+    20→  TableRow,
+    21→} from "@/components/ui/table";
+    22→import {
+    23→  ChartContainer,
+    24→  ChartTooltip,
+    25→  ChartTooltipContent,
+    26→  type ChartConfig,
+    27→} from "@/components/ui/chart";
+    28→import {
+    29→  TrendingUp,
+    30→  TrendingDown,
+    31→  AlertTriangle,
+    32→  Package,
+    33→  UtensilsCrossed,
+    34→  DollarSign,
+    35→  Users,
+    36→  IndianRupee,
+    37→  Utensils,
+    38→  ShoppingCart,
+    39→  Flame,
+    40→  Receipt,
+    41→} from "lucide-react";
+    42→import {
+    43→  BarChart,
+    44→  Bar,
+    45→  XAxis,
+    46→  YAxis,
+    47→  CartesianGrid,
+    48→  Cell,
+    49→  ResponsiveContainer,
+    50→} from "recharts";
+    51→
+    52→// ─── Types ───────────────────────────────────────────────────────────────────
+    53→
+    54→interface DashboardData {
+    55→  foodCost: {
+    56→    today: number;
+    57→    week: number;
+    58→    month: number;
+    59→  };
+    60→  meals: {
+    61→    today: number;
+    62→    month: number;
+    63→  };
+    64→  costPerMeal: number;
+    65→  lowStockAlerts: Array<{
+    66→    id: string;
+    67→    name: string;
+    68→    unit: string;
+    69→    currentStock: number;
+    70→    minStock: number;
+    71→    category: string;
+    72→  }>;
+    73→  topConsumingIngredients: Array<{
+    74→    ingredient: {
+    75→      id: string;
+    76→      name: string;
+    77→      unit: string;
+    78→      category: string;
+    79→    };
+    80→    totalQuantity: number;
+    81→    totalCost: number;
+    82→  }>;
+    83→  todayMeals: Array<{
+    84→    id: string;
+    85→    date: string;
+    86→    mealType: string;
+    87→    mealsServed: number;
+    88→    recipe: {
+    89→      id: string;
+    90→      name: string;
+    91→      mealType: string;
+    92→    };
+    93→  }>;
+    94→  expenses: {
+    95→    month: number;
+    96→    breakdown: Array<{
+    97→      category: string;
+    98→      amount: number;
+    99→    }>;
+   100→  };
+   101→  totalOperatingCost: number;
+   102→}
+   103→
+   104→// ─── Helpers ─────────────────────────────────────────────────────────────────
+   105→
+   106→/** Format number as Indian Rupee with 2 decimal places and Indian comma grouping */
+   107→function formatCurrency(value: number): string {
+   108→  return new Intl.NumberFormat("en-IN", {
+   109→    style: "currency",
+   110→    currency: "INR",
+   111→    minimumFractionDigits: 2,
+   112→    maximumFractionDigits: 2,
+   113→  }).format(value);
+   114→}
+   115→
+   116→/** Format number with Indian comma grouping, no decimals */
+   117→function formatNumber(value: number): string {
+   118→  return new Intl.NumberFormat("en-IN").format(value);
+   119→}
+   120→
+   121→/** Format number with Indian comma grouping, 1 decimal */
+   122→function formatNumberDecimal(value: number): string {
+   123→  return new Intl.NumberFormat("en-IN", {
+   124→    minimumFractionDigits: 1,
+   125→    maximumFractionDigits: 1,
+   126→  }).format(value);
+   127→}
+   128→
+   129→/** Meal type label */
+   130→function mealTypeLabel(type: string): string {
+   131→  const map: Record<string, string> = {
+   132→    BREAKFAST: "Breakfast",
+   133→    LUNCH: "Lunch",
+   134→    DINNER: "Dinner",
+   135→    SNACKS: "Snacks",
+   136→    TEA: "Tea",
+   137→  };
+   138→  return map[type] || type;
+   139→}
+   140→
+   141→/** Category color for chart bars */
+   142→const BAR_COLORS = [
+   143→  "#f59e0b",
+   144→  "#d97706",
+   145→  "#b45309",
+   146→  "#92400e",
+   147→  "#78350f",
+   148→  "#ea580c",
+   149→  "#c2410c",
+   150→  "#9a3412",
+   151→];
+   152→
+   153→// ─── Chart config ────────────────────────────────────────────────────────────
+   154→
+   155→const consumptionChartConfig: ChartConfig = {
+   156→  totalQuantity: {
+   157→    label: "Quantity Consumed",
+   158→    color: "#f59e0b",
+   159→  },
+   160→};
+   161→
+   162→const expenseChartConfig: ChartConfig = {
+   163→  amount: {
+   164→    label: "Amount (₹)",
+   165→    color: "#ea580c",
+   166→  },
+   167→};
+   168→
+   169→// ─── Loading Skeletons ──────────────────────────────────────────────────────
+   170→
+   171→function MetricCardSkeleton() {
+   172→  return (
+   173→    <Card>
+   174→      <CardHeader className="flex flex-row items-center justify-between pb-2">
+   175→        <Skeleton className="h-4 w-24" />
+   176→        <Skeleton className="h-8 w-8 rounded-lg" />
+   177→      </CardHeader>
+   178→      <CardContent>
+   179→        <Skeleton className="h-8 w-32 mb-1" />
+   180→        <Skeleton className="h-3 w-20" />
+   181→      </CardContent>
+   182→    </Card>
+   183→  );
+   184→}
+   185→
+   186→function LargeCardSkeleton() {
+   187→  return (
+   188→    <Card>
+   189→      <CardHeader>
+   190→        <Skeleton className="h-5 w-40" />
+   191→        <Skeleton className="h-3 w-56" />
+   192→      </CardHeader>
+   193→      <CardContent>
+   194→        <Skeleton className="h-48 w-full" />
+   195→      </CardContent>
+   196→    </Card>
+   197→  );
+   198→}
+   199→
+   200→// ─── Main Component ─────────────────────────────────────────────────────────
+   201→
+   202→export function DashboardView() {
+   203→  const [data, setData] = useState<DashboardData | null>(null);
+   204→  const [loading, setLoading] = useState(true);
+   205→  const [error, setError] = useState<string | null>(null);
+   206→
+   207→  useEffect(() => {
+   208→    async function fetchDashboard() {
+   209→      try {
+   210→        setLoading(true);
+   211→        setError(null);
+   212→        const res = await fetch("/api/dashboard");
+   213→        if (!res.ok) {
+   214→          throw new Error(`Failed to fetch dashboard data (${res.status})`);
+   215→        }
+   216→        const json = await res.json();
+   217→        setData(json);
+   218→      } catch (err) {
+   219→        console.error("Dashboard fetch error:", err);
+   220→        setError(
+   221→          err instanceof Error ? err.message : "Failed to load dashboard"
+   222→        );
+   223→      } finally {
+   224→        setLoading(false);
+   225→      }
+   226→    }
+   227→    fetchDashboard();
+   228→  }, []);
+   229→
+   230→  // ─── Loading State ──────────────────────────────────────────────────────
+   231→
+   232→  if (loading) {
+   233→    return (
+   234→      <div className="space-y-6">
+   235→        {/* Header */}
+   236→        <div className="flex items-center gap-3">
+   237→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+   238→            <Flame className="h-5 w-5 text-amber-600" />
+   239→          </div>
+   240→          <div>
+   241→            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+   242→            <p className="text-muted-foreground">
+   243→              Overview of canteen operations, stock levels, and cost summaries
+   244→            </p>
+   245→          </div>
+   246→        </div>
+   247→
+   248→        {/* Metric cards skeleton */}
+   249→        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+   250→          {Array.from({ length: 4 }).map((_, i) => (
+   251→            <MetricCardSkeleton key={i} />
+   252→          ))}
+   253→        </div>
+   254→
+   255→        {/* Second row skeleton */}
+   256→        <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+   257→          <LargeCardSkeleton />
+   258→          <LargeCardSkeleton />
+   259→        </div>
+   260→
+   261→        {/* Third row skeleton */}
+   262→        <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+   263→          <LargeCardSkeleton />
+   264→          <LargeCardSkeleton />
+   265→        </div>
+   266→
+   267→        {/* Fourth row skeleton */}
+   268→        <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+   269→          <LargeCardSkeleton />
+   270→          <LargeCardSkeleton />
+   271→        </div>
+   272→      </div>
+   273→    );
+   274→  }
+   275→
+   276→  // ─── Error State ────────────────────────────────────────────────────────
+   277→
+   278→  if (error || !data) {
+   279→    return (
+   280→      <div className="space-y-6">
+   281→        <div className="flex items-center gap-3">
+   282→          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+   283→            <Flame className="h-5 w-5 text-amber-600" />
+   284→          </div>
+   285→          <div>
+   286→            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+   287→            <p className="text-muted-foreground">
+   288→              Overview of canteen operations, stock levels, and cost summaries
+   289→            </p>
+   290→          </div>
+   291→        </div>
+   292→        <Card className="border-destructive/50">
+   293→          <CardHeader>
+   294→            <CardTitle className="text-destructive flex items-center gap-2">
+   295→              <AlertTriangle className="h-5 w-5" />
+   296→              Error Loading Dashboard
+   297→            </CardTitle>
+   298→            <CardDescription>
+   299→              {error || "Unable to load dashboard data. Please try again later."}
+   300→            </CardDescription>
+   301→          </CardHeader>
+   302→          <CardContent>
+   303→            <button
+   304→              onClick={() => window.location.reload()}
+   305→              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+   306→            >
+   307→              Retry
+   308→            </button>
+   309→          </CardContent>
+   310→        </Card>
+   311→      </div>
+   312→    );
+   313→  }
+   314→
+   315→  // ─── Computed Values ────────────────────────────────────────────────────
+   316→
+   317→  const weekMeals = data.meals.month
+   318→    ? Math.round((data.meals.today * 7 + data.meals.month) / 8)
+   319→    : data.meals.today * 7;
+   320→
+   321→  // Prepare chart data for top consuming ingredients
+   322→  const consumptionChartData = data.topConsumingIngredients
+   323→    .slice(0, 8)
+   324→    .map((item) => ({
+   325→      name:
+   326→        item.ingredient.name.length > 12
+   327→          ? item.ingredient.name.slice(0, 11) + "…"
+   328→          : item.ingredient.name,
+   329→      fullName: item.ingredient.name,
+   330→      totalQuantity: Number(item.totalQuantity.toFixed(1)),
+   331→      unit: item.ingredient.unit,
+   332→      totalCost: item.totalCost,
+   333→    }));
+   334→
+   335→  // Prepare expense breakdown chart data
+   336→  const expenseChartData = data.expenses.breakdown.map((item) => ({
+   337→    name: item.category,
+   338→    amount: item.amount,
+   339→  }));
+   340→
+   341→  return (
+   342→    <div className="space-y-6">
+   343→      {/* ─── Header ──────────────────────────────────────────────────────── */}
+   344→      <div className="flex items-center gap-3">
+   345→        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-500/10">
+   346→          <Flame className="h-5 w-5 text-amber-600" />
+   347→        </div>
+   348→        <div>
+   349→          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+   350→          <p className="text-muted-foreground">
+   351→            Overview of canteen operations, stock levels, and cost summaries
+   352→          </p>
+   353→        </div>
+   354→      </div>
+   355→
+   356→      {/* ─── Row 1: Top Metric Cards ─────────────────────────────────────── */}
+   357→      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+   358→        {/* Today's Food Cost */}
+   359→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   360→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   361→            <CardDescription className="text-sm font-medium">
+   362→              Today&apos;s Food Cost
+   363→            </CardDescription>
+   364→            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   365→              <IndianRupee className="h-4 w-4 text-amber-600" />
+   366→            </div>
+   367→          </CardHeader>
+   368→          <CardContent>
+   369→            <div className="text-2xl font-bold tracking-tight">
+   370→              {formatCurrency(data.foodCost.today)}
+   371→            </div>
+   372→            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+   373→              {data.foodCost.today > 0 ? (
+   374→                <>
+   375→                  <TrendingUp className="h-3 w-3 text-amber-500" />
+   376→                  <span className="text-amber-600 dark:text-amber-400">
+   377→                    Active today
+   378→                  </span>
+   379→                </>
+   380→              ) : (
+   381→                <span>No purchases today</span>
+   382→              )}
+   383→            </div>
+   384→          </CardContent>
+   385→        </Card>
+   386→
+   387→        {/* This Week's Food Cost */}
+   388→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   389→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   390→            <CardDescription className="text-sm font-medium">
+   391→              This Week&apos;s Food Cost
+   392→            </CardDescription>
+   393→            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
+   394→              <DollarSign className="h-4 w-4 text-orange-600" />
+   395→            </div>
+   396→          </CardHeader>
+   397→          <CardContent>
+   398→            <div className="text-2xl font-bold tracking-tight">
+   399→              {formatCurrency(data.foodCost.week)}
+   400→            </div>
+   401→            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+   402→              {data.foodCost.week > 0 ? (
+   403→                <>
+   404→                  <TrendingUp className="h-3 w-3 text-orange-500" />
+   405→                  <span className="text-orange-600 dark:text-orange-400">
+   406→                    This week
+   407→                  </span>
+   408→                </>
+   409→              ) : (
+   410→                <span>No purchases this week</span>
+   411→              )}
+   412→            </div>
+   413→          </CardContent>
+   414→        </Card>
+   415→
+   416→        {/* This Month's Food Cost */}
+   417→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   418→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   419→            <CardDescription className="text-sm font-medium">
+   420→              This Month&apos;s Food Cost
+   421→            </CardDescription>
+   422→            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
+   423→              <ShoppingCart className="h-4 w-4 text-amber-600" />
+   424→            </div>
+   425→          </CardHeader>
+   426→          <CardContent>
+   427→            <div className="text-2xl font-bold tracking-tight">
+   428→              {formatCurrency(data.foodCost.month)}
+   429→            </div>
+   430→            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+   431→              {data.foodCost.month > 0 ? (
+   432→                <>
+   433→                  <TrendingUp className="h-3 w-3 text-amber-500" />
+   434→                  <span className="text-amber-600 dark:text-amber-400">
+   435→                    Monthly total
+   436→                  </span>
+   437→                </>
+   438→              ) : (
+   439→                <span>No purchases this month</span>
+   440→              )}
+   441→            </div>
+   442→          </CardContent>
+   443→        </Card>
+   444→
+   445→        {/* Cost Per Meal */}
+   446→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   447→          <CardHeader className="flex flex-row items-center justify-between pb-2">
+   448→            <CardDescription className="text-sm font-medium">
+   449→              Cost Per Meal
+   450→            </CardDescription>
+   451→            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/30">
+   452→              <Utensils className="h-4 w-4 text-green-600" />
+   453→            </div>
+   454→          </CardHeader>
+   455→          <CardContent>
+   456→            <div className="text-2xl font-bold tracking-tight">
+   457→              {formatCurrency(data.costPerMeal)}
+   458→            </div>
+   459→            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+   460→              {data.costPerMeal > 0 ? (
+   461→                <>
+   462→                  <TrendingDown className="h-3 w-3 text-green-500" />
+   463→                  <span className="text-green-600 dark:text-green-400">
+   464→                    Per meal average
+   465→                  </span>
+   466→                </>
+   467→              ) : (
+   468→                <span>Insufficient data</span>
+   469→              )}
+   470→            </div>
+   471→          </CardContent>
+   472→        </Card>
+   473→      </div>
+   474→
+   475→      {/* ─── Row 2: Meals Served + Cost Per Employee ─────────────────────── */}
+   476→      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+   477→        {/* Total Meals Served */}
+   478→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   479→          <CardHeader>
+   480→            <CardTitle className="flex items-center gap-2 text-base">
+   481→              <UtensilsCrossed className="h-5 w-5 text-amber-600" />
+   482→              Total Meals Served
+   483→            </CardTitle>
+   484→            <CardDescription>Breakdown by time period</CardDescription>
+   485→          </CardHeader>
+   486→          <CardContent>
+   487→            <div className="grid gap-4 grid-cols-3">
+   488→              <div className="flex flex-col items-center gap-1 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
+   489→                <span className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+   490→                  {formatNumber(data.meals.today)}
+   491→                </span>
+   492→                <span className="text-xs text-muted-foreground">Today</span>
+   493→              </div>
+   494→              <div className="flex flex-col items-center gap-1 rounded-lg bg-orange-50 p-4 dark:bg-orange-900/20">
+   495→                <span className="text-2xl font-bold text-orange-700 dark:text-orange-400">
+   496→                  {formatNumber(weekMeals)}
+   497→                </span>
+   498→                <span className="text-xs text-muted-foreground">This Week</span>
+   499→              </div>
+   500→              <div className="flex flex-col items-center gap-1 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
+   501→                <span className="text-2xl font-bold text-amber-700 dark:text-amber-400">
+   502→                  {formatNumber(data.meals.month)}
+   503→                </span>
+   504→                <span className="text-xs text-muted-foreground">This Month</span>
+   505→              </div>
+   506→            </div>
+   507→          </CardContent>
+   508→        </Card>
+   509→
+   510→        {/* Cost Per Employee & Total Operating Cost */}
+   511→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   512→          <CardHeader>
+   513→            <CardTitle className="flex items-center gap-2 text-base">
+   514→              <Users className="h-5 w-5 text-amber-600" />
+   515→              Operating Cost Overview
+   516→            </CardTitle>
+   517→            <CardDescription>Monthly cost breakdown</CardDescription>
+   518→          </CardHeader>
+   519→          <CardContent>
+   520→            <div className="space-y-4">
+   521→              {/* Total Operating Cost */}
+   522→              <div className="flex items-center justify-between rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
+   523→                <div>
+   524→                  <p className="text-sm text-muted-foreground">
+   525→                    Total Operating Cost
+   526→                  </p>
+   527→                  <p className="text-3xl font-bold text-amber-700 dark:text-amber-400">
+   528→                    {formatCurrency(data.totalOperatingCost)}
+   529→                  </p>
+   530→                </div>
+   531→                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40">
+   532→                  <IndianRupee className="h-6 w-6 text-amber-600" />
+   533→                </div>
+   534→              </div>
+   535→
+   536→              {/* Food Cost vs Expenses */}
+   537→              <div className="space-y-2">
+   538→                <div className="flex items-center justify-between text-sm">
+   539→                  <span className="text-muted-foreground">Food Cost</span>
+   540→                  <span className="font-medium">
+   541→                    {formatCurrency(data.foodCost.month)}
+   542→                  </span>
+   543→                </div>
+   544→                <Progress
+   545→                  value={
+   546→                    data.totalOperatingCost > 0
+   547→                      ? (data.foodCost.month / data.totalOperatingCost) * 100
+   548→                      : 0
+   549→                  }
+   550→                  className="h-2 [&>div]:bg-amber-500"
+   551→                />
+   552→                <div className="flex items-center justify-between text-sm">
+   553→                  <span className="text-muted-foreground">
+   554→                    Operating Expenses
+   555→                  </span>
+   556→                  <span className="font-medium">
+   557→                    {formatCurrency(data.expenses.month)}
+   558→                  </span>
+   559→                </div>
+   560→                <Progress
+   561→                  value={
+   562→                    data.totalOperatingCost > 0
+   563→                      ? (data.expenses.month / data.totalOperatingCost) * 100
+   564→                      : 0
+   565→                  }
+   566→                  className="h-2 [&>div]:bg-orange-500"
+   567→                />
+   568→              </div>
+   569→            </div>
+   570→          </CardContent>
+   571→        </Card>
+   572→      </div>
+   573→
+   574→      {/* ─── Row 3: Low Stock Alerts + Today's Meals ─────────────────────── */}
+   575→      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+   576→        {/* Low Stock Alerts */}
+   577→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   578→          <CardHeader>
+   579→            <CardTitle className="flex items-center gap-2 text-base">
+   580→              <AlertTriangle className="h-5 w-5 text-red-500" />
+   581→              Low Stock Alerts
+   582→              {data.lowStockAlerts.length > 0 && (
+   583→                <Badge variant="destructive" className="ml-1">
+   584→                  {data.lowStockAlerts.length}
+   585→                </Badge>
+   586→              )}
+   587→            </CardTitle>
+   588→            <CardDescription>
+   589→              Ingredients below minimum stock level
+   590→            </CardDescription>
+   591→          </CardHeader>
+   592→          <CardContent>
+   593→            {data.lowStockAlerts.length === 0 ? (
+   594→              <div className="flex flex-col items-center justify-center py-8 text-center">
+   595→                <Package className="h-10 w-10 text-green-500 mb-2" />
+   596→                <p className="text-sm font-medium text-green-600 dark:text-green-400">
+   597→                  All Stock Levels OK
+   598→                </p>
+   599→                <p className="text-xs text-muted-foreground">
+   600→                  No ingredients are below minimum stock
+   601→                </p>
+   602→              </div>
+   603→            ) : (
+   604→              <div className="max-h-72 space-y-3 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20">
+   605→                {data.lowStockAlerts.map((item) => {
+   606→                  const stockPercent = Math.round(
+   607→                    (item.currentStock / item.minStock) * 100
+   608→                  );
+   609→                  const isCritical = item.currentStock === 0;
+   610→                  const isWarning = stockPercent < 50;
+   611→
+   612→                  return (
+   613→                    <div
+   614→                      key={item.id}
+   615→                      className="flex items-center gap-3 rounded-lg border p-3"
+   616→                    >
+   617→                      <div
+   618→                        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+   619→                          isCritical
+   620→                            ? "bg-red-100 dark:bg-red-900/30"
+   621→                            : isWarning
+   622→                              ? "bg-orange-100 dark:bg-orange-900/30"
+   623→                              : "bg-amber-100 dark:bg-amber-900/30"
+   624→                        }`}
+   625→                      >
+   626→                        <Package
+   627→                          className={`h-4 w-4 ${
+   628→                            isCritical
+   629→                              ? "text-red-600"
+   630→                              : isWarning
+   631→                                ? "text-orange-600"
+   632→                                : "text-amber-600"
+   633→                          }`}
+   634→                        />
+   635→                      </div>
+   636→                      <div className="flex-1 min-w-0">
+   637→                        <div className="flex items-center justify-between gap-2">
+   638→                          <p className="text-sm font-medium truncate">
+   639→                            {item.name}
+   640→                          </p>
+   641→                          <Badge
+   642→                            variant={isCritical ? "destructive" : "secondary"}
+   643→                            className={`shrink-0 text-xs ${
+   644→                              isWarning && !isCritical
+   645→                                ? "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+   646→                                : ""
+   647→                            }`}
+   648→                          >
+   649→                            {formatNumberDecimal(item.currentStock)} /{" "}
+   650→                            {formatNumberDecimal(item.minStock)} {item.unit}
+   651→                          </Badge>
+   652→                        </div>
+   653→                        <div className="mt-1 flex items-center gap-2">
+   654→                          <Progress
+   655→                            value={Math.min(stockPercent, 100)}
+   656→                            className={`h-1.5 flex-1 ${
+   657→                              isCritical
+   658→                                ? "[&>div]:bg-red-500"
+   659→                                : isWarning
+   660→                                  ? "[&>div]:bg-orange-500"
+   661→                                  : "[&>div]:bg-amber-500"
+   662→                            }`}
+   663→                          />
+   664→                          <span className="text-xs text-muted-foreground shrink-0">
+   665→                            {stockPercent}%
+   666→                          </span>
+   667→                        </div>
+   668→                        <p className="mt-0.5 text-xs text-muted-foreground">
+   669→                          {item.category}
+   670→                        </p>
+   671→                      </div>
+   672→                    </div>
+   673→                  );
+   674→                })}
+   675→              </div>
+   676→            )}
+   677→          </CardContent>
+   678→        </Card>
+   679→
+   680→        {/* Today's Meals Served */}
+   681→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   682→          <CardHeader>
+   683→            <CardTitle className="flex items-center gap-2 text-base">
+   684→              <UtensilsCrossed className="h-5 w-5 text-amber-600" />
+   685→              Today&apos;s Meals Served
+   686→            </CardTitle>
+   687→            <CardDescription>
+   688→              Meal breakdown for today&apos;s service
+   689→            </CardDescription>
+   690→          </CardHeader>
+   691→          <CardContent>
+   692→            {data.todayMeals.length === 0 ? (
+   693→              <div className="flex flex-col items-center justify-center py-8 text-center">
+   694→                <UtensilsCrossed className="h-10 w-10 text-muted-foreground/40 mb-2" />
+   695→                <p className="text-sm font-medium text-muted-foreground">
+   696→                  No Meals Recorded Today
+   697→                </p>
+   698→                <p className="text-xs text-muted-foreground">
+   699→                  Add daily meal entries to see the breakdown
+   700→                </p>
+   701→              </div>
+   702→            ) : (
+   703→              <div className="max-h-72 overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20">
+   704→                <Table>
+   705→                  <TableHeader>
+   706→                    <TableRow>
+   707→                      <TableHead>Meal Type</TableHead>
+   708→                      <TableHead>Recipe</TableHead>
+   709→                      <TableHead className="text-right">Meals</TableHead>
+   710→                    </TableRow>
+   711→                  </TableHeader>
+   712→                  <TableBody>
+   713→                    {data.todayMeals.map((meal) => (
+   714→                      <TableRow key={meal.id}>
+   715→                        <TableCell>
+   716→                          <Badge
+   717→                            variant="secondary"
+   718→                            className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+   719→                          >
+   720→                            {mealTypeLabel(meal.mealType)}
+   721→                          </Badge>
+   722→                        </TableCell>
+   723→                        <TableCell className="font-medium">
+   724→                          {meal.recipe.name}
+   725→                        </TableCell>
+   726→                        <TableCell className="text-right font-semibold">
+   727→                          {formatNumber(meal.mealsServed)}
+   728→                        </TableCell>
+   729→                      </TableRow>
+   730→                    ))}
+   731→                  </TableBody>
+   732→                </Table>
+   733→                <div className="mt-3 flex items-center justify-between rounded-lg bg-amber-50 p-3 dark:bg-amber-900/20">
+   734→                  <span className="text-sm font-medium">Total Today</span>
+   735→                  <span className="text-lg font-bold text-amber-700 dark:text-amber-400">
+   736→                    {formatNumber(data.meals.today)}
+   737→                  </span>
+   738→                </div>
+   739→              </div>
+   740→            )}
+   741→          </CardContent>
+   742→        </Card>
+   743→      </div>
+   744→
+   745→      {/* ─── Row 4: Top Consuming Ingredients + Recent Expenses ──────────── */}
+   746→      <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
+   747→        {/* Top Consuming Ingredients Chart */}
+   748→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   749→          <CardHeader>
+   750→            <CardTitle className="flex items-center gap-2 text-base">
+   751→              <Package className="h-5 w-5 text-amber-600" />
+   752→              Top Consuming Ingredients
+   753→            </CardTitle>
+   754→            <CardDescription>
+   755→              Most used ingredients this month by quantity
+   756→            </CardDescription>
+   757→          </CardHeader>
+   758→          <CardContent>
+   759→            {consumptionChartData.length === 0 ? (
+   760→              <div className="flex flex-col items-center justify-center py-8 text-center">
+   761→                <Package className="h-10 w-10 text-muted-foreground/40 mb-2" />
+   762→                <p className="text-sm font-medium text-muted-foreground">
+   763→                  No Consumption Data
+   764→                </p>
+   765→                <p className="text-xs text-muted-foreground">
+   766→                  Record daily meals to see ingredient consumption
+   767→                </p>
+   768→              </div>
+   769→            ) : (
+   770→              <ChartContainer
+   771→                config={consumptionChartConfig}
+   772→                className="min-h-[280px] w-full"
+   773→              >
+   774→                <BarChart
+   775→                  data={consumptionChartData}
+   776→                  layout="vertical"
+   777→                  margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+   778→                >
+   779→                  <CartesianGrid
+   780→                    strokeDasharray="3 3"
+   781→                    horizontal={false}
+   782→                    stroke="hsl(var(--border))"
+   783→                  />
+   784→                  <XAxis
+   785→                    type="number"
+   786→                    tick={{ fontSize: 12 }}
+   787→                    stroke="hsl(var(--muted-foreground))"
+   788→                  />
+   789→                  <YAxis
+   790→                    type="category"
+   791→                    dataKey="name"
+   792→                    width={80}
+   793→                    tick={{ fontSize: 12 }}
+   794→                    stroke="hsl(var(--muted-foreground))"
+   795→                  />
+   796→                  <ChartTooltip
+   797→                    content={
+   798→                      <ChartTooltipContent
+   799→                        formatter={(value, _name, item) => (
+   800→                          <div className="flex flex-col gap-0.5">
+   801→                            <span className="font-medium">
+   802→                              {item.payload.fullName}
+   803→                            </span>
+   804→                            <span>
+   805→                              {formatNumberDecimal(Number(value))}{" "}
+   806→                              {item.payload.unit}
+   807→                            </span>
+   808→                            <span className="text-amber-600">
+   809→                              Cost: {formatCurrency(item.payload.totalCost)}
+   810→                            </span>
+   811→                          </div>
+   812→                        )}
+   813→                      />
+   814→                    }
+   815→                  />
+   816→                  <Bar
+   817→                    dataKey="totalQuantity"
+   818→                    radius={[0, 4, 4, 0]}
+   819→                    minPointSize={3}
+   820→                  >
+   821→                    {consumptionChartData.map((_, index) => (
+   822→                      <Cell
+   823→                        key={`cell-${index}`}
+   824→                        fill={BAR_COLORS[index % BAR_COLORS.length]}
+   825→                      />
+   826→                    ))}
+   827→                  </Bar>
+   828→                </BarChart>
+   829→              </ChartContainer>
+   830→            )}
+   831→          </CardContent>
+   832→        </Card>
+   833→
+   834→        {/* Recent Expenses */}
+   835→        <Card className="shadow-sm hover:shadow-md transition-shadow">
+   836→          <CardHeader>
+   837→            <CardTitle className="flex items-center gap-2 text-base">
+   838→              <Receipt className="h-5 w-5 text-amber-600" />
+   839→              Expense Breakdown
+   840→            </CardTitle>
+   841→            <CardDescription>
+   842→              Monthly expenses by category — Total:{" "}
+   843→              {formatCurrency(data.expenses.month)}
+   844→            </CardDescription>
+   845→          </CardHeader>
+   846→          <CardContent>
+   847→            {expenseChartData.length === 0 ? (
+   848→              <div className="flex flex-col items-center justify-center py-8 text-center">
+   849→                <DollarSign className="h-10 w-10 text-muted-foreground/40 mb-2" />
+   850→                <p className="text-sm font-medium text-muted-foreground">
+   851→                  No Expenses This Month
+   852→                </p>
+   853→                <p className="text-xs text-muted-foreground">
+   854→                  Add expenses to see the breakdown
+   855→                </p>
+   856→              </div>
+   857→            ) : (
+   858→              <div className="space-y-3">
+   859→                {/* Expense chart */}
+   860→                <ChartContainer
+   861→                  config={expenseChartConfig}
+   862→                  className="min-h-[180px] w-full"
+   863→                >
+   864→                  <BarChart
+   865→                    data={expenseChartData}
+   866→                    margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+   867→                  >
+   868→                    <CartesianGrid
+   869→                      strokeDasharray="3 3"
+   870→                      stroke="hsl(var(--border))"
+   871→                    />
+   872→                    <XAxis
+   873→                      dataKey="name"
+   874→                      tick={{ fontSize: 11 }}
+   875→                      stroke="hsl(var(--muted-foreground))"
+   876→                    />
+   877→                    <YAxis
+   878→                      tick={{ fontSize: 11 }}
+   879→                      stroke="hsl(var(--muted-foreground))"
+   880→                      tickFormatter={(v: number) =>
+   881→                        `₹${(v / 1000).toFixed(0)}k`
+   882→                      }
+   883→                    />
+   884→                    <ChartTooltip
+   885→                      content={
+   886→                        <ChartTooltipContent
+   887→                          formatter={(value) =>
+   888→                            formatCurrency(Number(value))
+   889→                          }
+   890→                        />
+   891→                      }
+   892→                    />
+   893→                    <Bar
+   894→                      dataKey="amount"
+   895→                      fill="#ea580c"
+   896→                      radius={[4, 4, 0, 0]}
+   897→                    />
+   898→                  </BarChart>
+   899→                </ChartContainer>
+   900→
+   901→                {/* Expense list */}
+   902→                <div className="space-y-2 pt-2 border-t">
+   903→                  {data.expenses.breakdown.map((item) => (
+   904→                    <div
+   905→                      key={item.category}
+   906→                      className="flex items-center justify-between py-1.5"
+   907→                    >
+   908→                      <div className="flex items-center gap-2">
+   909→                        <div className="h-2.5 w-2.5 rounded-full bg-orange-500" />
+   910→                        <span className="text-sm">{item.category}</span>
+   911→                      </div>
+   912→                      <span className="text-sm font-semibold">
+   913→                        {formatCurrency(item.amount)}
+   914→                      </span>
+   915→                    </div>
+   916→                  ))}
+   917→                </div>
+   918→              </div>
+   919→            )}
+   920→          </CardContent>
+   921→        </Card>
+   922→      </div>
+   923→    </div>
+   924→  );
+   925→}
+   926→

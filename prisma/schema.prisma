@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   @default("staff") // admin, store, kitchen, staff
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Ingredient {
+  id               String   @id @default(cuid())
+  name             String
+  unit             String   // kg, litre, pcs, gram, etc.
+  category         String   // Vegetables, Grains, Oil, Spices, Dairy, Meat, etc.
+  currentStock     Float    @default(0)
+  minStock         Float    @default(0) // par level / minimum stock level
+  lastPurchasePrice Float   @default(0) // per unit
+  avgCost          Float    @default(0) // average cost per unit
+  supplier         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  recipeIngredients RecipeIngredient[]
+  stockMovements    StockMovement[]
+  purchases         PurchaseItem[]
+}
+
+model Recipe {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  mealType    String   // Breakfast, Lunch, Dinner, Snack
+  baseServings Int     @default(100) // base number of servings
+  instructions String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ingredients RecipeIngredient[]
+  dailyMeals  DailyMealServed[]
+}
+
+model RecipeIngredient {
+  id           String  @id @default(cuid())
+  recipeId     String
+  ingredientId String
+  quantity     Float   // quantity per base serving batch
+  unit         String  // unit for this ingredient in recipe
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, ingredientId])
+}
+
+model StockMovement {
+  id           String   @id @default(cuid())
+  ingredientId String
+  type         String   // PURCHASE, CONSUMPTION, WASTAGE, ADJUSTMENT
+  quantity     Float
+  unitPrice    Float    @default(0)
+  totalAmount  Float    @default(0)
+  date         DateTime
+  notes        String?
+  referenceId  String?  // link to purchase or daily meal
+  createdAt    DateTime @default(now())
+
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+}
+
+model DailyMealServed {
+  id          String   @id @default(cuid())
+  date        DateTime
+  mealType    String   // Breakfast, Lunch, Dinner
+  mealsServed Int
+  recipeId    String
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  recipe Recipe @relation(fields: [recipeId], references: [id])
+}
+
+model Purchase {
+  id          String   @id @default(cuid())
+  date        DateTime
+  supplier    String?
+  invoiceNo   String?
+  totalAmount Float    @default(0)
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  items PurchaseItem[]
+}
+
+model PurchaseItem {
+  id           String  @id @default(cuid())
+  purchaseId   String
+  ingredientId String
+  quantity     Float
+  unitPrice    Float
+  totalAmount  Float
+
+  purchase   Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  date        DateTime
+  category    String   // Gas, Electricity, Water, Maintenance, Other
+  amount      Float
+  description String?
+  createdAt   DateTime @default(now())
+}
