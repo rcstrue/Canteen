@@ -1,10 +1,10 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
-// GET /api/dashboard - Aggregated dashboard stats
+// GET /api/dashboard - Aggregated dashboard stats (consolidated)
 // Supports optional startDate & endDate query params for date range filtering.
-// When provided, the "today" and "week" metrics are computed relative to the
-// custom range, while "month" always uses the calendar month of the endDate.
+// This endpoint consolidates ALL dashboard data into a single response to
+// minimise the number of API round-trips and reduce memory pressure.
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -28,82 +28,99 @@ export async function GET(request: NextRequest) {
       return d
     })()
 
-    // 1. Total food cost: today, this week, this month
-    const [costToday, costWeek, costMonth] = await Promise.all([
+    // ── Core metrics (single batch) ──────────────────────────────────────
+    const [
+      costToday,
+      costWeek,
+      costMonth,
+      mealsToday,
+      mealsMonth,
+      mealsThisWeek,
+      expenseMonthAgg,
+      wastageMonthAgg,
+      activeSuppliersCount,
+    ] = await Promise.all([
       db.stockMovement.aggregate({
         _sum: { totalAmount: true },
-        where: {
-          type: 'PURCHASE',
-          date: { gte: todayStart },
-        },
+        where: { type: 'PURCHASE', date: { gte: todayStart } },
       }),
       db.stockMovement.aggregate({
         _sum: { totalAmount: true },
-        where: {
-          type: 'PURCHASE',
-          date: { gte: weekStart },
-        },
+        where: { type: 'PURCHASE', date: { gte: weekStart } },
       }),
       db.stockMovement.aggregate({
         _sum: { totalAmount: true },
-        where: {
-          type: 'PURCHASE',
-          date: { gte: monthStart },
-        },
+        where: { type: 'PURCHASE', date: { gte: monthStart } },
       }),
+      db.dailyMealServed.aggregate({
+        _sum: { mealsServed: true },
+        where: { date: { gte: todayStart } },
+      }),
+      db.dailyMealServed.aggregate({
+        _sum: { mealsServed: true },
+        where: { date: { gte: monthStart } },
+      }),
+      db.dailyMealServed.aggregate({
+        _sum: { mealsServed: true },
+        where: { date: { gte: weekStart } },
+      }),
+      db.expense.aggregate({
+        _sum: { amount: true },
+        where: { date: { gte: monthStart } },
+      }),
+      db.stockMovement.aggregate({
+        _sum: { totalAmount: true },
+        where: { type: 'WASTAGE', date: { gte: monthStart } },
+      }),
+      db.supplier.count(),
     ])
 
-    // 2. Total meals served today
-    const mealsToday = await db.dailyMealServed.aggregate({
-      _sum: { mealsServed: true },
-      where: {
-        date: { gte: todayStart },
-      },
-    })
-
-    // 3. Total meals served this month
-    const mealsMonth = await db.dailyMealServed.aggregate({
-      _sum: { mealsServed: true },
-      where: {
-        date: { gte: monthStart },
-      },
-    })
-
-    // 4. Cost per meal (monthly)
     const totalFoodCostMonth = costMonth._sum.totalAmount || 0
     const totalMealsMonth = mealsMonth._sum.mealsServed || 0
     const costPerMeal = totalMealsMonth > 0 ? totalFoodCostMonth / totalMealsMonth : 0
+    const totalOperatingCost = totalFoodCostMonth + (expenseMonthAgg._sum.amount || 0)
 
-    // 5. Low stock alerts
-    const lowStockIngredients = await db.ingredient.findMany({
-      where: {
-        currentStock: { lt: 0 }, // Will filter in JS
-      },
-      orderBy: { name: 'asc' },
-    })
-
-    // SQLite doesn't support field-level comparison in where, filter in JS
+    // ── Ingredients + low stock (single fetch) ───────────────────────────
     const allIngredients = await db.ingredient.findMany({
       orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        unit: true,
+        category: true,
+        currentStock: true,
+        minStock: true,
+        lastPurchasePrice: true,
+        avgCost: true,
+        supplier: true,
+        supplierId: true,
+      },
     })
+
     const lowStockAlerts = allIngredients.filter(
       (i) => i.currentStock < i.minStock
     )
 
-    // 6. Top consuming ingredients (from CONSUMPTION movements this month)
-    const consumptionMovements = await db.stockMovement.findMany({
-      where: {
-        type: 'CONSUMPTION',
-        date: { gte: monthStart },
-      },
-      include: {
-        ingredient: {
-          select: { id: true, name: true, unit: true, category: true },
+    // ── Top consuming ingredients + today's meals + expenses (batch) ────
+    const [consumptionMovements, todayMeals, expensesThisMonth, last7DaysMovements] = await Promise.all([
+      db.stockMovement.findMany({
+        where: { type: 'CONSUMPTION', date: { gte: monthStart } },
+        include: {
+          ingredient: { select: { id: true, name: true, unit: true, category: true } },
         },
-      },
-    })
+      }),
+      db.dailyMealServed.findMany({
+        where: { date: { gte: todayStart } },
+        include: { recipe: { select: { id: true, name: true, mealType: true } } },
+      }),
+      db.expense.findMany({ where: { date: { gte: monthStart } } }),
+      db.stockMovement.findMany({
+        where: { type: 'PURCHASE', date: { gte: trendStart } },
+        select: { date: true, totalAmount: true },
+      }),
+    ])
 
-    // Aggregate by ingredient
+    // Aggregate consumption by ingredient
     const consumptionByIngredient = new Map<string, {
       ingredient: { id: string; name: string; unit: string; category: string }
       totalQuantity: number
@@ -128,59 +145,19 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.totalCost - a.totalCost)
       .slice(0, 10)
 
-    // 7. Today's meals served breakdown
-    const todayMeals = await db.dailyMealServed.findMany({
-      where: {
-        date: { gte: todayStart },
-      },
-      include: {
-        recipe: {
-          select: { id: true, name: true, mealType: true },
-        },
-      },
-    })
-
-    // 8. Expense summary this month
-    const expenseMonth = await db.expense.aggregate({
-      _sum: { amount: true },
-      where: {
-        date: { gte: monthStart },
-      },
-    })
-
-    // 9. Expense breakdown by category this month
-    const expensesThisMonth = await db.expense.findMany({
-      where: {
-        date: { gte: monthStart },
-      },
-    })
-
+    // Expense breakdown
     const expenseByCategory = new Map<string, number>()
     for (const e of expensesThisMonth) {
       const current = expenseByCategory.get(e.category) || 0
       expenseByCategory.set(e.category, current + e.amount)
     }
-
     const expenseBreakdown = Array.from(expenseByCategory.entries()).map(
       ([category, amount]) => ({ category, amount })
     )
 
-    // 10. Cost trend (daily food cost for the selected range or last 7 days)
-    const last7DaysMovements = await db.stockMovement.findMany({
-      where: {
-        type: 'PURCHASE',
-        date: { gte: trendStart },
-      },
-      select: {
-        date: true,
-        totalAmount: true,
-      },
-    })
-
-    // Aggregate by day
+    // Cost trend (daily food cost for the selected range or last 7 days)
     const costByDay = new Map<string, number>()
     if (customStart && customEnd) {
-      // Fill all days in the custom range
       const d = new Date(customStart)
       while (d <= customEnd) {
         const key = d.toISOString().split('T')[0]
@@ -188,7 +165,6 @@ export async function GET(request: NextRequest) {
         d.setDate(d.getDate() + 1)
       }
     } else {
-      // Default: last 7 days
       for (let i = 6; i >= 0; i--) {
         const d = new Date(todayStart)
         d.setDate(d.getDate() - i)
@@ -209,26 +185,102 @@ export async function GET(request: NextRequest) {
       cost,
     }))
 
+    // ── Current budget ──────────────────────────────────────────────────
+    const currentMonth = new Date().toISOString().slice(0, 7)
+    const currentBudget = await db.budget.findFirst({
+      where: { month: currentMonth },
+    })
+
+    // ── Recent activity (last 8) ────────────────────────────────────────
+    const recentPurchases = await db.purchase.findMany({
+      take: 4,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        supplierLink: { select: { name: true } },
+      },
+    })
+
+    const recentStockMovements = await db.stockMovement.findMany({
+      take: 4,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        ingredient: { select: { name: true, unit: true } },
+      },
+    })
+
+    const recentMeals = await db.dailyMealServed.findMany({
+      take: 4,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        recipe: { select: { name: true } },
+      },
+    })
+
+    const activities = [
+      ...recentPurchases.map((p) => ({
+        id: `purchase-${p.id}`,
+        type: 'purchase' as const,
+        title: `Purchase: ${p.invoiceNo || 'N/A'}`,
+        description: p.supplierLink?.name || p.supplier || 'Unknown supplier',
+        amount: p.totalAmount,
+        timestamp: p.createdAt.toISOString(),
+      })),
+      ...recentStockMovements.map((s) => ({
+        id: `movement-${s.id}`,
+        type: s.type.toLowerCase() as 'purchase' | 'consumption' | 'wastage' | 'adjustment',
+        title: `${s.type}: ${s.ingredient.name}`,
+        description: `${s.quantity} ${s.ingredient.unit}`,
+        amount: s.totalAmount,
+        timestamp: s.createdAt.toISOString(),
+      })),
+      ...recentMeals.map((m) => ({
+        id: `meal-${m.id}`,
+        type: 'meal' as const,
+        title: `Meals served: ${m.recipe.name}`,
+        description: `${m.mealsServed} servings`,
+        amount: null,
+        timestamp: m.createdAt.toISOString(),
+      })),
+    ]
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 8)
+
     return NextResponse.json({
+      // Core food cost
       foodCost: {
         today: costToday._sum.totalAmount || 0,
         week: costWeek._sum.totalAmount || 0,
         month: totalFoodCostMonth,
       },
+      // Meals
       meals: {
         today: mealsToday._sum.mealsServed || 0,
         month: totalMealsMonth,
+        week: mealsThisWeek._sum.mealsServed || 0,
       },
       costPerMeal,
       lowStockAlerts,
       topConsumingIngredients,
       todayMeals,
       expenses: {
-        month: expenseMonth._sum.amount || 0,
+        month: expenseMonthAgg._sum.amount || 0,
         breakdown: expenseBreakdown,
       },
-      totalOperatingCost: totalFoodCostMonth + (expenseMonth._sum.amount || 0),
+      totalOperatingCost,
       costTrend,
+      // Consolidated quick stats (previously 4 separate API calls)
+      quickStats: {
+        todayPurchasesTotal: costToday._sum.totalAmount || 0,
+        weekMealsCount: mealsThisWeek._sum.mealsServed || 0,
+        monthWastageValue: wastageMonthAgg._sum.totalAmount || 0,
+        activeSuppliersCount,
+      },
+      // Consolidated budget (previously a separate API call)
+      currentBudget,
+      // Consolidated activity feed (previously a separate API call)
+      activities,
+      // Consolidated ingredient count
+      totalIngredientCount: allIngredients.length,
     })
   } catch (error) {
     console.error('Error fetching dashboard:', error)

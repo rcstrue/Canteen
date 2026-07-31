@@ -833,6 +833,8 @@ export function MealsView() {
   const [formInstructions, setFormInstructions] = useState("");
   const [formImageUrl, setFormImageUrl] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [dragPreviewUrl, setDragPreviewUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [formIngredients, setFormIngredients] = useState<IngredientRow[]>([
     { ingredientId: "", quantity: "", unit: "" },
@@ -1003,6 +1005,8 @@ export function MealsView() {
     setFormInstructions("");
     setFormImageUrl(null);
     setFormIngredients([{ ingredientId: "", quantity: "", unit: "" }]);
+    setIsDraggingImage(false);
+    setDragPreviewUrl(null);
     setFormOpen(true);
   };
 
@@ -1021,6 +1025,8 @@ export function MealsView() {
         unit: ri.unit,
       }))
     );
+    setIsDraggingImage(false);
+    setDragPreviewUrl(null);
     setFormOpen(true);
   };
 
@@ -1170,6 +1176,60 @@ export function MealsView() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleImageUpload(file);
+  };
+
+  // ─── Drag & Drop handlers ──────────────────────────────────────
+  const clearDragPreview = () => {
+    setDragPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (uploadingImage || !editingRecipe) return;
+    setIsDraggingImage(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (uploadingImage || !editingRecipe) return;
+    if (!isDraggingImage) setIsDraggingImage(true);
+    // Show a local preview of the file being dragged in (if available)
+    const file = e.dataTransfer?.items?.[0]?.getAsFile?.();
+    if (file && file.type.startsWith("image/") && !dragPreviewUrl) {
+      const url = URL.createObjectURL(file);
+      setDragPreviewUrl(url);
+    }
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only clear if leaving the drop zone itself (not entering a child)
+    if (e.currentTarget === e.target) {
+      setIsDraggingImage(false);
+      clearDragPreview();
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingImage(false);
+    clearDragPreview();
+    if (uploadingImage || !editingRecipe) return;
+    const file = e.dataTransfer?.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    } else {
+      sonnerToast.info("No image detected", {
+        description: "Please drop an image file (JPEG, PNG, WebP or GIF).",
+      });
+    }
   };
 
   const handleSubmit = async () => {
@@ -2563,86 +2623,178 @@ export function MealsView() {
           </DialogHeader>
 
           <div className="space-y-4">
-            {/* Image section */}
+            {/* Image section — drag-and-drop zone */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Recipe Image</Label>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-                {/* Preview / placeholder */}
-                <div className="relative shrink-0 overflow-hidden rounded-lg border bg-muted/30">
-                  <RecipeImage
-                    imageUrl={formImageUrl}
-                    name={formName || "?"}
-                    className="h-32 w-full sm:w-48"
-                    rounded="rounded-lg"
-                  />
-                  {uploadingImage && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/70 backdrop-blur-sm">
-                      <div className="flex flex-col items-center gap-2 text-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-orange-600 dark:text-orange-400" />
-                        <span className="text-xs font-medium text-muted-foreground">
-                          Uploading...
-                        </span>
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Recipe Image</Label>
+                {editingRecipe && (
+                  <span className="text-[11px] text-muted-foreground">
+                    Drag &amp; drop or click to upload · JPEG, PNG, WebP, GIF · max 2MB
+                  </span>
+                )}
+              </div>
+
+              {/* Hidden file input — still used by the explicit button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                onChange={handleFileChange}
+                className="hidden"
+                aria-hidden="true"
+              />
+
+              {/* Drop zone */}
+              <div
+                role="button"
+                tabIndex={0}
+                aria-label="Recipe image drop zone. Drag and drop an image, or press Enter to choose a file."
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === " ") && editingRecipe && !uploadingImage) {
+                    e.preventDefault();
+                    fileInputRef.current?.click();
+                  }
+                }}
+                onClick={() => {
+                  if (editingRecipe && !uploadingImage) {
+                    fileInputRef.current?.click();
+                  }
+                }}
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={cn(
+                  "group relative flex flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border-2 border-dashed p-5 text-center transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2",
+                  isDraggingImage
+                    ? "border-amber-500 bg-amber-50 dark:bg-amber-950/30"
+                    : "border-amber-300/70 bg-amber-50/40 hover:border-amber-500 hover:bg-amber-50/70 dark:border-amber-800/50 dark:bg-amber-900/10 dark:hover:border-amber-700 dark:hover:bg-amber-900/20",
+                  !editingRecipe && "cursor-not-allowed opacity-70",
+                  uploadingImage && "cursor-wait"
+                )}
+              >
+                {/* Preview image (either saved imageUrl or local drag preview) */}
+                {(formImageUrl || dragPreviewUrl) && (
+                  <div className="absolute inset-0 z-0">
+                    <img
+                      src={dragPreviewUrl || formImageUrl || undefined}
+                      alt={formName || "Recipe image preview"}
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background/85 via-background/40 to-background/10" />
+                  </div>
+                )}
+
+                {/* Center content */}
+                <div className="relative z-10 flex flex-col items-center gap-2 px-4 py-3">
+                  {uploadingImage ? (
+                    <>
+                      <Loader2 className="h-7 w-7 animate-spin text-orange-600 dark:text-orange-400" />
+                      <p className="text-sm font-medium text-foreground">
+                        Uploading image…
+                      </p>
+                    </>
+                  ) : isDraggingImage ? (
+                    <>
+                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-amber-500 text-white shadow-lg shadow-amber-500/30">
+                        <Upload className="h-5 w-5" />
                       </div>
-                    </div>
+                      <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                        Drop image to upload
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Release your file here
+                      </p>
+                    </>
+                  ) : formImageUrl || dragPreviewUrl ? (
+                    <>
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-background/80 backdrop-blur shadow-sm">
+                        <Upload className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <p className="text-sm font-medium text-foreground">
+                        {dragPreviewUrl
+                          ? "Preview — drop to upload"
+                          : "Drag &amp; drop or click to replace"}
+                      </p>
+                    </>
+                  ) : editingRecipe ? (
+                    <>
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow-md shadow-amber-500/30 transition-transform group-hover:scale-105">
+                        <ImagePlus className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">
+                          Drag &amp; drop image here
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          or <span className="text-amber-700 dark:text-amber-400 underline-offset-2 group-hover:underline">browse from your device</span>
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-muted/60">
+                        <ImagePlus className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">
+                          Save the recipe first to upload an image
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Image upload is available after the recipe is created.
+                        </p>
+                      </div>
+                    </>
                   )}
                 </div>
 
-                {/* Action buttons */}
-                <div className="flex flex-1 flex-col justify-center gap-2">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="gap-2 w-full sm:w-auto"
-                          disabled={uploadingImage || !editingRecipe}
-                          onClick={() => fileInputRef.current?.click()}
-                        >
-                          {uploadingImage ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Upload className="h-4 w-4" />
-                          )}
-                          {formImageUrl ? "Replace Image" : "Upload Image"}
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent className="text-xs">
-                      {!editingRecipe
-                        ? "Save the recipe first to enable image upload"
-                        : "JPEG, PNG, WebP or GIF · max 2MB"}
-                    </TooltipContent>
-                  </Tooltip>
-                  {formImageUrl && (
+                {/* Action buttons row — kept visible when there is already an image */}
+                {formImageUrl && !uploadingImage && !isDraggingImage && (
+                  <div className="relative z-10 flex flex-wrap items-center justify-center gap-2 pt-1">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      className="gap-2 w-full sm:w-auto text-destructive hover:text-destructive hover:bg-destructive/10"
+                      className="gap-2 bg-background/80 backdrop-blur"
+                      disabled={uploadingImage || !editingRecipe}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                    >
+                      <Upload className="h-4 w-4" />
+                      Replace Image
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 bg-background/80 backdrop-blur text-destructive hover:text-destructive hover:bg-destructive/10"
                       disabled={uploadingImage}
-                      onClick={handleImageRemove}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleImageRemove();
+                      }}
                     >
                       <X className="h-4 w-4" />
                       Remove Image
                     </Button>
-                  )}
-                  {!editingRecipe && !formImageUrl && (
-                    <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                      <ImagePlus className="h-3 w-3" />
-                      Save the recipe first, then edit to upload an image.
-                    </p>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
+
+              {/* Helper text below drop zone */}
+              {!editingRecipe && !formImageUrl && (
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <ImagePlus className="h-3 w-3" />
+                  Save the recipe first, then edit to upload an image.
+                </p>
+              )}
+              {editingRecipe && !formImageUrl && (
+                <p className="text-[11px] text-muted-foreground">
+                  Tip: You can also paste an image from your clipboard after clicking the drop zone.
+                </p>
+              )}
             </div>
 
             {/* Name */}

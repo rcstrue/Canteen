@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -13,32 +13,62 @@ import {
   Zap,
 } from "lucide-react";
 import { format } from "date-fns";
-import { toast } from "sonner";
 import { AnimatedCounter } from "@/components/animated-counter";
 import { Sparkline } from "@/components/sparkline";
 
-// ─── Extracted sub-components ───────────────────────────────────────────────
+// ─── Eagerly loaded components (above the fold) ────────────────────────────
 
-import { MetricCard, TrendBadge, MetricCardSkeleton } from "./dashboard/metric-card";
+import { TrendBadge, MetricCardSkeleton } from "./dashboard/metric-card";
 import { LowStockAlertBanner } from "./dashboard/low-stock-banner";
-import { ActivityTimeline } from "./dashboard/activity-timeline";
-import { QuickStatsSidebar, QuickStatsSummaryBar } from "./dashboard/quick-stats";
 import { getDateRangeForPreset } from "./dashboard/date-range-selector";
 import { BannerSkeleton, LargeCardSkeleton } from "./dashboard/empty-states";
-import { WelcomeBanner } from "./dashboard/welcome-banner";
 import { QuickActions } from "./dashboard/quick-actions";
-import { MonthlyComparison } from "./dashboard/monthly-comparison";
-import { MealsBudgetSection, StockSection } from "./dashboard/stock-meals-section";
-import { WeeklyConsumptionChart } from "./dashboard/weekly-consumption-chart";
-import { TopIngredientsChart, CategorySpendingChart } from "./dashboard/ingredients-category-charts";
-import { ConsumptionChart, ExpenseChart } from "./dashboard/consumption-expense-charts";
+import { QuickStatsSummaryBar } from "./dashboard/quick-stats";
 
-// ─── Shared types & helpers ─────────────────────────────────────────────────
+// ─── Lazy loaded components (below the fold - loaded on demand) ────────────
+
+const MetricCard = lazy(() =>
+  import("./dashboard/metric-card").then((m) => ({ default: m.MetricCard }))
+);
+const WelcomeBanner = lazy(() =>
+  import("./dashboard/welcome-banner").then((m) => ({ default: m.WelcomeBanner }))
+);
+const ActivityTimeline = lazy(() =>
+  import("./dashboard/activity-timeline").then((m) => ({ default: m.ActivityTimeline }))
+);
+const QuickStatsSidebar = lazy(() =>
+  import("./dashboard/quick-stats").then((m) => ({ default: m.QuickStatsSidebar }))
+);
+const MonthlyComparison = lazy(() =>
+  import("./dashboard/monthly-comparison").then((m) => ({ default: m.MonthlyComparison }))
+);
+const MealsBudgetSection = lazy(() =>
+  import("./dashboard/stock-meals-section").then((m) => ({ default: m.MealsBudgetSection }))
+);
+const StockSection = lazy(() =>
+  import("./dashboard/stock-meals-section").then((m) => ({ default: m.StockSection }))
+);
+const WeeklyConsumptionChart = lazy(() =>
+  import("./dashboard/weekly-consumption-chart").then((m) => ({ default: m.WeeklyConsumptionChart }))
+);
+const TopIngredientsChart = lazy(() =>
+  import("./dashboard/ingredients-category-charts").then((m) => ({ default: m.TopIngredientsChart }))
+);
+const CategorySpendingChart = lazy(() =>
+  import("./dashboard/ingredients-category-charts").then((m) => ({ default: m.CategorySpendingChart }))
+);
+const ConsumptionChart = lazy(() =>
+  import("./dashboard/consumption-expense-charts").then((m) => ({ default: m.ConsumptionChart }))
+);
+const ExpenseChart = lazy(() =>
+  import("./dashboard/consumption-expense-charts").then((m) => ({ default: m.ExpenseChart }))
+);
+
+// ─── Types ─────────────────────────────────────────────────────────────────
 
 import type {
   DashboardData,
   DashboardChartsData,
-  IngredientListItem,
   CostReportData,
   BudgetRecord,
   DashboardViewProps,
@@ -53,15 +83,19 @@ import {
   pctChange,
 } from "./dashboard/helpers";
 
-import {
-  EMPLOYEE_COUNT,
-} from "./dashboard/constants";
+import { EMPLOYEE_COUNT } from "./dashboard/constants";
 
-// ─── Main Component ─────────────────────────────────────────────────────────
+// ─── Charts data fetched separately (lazy) ─────────────────────────────────
+
+interface ChartsDataState {
+  data: DashboardChartsData | null;
+  loading: boolean;
+}
+
+// ─── Main Component ────────────────────────────────────────────────────────
 
 export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
   const [data, setData] = useState<DashboardData | null>(null);
-  const [allIngredients, setAllIngredients] = useState<IngredientListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,19 +104,25 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
     range: getDateRangeForPreset("today"),
   });
 
-  const [currentMonthReport, setCurrentMonthReport] = useState<CostReportData | null>(null);
-  const [prevMonthReport, setPrevMonthReport] = useState<CostReportData | null>(null);
-  const [currentBudget, setCurrentBudget] = useState<BudgetRecord | null>(null);
-
-  const [activities, setActivities] = useState<ActivityItem[]>([]);
-  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  // Consolidated state from single API response
   const [quickStats, setQuickStats] = useState<QuickStats | null>(null);
-  const [quickStatsLoading, setQuickStatsLoading] = useState(true);
+  const [currentBudget, setCurrentBudget] = useState<BudgetRecord | null>(null);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [totalIngredientCount, setTotalIngredientCount] = useState(0);
 
-  const [chartsData, setChartsData] = useState<DashboardChartsData | null>(null);
-  const [chartsLoading, setChartsLoading] = useState(true);
+  // Charts data loaded separately (lazy, non-blocking)
+  const [charts, setCharts] = useState<ChartsDataState>({
+    data: null,
+    loading: true,
+  });
 
-  // ─── Data Fetching ──────────────────────────────────────────────────────
+  // Monthly comparison loaded separately (lazy, non-blocking)
+  const [monthlyComparison, setMonthlyComparison] = useState<{
+    current: CostReportData | null;
+    previous: CostReportData | null;
+  }>({ current: null, previous: null });
+
+  // ─── Primary data fetch (single consolidated call) ────────────────────
 
   const dashboardUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -97,67 +137,85 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
   }, [dateRange]);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function fetchDashboard() {
       try {
         setLoading(true);
         setError(null);
-        const [dashRes, ingRes] = await Promise.all([
-          fetch(dashboardUrl),
-          fetch("/api/ingredients"),
-        ]);
-        if (!dashRes.ok) {
-          throw new Error(`Failed to fetch dashboard data (${dashRes.status})`);
+        const res = await fetch(dashboardUrl);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch dashboard data (${res.status})`);
         }
-        const json = await dashRes.json();
+        const json = await res.json();
+        if (cancelled) return;
+
         setData(json);
-        if (ingRes.ok) {
-          const ingJson = (await ingRes.json()) as IngredientListItem[];
-          setAllIngredients(ingJson);
+        if (json.quickStats) setQuickStats(json.quickStats);
+        if (json.currentBudget) setCurrentBudget(json.currentBudget);
+        if (json.activities) setActivities(json.activities);
+        if (typeof json.totalIngredientCount === "number") {
+          setTotalIngredientCount(json.totalIngredientCount);
         }
       } catch (err) {
         console.error("Dashboard fetch error:", err);
-        setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load dashboard");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
+
     fetchDashboard();
+    return () => {
+      cancelled = true;
+    };
   }, [dashboardUrl]);
+
+  // ─── Charts data fetch (deferred - runs after main data) ──────────────
 
   useEffect(() => {
     let cancelled = false;
-    async function fetchCharts() {
+
+    // Defer charts fetch to avoid competing with main data fetch
+    const timer = setTimeout(async () => {
       try {
-        setChartsLoading(true);
         const res = await fetch("/api/dashboard/charts");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (!res.ok) return;
         const json = await res.json();
         if (cancelled) return;
         if (json && !json.error) {
-          setChartsData({
-            weeklyConsumption: Array.isArray(json.weeklyConsumption) ? json.weeklyConsumption : [],
-            topIngredientsByCost: Array.isArray(json.topIngredientsByCost) ? json.topIngredientsByCost : [],
-            categorySpending: Array.isArray(json.categorySpending) ? json.categorySpending : [],
-            monthlyKpiTrend: Array.isArray(json.monthlyKpiTrend) ? json.monthlyKpiTrend : [],
+          setCharts({
+            data: {
+              weeklyConsumption: Array.isArray(json.weeklyConsumption) ? json.weeklyConsumption : [],
+              topIngredientsByCost: Array.isArray(json.topIngredientsByCost) ? json.topIngredientsByCost : [],
+              categorySpending: Array.isArray(json.categorySpending) ? json.categorySpending : [],
+              monthlyKpiTrend: Array.isArray(json.monthlyKpiTrend) ? json.monthlyKpiTrend : [],
+            },
+            loading: false,
           });
+        } else {
+          setCharts({ data: null, loading: false });
         }
       } catch (err) {
         console.error("Charts fetch error:", err);
-        if (!cancelled) {
-          toast.error("Failed to load chart analytics", {
-            description: "Trend charts will be hidden. Refresh the page to retry.",
-          });
-        }
-      } finally {
-        if (!cancelled) setChartsLoading(false);
+        if (!cancelled) setCharts({ data: null, loading: false });
       }
-    }
-    fetchCharts();
-    return () => { cancelled = true; };
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, []);
 
+  // ─── Monthly comparison fetch (deferred) ──────────────────────────────
+
   useEffect(() => {
-    async function fetchMonthlyComparison() {
+    let cancelled = false;
+
+    const timer = setTimeout(async () => {
       try {
         const now = new Date();
         const curStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
@@ -169,129 +227,29 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
           fetch(`/api/reports/cost?period=month&startDate=${curStart}&endDate=${curEnd}`),
           fetch(`/api/reports/cost?period=month&startDate=${prevStart}&endDate=${prevEnd}`),
         ]);
-        if (curRes.ok) setCurrentMonthReport(await curRes.json());
-        if (prevRes.ok) setPrevMonthReport(await prevRes.json());
+
+        if (cancelled) return;
+
+        setMonthlyComparison({
+          current: curRes.ok ? await curRes.json() : null,
+          previous: prevRes.ok ? await prevRes.json() : null,
+        });
       } catch (err) {
         console.error("Monthly comparison fetch error:", err);
       }
-    }
-    fetchMonthlyComparison();
-  }, []);
+    }, 1000);
 
-  useEffect(() => {
-    async function fetchBudget() {
-      try {
-        const res = await fetch("/api/budgets");
-        if (res.ok) {
-          const budgets = (await res.json()) as BudgetRecord[];
-          const currentMonth = new Date().toISOString().slice(0, 7);
-          const current = budgets.find((b) => b.month === currentMonth);
-          if (current) setCurrentBudget(current);
-        }
-      } catch (err) {
-        console.error("Budget fetch error:", err);
-      }
-    }
-    fetchBudget();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchActivity() {
-      try {
-        setActivitiesLoading(true);
-        const res = await fetch("/api/activity");
-        if (!res.ok) return;
-        const json = (await res.json()) as { data: ActivityItem[] };
-        if (!cancelled && Array.isArray(json?.data)) setActivities(json.data);
-      } catch (err) {
-        console.error("Activity feed fetch error:", err);
-      } finally {
-        if (!cancelled) setActivitiesLoading(false);
-      }
-    }
-    fetchActivity();
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchQuickStats() {
-      try {
-        setQuickStatsLoading(true);
-        const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        const weekStart = new Date(todayStart);
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-        const todayStr = todayStart.toISOString().split("T")[0];
-        const weekStartStr = weekStart.toISOString().split("T")[0];
-
-        const [purchasesRes, mealsRes, wastageRes, suppliersRes] = await Promise.all([
-          fetch(`/api/purchases?startDate=${todayStr}&limit=100`),
-          fetch(`/api/daily-meals?startDate=${weekStartStr}&limit=200`),
-          fetch(`/api/stock-movements?type=WASTAGE&limit=200`),
-          fetch("/api/suppliers?limit=500"),
-        ]);
-
-        let todayPurchasesTotal = 0;
-        if (purchasesRes.ok) {
-          const json = (await purchasesRes.json()) as { data?: Array<{ date: string; totalAmount: number }> };
-          todayPurchasesTotal = (json.data ?? []).reduce((sum, p) => {
-            const d = new Date(p.date);
-            return d >= todayStart ? sum + p.totalAmount : sum;
-          }, 0);
-        }
-
-        let weekMealsCount = 0;
-        if (mealsRes.ok) {
-          const json = (await mealsRes.json()) as { data?: Array<{ date: string; mealsServed: number }> };
-          weekMealsCount = (json.data ?? []).reduce((sum, m) => {
-            const d = new Date(m.date);
-            return d >= weekStart ? sum + m.mealsServed : sum;
-          }, 0);
-        }
-
-        let monthWastageValue = 0;
-        if (wastageRes.ok) {
-          const json = (await wastageRes.json()) as { data?: Array<{ date: string; totalAmount: number }> };
-          monthWastageValue = (json.data ?? []).reduce((sum, s) => {
-            const d = new Date(s.date);
-            return d >= monthStart ? sum + s.totalAmount : sum;
-          }, 0);
-        }
-
-        let activeSuppliersCount = 0;
-        if (suppliersRes.ok) {
-          const json = await suppliersRes.json();
-          if (Array.isArray(json)) {
-            activeSuppliersCount = json.length;
-          } else if (json && typeof json === "object" && "total" in json) {
-            activeSuppliersCount = (json as { total: number }).total ?? 0;
-          } else if (json && typeof json === "object" && "data" in json && Array.isArray((json as { data: unknown[] }).data)) {
-            activeSuppliersCount = (json as { data: unknown[] }).data.length;
-          }
-        }
-
-        if (!cancelled) {
-          setQuickStats({ todayPurchasesTotal, weekMealsCount, monthWastageValue, activeSuppliersCount });
-        }
-      } catch (err) {
-        console.error("Quick stats fetch error:", err);
-      } finally {
-        if (!cancelled) setQuickStatsLoading(false);
-      }
-    }
-    fetchQuickStats();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   // ─── Loading State ──────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 view-enter">
         <BannerSkeleton />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
           {Array.from({ length: 6 }).map((_, i) => (
@@ -311,16 +269,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
           <LargeCardSkeleton />
           <LargeCardSkeleton />
         </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <LargeCardSkeleton />
-          <LargeCardSkeleton />
-        </div>
-        <LargeCardSkeleton />
-        <LargeCardSkeleton />
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <LargeCardSkeleton />
-          <LargeCardSkeleton />
-        </div>
       </div>
     );
   }
@@ -329,7 +277,7 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
 
   if (error || !data) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 view-enter">
         <Card className="border-destructive/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-destructive">
@@ -355,10 +303,6 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
 
   // ─── Computed Values ────────────────────────────────────────────────────
 
-  const weekMeals = data.meals.month
-    ? Math.round((data.meals.today * 7 + data.meals.month) / 8)
-    : data.meals.today * 7;
-
   const avgDailyFromWeek = data.foodCost.week / 7;
   const avgWeeklyFromMonth = data.foodCost.month / 4.33;
   const todayVsAvgDay = pctChange(data.foodCost.today, avgDailyFromWeek);
@@ -367,113 +311,161 @@ export function DashboardView({ onNavigate }: DashboardViewProps = {}) {
   const costPerEmployee = data.totalOperatingCost / EMPLOYEE_COUNT;
   const dailyCostPerEmployee = costPerEmployee / 30;
 
-  const totalIngredientCount = allIngredients.length > 0 ? allIngredients.length : data.lowStockAlerts.length;
-  const aboveParCount = allIngredients.length > 0
-    ? allIngredients.filter((i) => i.currentStock >= i.minStock).length
-    : Math.max(0, totalIngredientCount - data.lowStockAlerts.length);
-  const stockHealthPct = totalIngredientCount > 0 ? (aboveParCount / totalIngredientCount) * 100 : 100;
+  const totalCount = totalIngredientCount || data.lowStockAlerts.length || 1;
+  const aboveParCount = Math.max(0, totalCount - data.lowStockAlerts.length);
+  const stockHealthPct = totalCount > 0 ? (aboveParCount / totalCount) * 100 : 100;
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 view-enter">
       {/* 0. Low-Stock Alert Banner */}
       <LowStockAlertBanner lowStockItems={data.lowStockAlerts} onNavigate={onNavigate} />
 
-      {/* 1. Welcome Banner */}
-      <WelcomeBanner
-        data={data}
-        dateRange={dateRange}
-        onDateRangeChange={setDateRange}
-        weekVsAvgWeek={weekVsAvgWeek}
-        onNavigate={onNavigate}
-      />
+      {/* 1. Welcome Banner (lazy) */}
+      <Suspense fallback={<BannerSkeleton />}>
+        <WelcomeBanner
+          data={data}
+          dateRange={dateRange}
+          onDateRangeChange={setDateRange}
+          weekVsAvgWeek={weekVsAvgWeek}
+          onNavigate={onNavigate}
+        />
+      </Suspense>
 
       {/* 2. Quick Actions Widget */}
       <QuickActions onNavigate={onNavigate} />
 
-      {/* 3. Top Metric Cards */}
+      {/* 3. Top Metric Cards (lazy) */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Today's Food Cost"
-          value={formatCurrency(data.foodCost.today)}
-          valueNode={<AnimatedCounter value={data.foodCost.today} prefix="₹" decimals={2} className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100" />}
-          sparkline={!chartsLoading && chartsData?.monthlyKpiTrend?.length ? <Sparkline data={chartsData.monthlyKpiTrend.map((m) => m.foodCost)} color="var(--chart-1)" type="area" height={24} /> : null}
-          icon={<IndianRupee className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
-          iconBgClass="bg-amber-100 dark:bg-amber-900/30"
-          trend={<TrendBadge pct={todayVsAvgDay} label="vs yesterday" />}
-          subValue={<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Zap className="h-3 w-3 text-amber-500" /><span>From today&apos;s purchases</span></div>}
-        />
+        <Suspense fallback={<MetricCardSkeleton />}>
+          <MetricCard
+            title="Today's Food Cost"
+            value={formatCurrency(data.foodCost.today)}
+            valueNode={<AnimatedCounter value={data.foodCost.today} prefix="₹" decimals={2} className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100" />}
+            sparkline={!charts.loading && charts.data?.monthlyKpiTrend?.length ? <Sparkline data={charts.data.monthlyKpiTrend.map((m) => m.foodCost)} color="var(--chart-1)" type="area" height={24} /> : null}
+            icon={<IndianRupee className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+            iconBgClass="bg-amber-100 dark:bg-amber-900/30"
+            trend={<TrendBadge pct={todayVsAvgDay} label="vs yesterday" />}
+            subValue={<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Zap className="h-3 w-3 text-amber-500" /><span>From today&apos;s purchases</span></div>}
+          />
+        </Suspense>
 
-        <MetricCard
-          title="This Week's Food Cost"
-          value={formatCurrency(data.foodCost.week)}
-          valueNode={<AnimatedCounter value={data.foodCost.week} prefix="₹" decimals={2} className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100" />}
-          sparkline={!chartsLoading && chartsData?.monthlyKpiTrend?.length ? <Sparkline data={chartsData.monthlyKpiTrend.map((m) => m.foodCost)} color="var(--chart-2)" type="area" height={24} /> : null}
-          icon={<ShoppingCart className="h-5 w-5 text-orange-600 dark:text-orange-400" />}
-          iconBgClass="bg-orange-100 dark:bg-orange-900/30"
-          trend={<TrendBadge pct={weekVsAvgWeek} label="vs last week" />}
-          subValue={<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><ShoppingCart className="h-3 w-3 text-orange-500" /><span>Last 7 days purchases</span></div>}
-        />
+        <Suspense fallback={<MetricCardSkeleton />}>
+          <MetricCard
+            title="This Week's Food Cost"
+            value={formatCurrency(data.foodCost.week)}
+            valueNode={<AnimatedCounter value={data.foodCost.week} prefix="₹" decimals={2} className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100" />}
+            sparkline={!charts.loading && charts.data?.monthlyKpiTrend?.length ? <Sparkline data={charts.data.monthlyKpiTrend.map((m) => m.foodCost)} color="var(--chart-2)" type="area" height={24} /> : null}
+            icon={<ShoppingCart className="h-5 w-5 text-orange-600 dark:text-orange-400" />}
+            iconBgClass="bg-orange-100 dark:bg-orange-900/30"
+            trend={<TrendBadge pct={weekVsAvgWeek} label="vs last week" />}
+            subValue={<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><ShoppingCart className="h-3 w-3 text-orange-500" /><span>Last 7 days purchases</span></div>}
+          />
+        </Suspense>
 
-        <MetricCard
-          title="This Month's Food Cost"
-          value={formatCurrency(data.foodCost.month)}
-          valueNode={<AnimatedCounter value={data.foodCost.month} prefix="₹" decimals={2} className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100" />}
-          sparkline={!chartsLoading && chartsData?.monthlyKpiTrend?.length ? <Sparkline data={chartsData.monthlyKpiTrend.map((m) => m.foodCost)} color="var(--chart-4)" type="area" height={24} /> : null}
-          icon={<Receipt className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
-          iconBgClass="bg-amber-100 dark:bg-amber-900/30"
-          trend={<div className="flex items-center gap-1 text-xs text-muted-foreground"><Activity className="h-3 w-3" /><span>Month-to-date total</span></div>}
-          subValue={<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Receipt className="h-3 w-3 text-amber-500" /><span>{formatCurrency(data.foodCost.month / 30)} / day avg</span></div>}
-        />
+        <Suspense fallback={<MetricCardSkeleton />}>
+          <MetricCard
+            title="This Month's Food Cost"
+            value={formatCurrency(data.foodCost.month)}
+            valueNode={<AnimatedCounter value={data.foodCost.month} prefix="₹" decimals={2} className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100" />}
+            sparkline={!charts.loading && charts.data?.monthlyKpiTrend?.length ? <Sparkline data={charts.data.monthlyKpiTrend.map((m) => m.foodCost)} color="var(--chart-4)" type="area" height={24} /> : null}
+            icon={<Receipt className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+            iconBgClass="bg-amber-100 dark:bg-amber-900/30"
+            trend={<div className="flex items-center gap-1 text-xs text-muted-foreground"><Activity className="h-3 w-3" /><span>Month-to-date total</span></div>}
+            subValue={<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Receipt className="h-3 w-3 text-amber-500" /><span>{formatCurrency(data.foodCost.month / 30)} / day avg</span></div>}
+          />
+        </Suspense>
 
-        <MetricCard
-          title="Cost Per Employee"
-          value={formatCurrency(costPerEmployee)}
-          valueNode={<AnimatedCounter value={costPerEmployee} prefix="₹" decimals={2} className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100" />}
-          sparkline={!chartsLoading && chartsData?.monthlyKpiTrend?.length ? <Sparkline data={chartsData.monthlyKpiTrend.map((m) => m.operatingCost)} color="var(--chart-3)" type="area" height={24} /> : null}
-          icon={<Users className="h-5 w-5 text-orange-600 dark:text-orange-400" />}
-          iconBgClass="bg-orange-100 dark:bg-orange-900/30"
-          trend={<div className="flex items-center gap-1 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span>For {formatNumber(EMPLOYEE_COUNT)} employees</span></div>}
-          subValue={<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Users className="h-3 w-3 text-orange-500" /><span>Daily: <span className="font-semibold text-amber-800 dark:text-amber-300">{formatCurrency(dailyCostPerEmployee)}</span> / employee</span></div>}
-        />
+        <Suspense fallback={<MetricCardSkeleton />}>
+          <MetricCard
+            title="Cost Per Employee"
+            value={formatCurrency(costPerEmployee)}
+            valueNode={<AnimatedCounter value={costPerEmployee} prefix="₹" decimals={2} className="text-2xl font-bold tracking-tight tabular-nums text-amber-950 dark:text-amber-100" />}
+            sparkline={!charts.loading && charts.data?.monthlyKpiTrend?.length ? <Sparkline data={charts.data.monthlyKpiTrend.map((m) => m.operatingCost)} color="var(--chart-3)" type="area" height={24} /> : null}
+            icon={<Users className="h-5 w-5 text-orange-600 dark:text-orange-400" />}
+            iconBgClass="bg-orange-100 dark:bg-orange-900/30"
+            trend={<div className="flex items-center gap-1 text-xs text-muted-foreground"><Users className="h-3 w-3" /><span>For {formatNumber(EMPLOYEE_COUNT)} employees</span></div>}
+            subValue={<div className="flex items-center gap-1.5 text-xs text-muted-foreground"><Users className="h-3 w-3 text-orange-500" /><span>Daily: <span className="font-semibold text-amber-800 dark:text-amber-300">{formatCurrency(dailyCostPerEmployee)}</span> / employee</span></div>}
+          />
+        </Suspense>
       </div>
 
       {/* 3.5 Quick Stats Summary Bar */}
-      <QuickStatsSummaryBar totalEmployees={EMPLOYEE_COUNT} mealsServedToday={data.meals.today} avgCostPerMeal={data.costPerMeal} stockHealthPct={stockHealthPct} loading={false} />
+      <QuickStatsSummaryBar
+        totalEmployees={EMPLOYEE_COUNT}
+        mealsServedToday={data.meals.today}
+        avgCostPerMeal={data.costPerMeal}
+        stockHealthPct={stockHealthPct}
+        loading={false}
+      />
 
-      {/* 4. Monthly Comparison */}
-      <MonthlyComparison currentMonthReport={currentMonthReport} prevMonthReport={prevMonthReport} />
+      {/* 4. Monthly Comparison (lazy) */}
+      <Suspense fallback={<LargeCardSkeleton />}>
+        <MonthlyComparison
+          currentMonthReport={monthlyComparison.current}
+          prevMonthReport={monthlyComparison.previous}
+        />
+      </Suspense>
 
-      {/* 4.5 Activity Timeline + Quick Stats Sidebar */}
+      {/* 4.5 Activity Timeline + Quick Stats Sidebar (lazy) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="h-full lg:col-span-2">
-          <ActivityTimeline activities={activities} loading={activitiesLoading} />
+          <Suspense fallback={<LargeCardSkeleton />}>
+            <ActivityTimeline activities={activities} loading={false} />
+          </Suspense>
         </div>
         <div className="h-full">
-          <QuickStatsSidebar stats={quickStats} loading={quickStatsLoading} />
+          <Suspense fallback={<LargeCardSkeleton />}>
+            <QuickStatsSidebar stats={quickStats} loading={false} />
+          </Suspense>
         </div>
       </div>
 
-      {/* 5. Meals Summary + Budget Status */}
-      <MealsBudgetSection data={data} weekMeals={weekMeals} currentBudget={currentBudget} onNavigate={onNavigate} />
+      {/* 5. Meals Summary + Budget Status (lazy) */}
+      <Suspense fallback={<LargeCardSkeleton />}>
+        <MealsBudgetSection
+          data={data}
+          weekMeals={data.meals.week || data.meals.today * 7}
+          currentBudget={currentBudget}
+          onNavigate={onNavigate}
+        />
+      </Suspense>
 
-      {/* 6. Stock Health + Low Stock + Today's Meals */}
-      <StockSection data={data} stockHealthPct={stockHealthPct} aboveParCount={aboveParCount} totalIngredientCount={totalIngredientCount} onNavigate={onNavigate} />
+      {/* 6. Stock Health + Low Stock + Today's Meals (lazy) */}
+      <Suspense fallback={<LargeCardSkeleton />}>
+        <StockSection
+          data={data}
+          stockHealthPct={stockHealthPct}
+          aboveParCount={aboveParCount}
+          totalIngredientCount={totalCount}
+          onNavigate={onNavigate}
+        />
+      </Suspense>
 
-      {/* 7. Weekly Consumption Trend */}
-      <WeeklyConsumptionChart chartsData={chartsData} chartsLoading={chartsLoading} />
+      {/* 7. Weekly Consumption Trend (lazy) */}
+      <Suspense fallback={<LargeCardSkeleton />}>
+        <WeeklyConsumptionChart chartsData={charts.data} chartsLoading={charts.loading} />
+      </Suspense>
 
-      {/* 8. Top 5 Ingredients + Category Spending */}
+      {/* 8. Top 5 Ingredients + Category Spending (lazy) */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <TopIngredientsChart chartsData={chartsData} chartsLoading={chartsLoading} />
-        <CategorySpendingChart chartsData={chartsData} chartsLoading={chartsLoading} />
+        <Suspense fallback={<LargeCardSkeleton />}>
+          <TopIngredientsChart chartsData={charts.data} chartsLoading={charts.loading} />
+        </Suspense>
+        <Suspense fallback={<LargeCardSkeleton />}>
+          <CategorySpendingChart chartsData={charts.data} chartsLoading={charts.loading} />
+        </Suspense>
       </div>
 
-      {/* 9. Top Consuming Ingredients + Expense Breakdown */}
+      {/* 9. Top Consuming Ingredients + Expense Breakdown (lazy) */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <ConsumptionChart data={data} />
-        <ExpenseChart data={data} />
+        <Suspense fallback={<LargeCardSkeleton />}>
+          <ConsumptionChart data={data} />
+        </Suspense>
+        <Suspense fallback={<LargeCardSkeleton />}>
+          <ExpenseChart data={data} />
+        </Suspense>
       </div>
     </div>
   );

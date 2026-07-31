@@ -5,7 +5,7 @@ import type { ViewId } from "@/components/app-sidebar";
 
 export interface DashboardData {
   foodCost: { today: number; week: number; month: number };
-  meals: { today: number; month: number };
+  meals: { today: number; month: number; week?: number };
   costPerMeal: number;
   lowStockAlerts: Array<{
     id: string;
@@ -14,6 +14,10 @@ export interface DashboardData {
     category: string;
     currentStock: number;
     minStock: number;
+    lastPurchasePrice?: number;
+    avgCost?: number;
+    supplier?: string | null;
+    supplierId?: string | null;
   }>;
   topConsumingIngredients: Array<{
     ingredient: {
@@ -38,6 +42,11 @@ export interface DashboardData {
   };
   totalOperatingCost: number;
   costTrend: Array<{ date: string; cost: number }>;
+  // Consolidated fields (added in R6)
+  quickStats?: QuickStats;
+  currentBudget?: BudgetRecord | null;
+  activities?: ActivityItem[];
+  totalIngredientCount?: number;
 }
 
 // ─── Chart Analytics Types ──────────────────────────────────────────────────
@@ -106,17 +115,26 @@ export type ActivityType =
   | "MEAL"
   | "EXPENSE"
   | "WASTAGE"
-  | "ADJUSTMENT";
+  | "ADJUSTMENT"
+  | "CONSUMPTION"
+  | "purchase"
+  | "meal"
+  | "expense"
+  | "wastage"
+  | "adjustment"
+  | "consumption";
 
 export interface ActivityItem {
   id: string;
   type: ActivityType;
-  description: string;
+  description?: string;
+  title?: string;
   amount: number | null;
-  createdAt: string;
-  ingredientName: string | null;
-  supplierName: string | null;
-  recipeName: string | null;
+  createdAt?: string;
+  timestamp?: string;
+  ingredientName?: string | null;
+  supplierName?: string | null;
+  recipeName?: string | null;
 }
 
 export interface QuickStats {

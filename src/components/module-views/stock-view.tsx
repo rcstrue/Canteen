@@ -59,6 +59,13 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { useToast } from "@/hooks/use-toast";
 import { downloadCSV } from "@/lib/export-utils";
@@ -86,6 +93,10 @@ import {
   CheckCircle2,
   ShieldAlert,
   CircleAlert,
+  Check,
+  ListChecks,
+  Inbox,
+  PencilLine,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -316,6 +327,26 @@ function formatDateDDMMYYYY(dateStr: string): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+/** Format a date as a short relative-time string (e.g. "2h ago", "3d ago"). */
+function formatRelativeTime(dateStr: string): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  const now = Date.now();
+  const diff = now - d.getTime();
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 4) return `${wk}w ago`;
+  return formatDateDDMMYYYY(dateStr);
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function StockView() {
@@ -359,6 +390,20 @@ export function StockView() {
   const [activeTab, setActiveTab] = useState<"inventory" | "movements">(
     "inventory"
   );
+
+  // Critical-only filter (toggled by clicking the Critical summary card)
+  const [criticalFilterOnly, setCriticalFilterOnly] = useState(false);
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const selectedCount = selectedIds.size;
+  const isSelectionMode = selectedCount > 0;
+
+  // Inline quick-edit state — when set, the row's stock-level quantity
+  // is rendered as an editable input instead of a static number.
+  const [quickEditId, setQuickEditId] = useState<string | null>(null);
+  const [quickEditValue, setQuickEditValue] = useState<string>("");
+  const [quickEditSaving, setQuickEditSaving] = useState(false);
 
   // Movement History state
   const [movements, setMovements] = useState<StockMovement[]>([]);
@@ -419,7 +464,127 @@ export function StockView() {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, categoryFilter, showLowStockOnly]);
+  }, [search, categoryFilter, showLowStockOnly, criticalFilterOnly]);
+
+  // Reset selection whenever filters change so we don't hold stale ids
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [search, categoryFilter, showLowStockOnly, criticalFilterOnly]);
+
+  // ─── Bulk selection handlers ─────────────────────────────────────────────
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const selectedIngredients = useMemo(
+    () => ingredients.filter((i) => selectedIds.has(i.id)),
+    [ingredients, selectedIds]
+  );
+
+  // ─── Inline quick-edit handlers ──────────────────────────────────────────
+
+  const startQuickEdit = (item: Ingredient) => {
+    setQuickEditId(item.id);
+    setQuickEditValue(String(item.currentStock));
+  };
+
+  const cancelQuickEdit = () => {
+    setQuickEditId(null);
+    setQuickEditValue("");
+  };
+
+  const saveQuickEdit = async (item: Ingredient) => {
+    const parsed = parseFloat(quickEditValue);
+    if (isNaN(parsed) || parsed < 0) {
+      toast({
+        title: "Invalid value",
+        description: "Please enter a valid non-negative number.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (parsed === item.currentStock) {
+      cancelQuickEdit();
+      return;
+    }
+    setQuickEditSaving(true);
+    try {
+      const res = await fetch(`/api/ingredients/${item.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: item.name,
+          unit: item.unit,
+          category: item.category,
+          currentStock: parsed,
+          minStock: item.minStock,
+          lastPurchasePrice: item.lastPurchasePrice,
+          avgCost: item.avgCost,
+          supplier: item.supplier ?? null,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update stock level");
+      toast({
+        title: "Stock updated",
+        description: `${item.name}: ${item.currentStock} ${item.unit} → ${parsed} ${item.unit}`,
+      });
+      cancelQuickEdit();
+      await fetchIngredients();
+    } catch (error) {
+      console.error("Failed to save quick edit:", error);
+      toast({
+        title: "Update failed",
+        description: "Could not save the new stock level.",
+        variant: "destructive",
+      });
+    } finally {
+      setQuickEditSaving(false);
+    }
+  };
+
+  // ─── Bulk export selected ────────────────────────────────────────────────
+
+  const handleBulkExportSelected = () => {
+    if (selectedIngredients.length === 0) {
+      toast({
+        title: "Nothing to export",
+        description: "Select at least one ingredient to export.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const rows = selectedIngredients.map((item) => ({
+      Name: item.name,
+      Category: item.category,
+      Unit: item.unit,
+      "Current Stock": item.currentStock,
+      "Min Stock": item.minStock,
+      "Last Price": item.lastPurchasePrice,
+      "Avg Cost": item.avgCost,
+      Supplier: item.supplier ?? "",
+      Status: isLowStock(item) ? "Low Stock" : "In Stock",
+      "Last Updated": formatDateDDMMYYYY(item.updatedAt),
+    }));
+    const today = new Date().toISOString().split("T")[0];
+    downloadCSV(`stock-selected-${today}.csv`, rows);
+    toast({
+      title: "Export successful",
+      description: `Exported ${rows.length} ingredient${
+        rows.length === 1 ? "" : "s"
+      } to CSV.`,
+    });
+  };
 
   // ─── Fetch Movements ─────────────────────────────────────────────────────
 
@@ -472,17 +637,19 @@ export function StockView() {
     }
   };
 
-  const sortedIngredients = [...ingredients].sort((a, b) => {
-    let aVal: string | number = a[sortField] ?? "";
-    let bVal: string | number = b[sortField] ?? "";
+  const sortedIngredients = [...ingredients]
+    .filter((i) => (criticalFilterOnly ? getStockHealth(i) === "CRITICAL" : true))
+    .sort((a, b) => {
+      let aVal: string | number = a[sortField] ?? "";
+      let bVal: string | number = b[sortField] ?? "";
 
-    if (typeof aVal === "string") aVal = aVal.toLowerCase();
-    if (typeof bVal === "string") bVal = bVal.toLowerCase();
+      if (typeof aVal === "string") aVal = aVal.toLowerCase();
+      if (typeof bVal === "string") bVal = bVal.toLowerCase();
 
-    if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
-    if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
-    return 0;
-  });
+      if (aVal < bVal) return sortDirection === "asc" ? -1 : 1;
+      if (aVal > bVal) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
 
   // ─── Pagination ──────────────────────────────────────────────────────────
 
@@ -491,6 +658,31 @@ export function StockView() {
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
+
+  // ─── Bulk selection (depends on paginatedIngredients) ─────────────────────
+
+  const toggleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const allSelected =
+        paginatedIngredients.length > 0 &&
+        paginatedIngredients.every((i) => prev.has(i.id));
+      if (allSelected) {
+        // Deselect only the visible ones
+        const next = new Set(prev);
+        paginatedIngredients.forEach((i) => next.delete(i.id));
+        return next;
+      }
+      const next = new Set(prev);
+      paginatedIngredients.forEach((i) => next.add(i.id));
+      return next;
+    });
+  };
+
+  const allVisibleSelected =
+    paginatedIngredients.length > 0 &&
+    paginatedIngredients.every((i) => selectedIds.has(i.id));
+  const someVisibleSelected =
+    paginatedIngredients.some((i) => selectedIds.has(i.id)) && !allVisibleSelected;
 
   // ─── Movement Sorting & Summary ──────────────────────────────────────────
 
@@ -669,6 +861,7 @@ export function StockView() {
       "Avg Cost": item.avgCost,
       Supplier: item.supplier ?? "",
       Status: isLowStock(item) ? "Low Stock" : "In Stock",
+      "Last Updated": formatDateDDMMYYYY(item.updatedAt),
     }));
     const today = new Date().toISOString().split("T")[0];
     downloadCSV(`stock-inventory-${today}.csv`, rows);
@@ -745,7 +938,7 @@ export function StockView() {
   // ─── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 view-enter">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -774,64 +967,98 @@ export function StockView() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="card-hover">
+        <Card className="card-hover card-elevated metric-card">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
                 <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Total Items</p>
-                <p className="text-xl font-bold">{ingredients.length}</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Items</p>
+                <p className="text-xl font-bold tabular-nums">{ingredients.length}</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="card-hover">
+        <Card className="card-hover card-elevated metric-card">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Stock OK</p>
-                <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Stock OK</p>
+                <p className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
                   {ingredients.filter((i) => getStockHealth(i) === "OK").length}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="card-hover">
+        <Card className="card-hover card-elevated metric-card">
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
                 <CircleAlert className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Near Par</p>
-                <p className="text-xl font-bold text-amber-600 dark:text-amber-400">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Near Par</p>
+                <p className="text-xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
                   {ingredients.filter((i) => getStockHealth(i) === "LOW").length}
                 </p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="card-hover">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
-                <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-400" />
+        {/* Critical card — clickable, highlights when filter is active */}
+        <button
+          type="button"
+          onClick={() => setCriticalFilterOnly((v) => !v)}
+          className="text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 rounded-xl"
+          aria-pressed={criticalFilterOnly}
+          aria-label={`${criticalFilterOnly ? "Clear" : "Apply"} critical-items filter`}
+        >
+          <Card
+            className={`card-elevated metric-card transition-all ${
+              criticalFilterOnly
+                ? "ring-2 ring-red-500 bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-800"
+                : "card-hover hover:bg-red-50/50 dark:hover:bg-red-950/20"
+            }`}
+          >
+            <CardContent className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/40">
+                  <ShieldAlert className="h-4 w-4 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Critical</p>
+                    {criticalFilterOnly && (
+                      <Badge variant="outline" className="badge-danger text-[9px] px-1 py-0">
+                        Filtered
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-xl font-bold tabular-nums text-red-600 dark:text-red-400">
+                    {ingredients.filter((i) => getStockHealth(i) === "CRITICAL").length}
+                  </p>
+                </div>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="text-muted-foreground group-hover:text-foreground">
+                        <RefreshCw className={`h-3.5 w-3.5 transition-transform ${criticalFilterOnly ? "rotate-180" : ""}`} />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {criticalFilterOnly ? "Click to clear filter" : "Click to show only critical items"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Critical</p>
-                <p className="text-xl font-bold text-red-600 dark:text-red-400">
-                  {ingredients.filter((i) => getStockHealth(i) === "CRITICAL").length}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </button>
       </div>
 
       {/* Tabs: Inventory & Movement History */}
@@ -855,7 +1082,7 @@ export function StockView() {
         {/* ─── Inventory Tab ───────────────────────────────────────────── */}
         <TabsContent value="inventory" className="space-y-4">
       {/* Filters & Actions */}
-      <Card>
+      <Card className="card-elevated">
         <CardHeader className="pb-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -928,14 +1155,126 @@ export function StockView() {
               onClick={() => setShowLowStockOnly(!showLowStockOnly)}
               className={
                 showLowStockOnly
-                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500 shadow-sm"
                   : ""
               }
+              aria-pressed={showLowStockOnly}
             >
               <AlertTriangle className="h-4 w-4" />
               Low Stock
             </Button>
           </div>
+
+          {/* Active filter chips + critical filter indicator */}
+          {(criticalFilterOnly || search || categoryFilter !== "All" || showLowStockOnly) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">Active filters:</span>
+              {criticalFilterOnly && (
+                <Badge variant="secondary" className="gap-1 badge-danger">
+                  <ShieldAlert className="h-3 w-3" />
+                  Critical only
+                  <button
+                    onClick={() => setCriticalFilterOnly(false)}
+                    className="ml-1 hover:text-foreground"
+                    aria-label="Clear critical filter"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {search && (
+                <Badge variant="secondary" className="gap-1">
+                  &ldquo;{search}&rdquo;
+                  <button
+                    onClick={() => setSearch("")}
+                    className="ml-1 hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {categoryFilter !== "All" && (
+                <Badge variant="secondary" className="gap-1">
+                  {categoryFilter}
+                  <button
+                    onClick={() => setCategoryFilter("All")}
+                    className="ml-1 hover:text-foreground"
+                    aria-label="Clear category filter"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {showLowStockOnly && (
+                <Badge variant="secondary" className="gap-1 badge-warning">
+                  <AlertTriangle className="h-3 w-3" />
+                  Low stock only
+                  <button
+                    onClick={() => setShowLowStockOnly(false)}
+                    className="ml-1 hover:text-foreground"
+                    aria-label="Clear low stock filter"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 text-xs"
+                onClick={() => {
+                  setSearch("");
+                  setCategoryFilter("All");
+                  setShowLowStockOnly(false);
+                  setCriticalFilterOnly(false);
+                }}
+              >
+                Clear All
+              </Button>
+            </div>
+          )}
+
+          {/* Bulk Actions Bar */}
+          {isSelectionMode && (
+            <div className="sticky top-0 z-20 overflow-hidden rounded-lg border border-amber-200 dark:border-amber-800/60 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm">
+                    <ListChecks className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                      {selectedCount} ingredient{selectedCount === 1 ? "" : "s"} selected
+                    </p>
+                    <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
+                      Choose an action below or clear the selection to exit
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBulkExportSelected}
+                    className="border-amber-300 bg-white/70 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-transparent dark:text-amber-300 dark:hover:bg-amber-950/40"
+                  >
+                    <Download className="mr-1.5 h-3.5 w-3.5" />
+                    Export Selected
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearSelection}
+                    className="text-amber-800 hover:bg-amber-100 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-950/40"
+                  >
+                    <X className="mr-1 h-3.5 w-3.5" />
+                    Exit Selection
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Table */}
           {loading ? (
@@ -943,23 +1282,50 @@ export function StockView() {
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : sortedIngredients.length === 0 ? (
-            <div className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed border-muted-foreground/25">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30 mb-4">
-                <Package className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+            <div className="empty-state rounded-lg border border-dashed border-muted-foreground/25 py-16">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30 mb-4 ring-4 ring-orange-50 dark:ring-orange-950/40">
+                {criticalFilterOnly ? (
+                  <ShieldAlert className="h-10 w-10 text-red-500 dark:text-red-400" />
+                ) : (
+                  <Inbox className="h-10 w-10 text-orange-500 dark:text-orange-400" />
+                )}
               </div>
-              <p className="text-base font-medium text-foreground">No ingredients found</p>
-              <p className="mt-1 text-sm text-muted-foreground max-w-xs text-center">
-                {search || categoryFilter !== "All" || showLowStockOnly
-                  ? "Try adjusting your search or filters to find what you're looking for."
-                  : "Start building your inventory by adding your first raw material."}
+              <p className="text-lg font-semibold text-foreground">
+                {criticalFilterOnly
+                  ? "No critical-stock items"
+                  : search || categoryFilter !== "All" || showLowStockOnly
+                    ? "No ingredients match your filters"
+                    : "Your inventory is empty"}
               </p>
-              {!search && categoryFilter === "All" && !showLowStockOnly && (
+              <p className="mt-2 text-sm text-muted-foreground max-w-sm">
+                {criticalFilterOnly
+                  ? "All your ingredients are above their minimum stock levels. Great job keeping the kitchen stocked!"
+                  : search || categoryFilter !== "All" || showLowStockOnly
+                    ? "Try clearing some filters or adjusting your search query to find what you're looking for."
+                    : "Start building your inventory by adding your first raw material — track quantities, set par levels, and monitor usage."}
+              </p>
+              {!search && categoryFilter === "All" && !showLowStockOnly && !criticalFilterOnly && (
                 <Button
                   onClick={openAddDialog}
-                  className="mt-4 bg-orange-600 hover:bg-orange-700 text-white"
+                  className="mt-5 bg-orange-600 hover:bg-orange-700 text-white"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Add First Ingredient
+                </Button>
+              )}
+              {(search || categoryFilter !== "All" || showLowStockOnly || criticalFilterOnly) && (
+                <Button
+                  variant="outline"
+                  className="mt-5"
+                  onClick={() => {
+                    setSearch("");
+                    setCategoryFilter("All");
+                    setShowLowStockOnly(false);
+                    setCriticalFilterOnly(false);
+                  }}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Clear Filters
                 </Button>
               )}
             </div>
@@ -969,6 +1335,19 @@ export function StockView() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[44px] pl-4">
+                        <Checkbox
+                          aria-label="Select all visible ingredients"
+                          checked={
+                            allVisibleSelected
+                              ? true
+                              : someVisibleSelected
+                                ? "indeterminate"
+                                : false
+                          }
+                          onCheckedChange={toggleSelectAllVisible}
+                        />
+                      </TableHead>
                       <TableHead>
                         <SortableHeader field="name">Name</SortableHeader>
                       </TableHead>
@@ -994,6 +1373,7 @@ export function StockView() {
                           Supplier
                         </SortableHeader>
                       </TableHead>
+                      <TableHead>Last Updated</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1004,18 +1384,37 @@ export function StockView() {
                       const HealthIcon = healthConfig.Icon;
                       const maxStock = item.minStock > 0 ? item.minStock * 3 : item.currentStock > 0 ? item.currentStock : 1;
                       const stockPercent = Math.min(Math.round((item.currentStock / maxStock) * 100), 100);
+                      const isSelected = selectedIds.has(item.id);
+                      const isQuickEditing = quickEditId === item.id;
                       return (
                         <TableRow
                           key={item.id}
+                          data-state={isSelected ? "selected" : undefined}
                           className={`cursor-pointer transition-colors ${
-                            health === "CRITICAL"
-                              ? "bg-red-50/50 hover:bg-red-100/50 dark:bg-red-950/20 dark:hover:bg-red-950/30"
-                              : health === "LOW"
-                                ? "bg-amber-50/30 hover:bg-amber-100/30 dark:bg-amber-950/10 dark:hover:bg-amber-950/20"
-                                : "hover:bg-muted/50"
+                            isSelected
+                              ? "bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40"
+                              : health === "CRITICAL"
+                                ? "bg-red-50/50 hover:bg-red-100/50 dark:bg-red-950/20 dark:hover:bg-red-950/30"
+                                : health === "LOW"
+                                  ? "bg-amber-50/30 hover:bg-amber-100/30 dark:bg-amber-950/10 dark:hover:bg-amber-950/20"
+                                  : "hover:bg-muted/50"
                           }`}
-                          onClick={() => openDetailDialog(item)}
+                          onClick={() => {
+                            if (isSelectionMode) {
+                              toggleSelect(item.id);
+                            } else if (!isQuickEditing) {
+                              openDetailDialog(item);
+                            }
+                          }}
                         >
+                          <TableCell className="pl-4" onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              aria-label={`Select ${item.name}`}
+                              checked={isSelected}
+                              onCheckedChange={() => toggleSelect(item.id)}
+                              className="data-[state=checked]:bg-amber-600 data-[state=checked]:border-amber-600"
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">
                             {item.name}
                           </TableCell>
@@ -1030,34 +1429,103 @@ export function StockView() {
                               {item.category}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            <div className="min-w-[140px] space-y-1">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-mono font-medium">
-                                  {item.currentStock} {item.unit}
-                                </span>
-                                <span className="text-muted-foreground">
-                                  min: {item.minStock}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <div className="h-3 flex-1 rounded-full bg-muted overflow-hidden">
-                                  <div
-                                    className={`h-full rounded-full transition-all duration-500 ${healthConfig.barColor}`}
-                                    style={{ width: `${Math.min(stockPercent, 100)}%` }}
+                          <TableCell onClick={(e) => isQuickEditing && e.stopPropagation()}>
+                            {isQuickEditing ? (
+                              <div className="min-w-[160px] space-y-1">
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    autoFocus
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={quickEditValue}
+                                    onChange={(e) => setQuickEditValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        saveQuickEdit(item);
+                                      } else if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        cancelQuickEdit();
+                                      }
+                                    }}
+                                    className="h-7 text-xs px-2 py-1 font-mono"
                                   />
+                                  <span className="text-xs text-muted-foreground shrink-0">{item.unit}</span>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 text-emerald-600 hover:text-emerald-700"
+                                    onClick={() => saveQuickEdit(item)}
+                                    disabled={quickEditSaving}
+                                    title="Save (Enter)"
+                                  >
+                                    {quickEditSaving ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Check className="h-3.5 w-3.5" />
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                    onClick={cancelQuickEdit}
+                                    disabled={quickEditSaving}
+                                    title="Cancel (Esc)"
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
                                 </div>
-                                <span className={`text-[11px] font-semibold tabular-nums w-9 text-right ${
-                                  health === "CRITICAL"
-                                    ? "text-red-600 dark:text-red-400"
-                                    : health === "LOW"
-                                      ? "text-amber-600 dark:text-amber-400"
-                                      : "text-emerald-600 dark:text-emerald-400"
-                                }`}>
-                                  {stockPercent}%
-                                </span>
+                                <p className="text-[10px] text-muted-foreground">
+                                  Press <kbd className="px-1 rounded bg-muted">Enter</kbd> to save, <kbd className="px-1 rounded bg-muted">Esc</kbd> to cancel
+                                </p>
                               </div>
-                            </div>
+                            ) : (
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        startQuickEdit(item);
+                                      }}
+                                      className="group/stock min-w-[140px] flex flex-col gap-1 text-left"
+                                      title="Click to edit stock level"
+                                    >
+                                      <div className="flex items-center justify-between text-xs">
+                                        <span className="font-mono font-medium flex items-center gap-1 group-hover/stock:text-amber-600 dark:group-hover/stock:text-amber-400">
+                                          {item.currentStock} {item.unit}
+                                          <PencilLine className="h-3 w-3 opacity-0 group-hover/stock:opacity-100 transition-opacity" />
+                                        </span>
+                                        <span className="text-muted-foreground">
+                                          min: {item.minStock}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <div className="h-3 flex-1 rounded-full bg-muted overflow-hidden">
+                                          <div
+                                            className={`h-full rounded-full transition-all duration-500 ${healthConfig.barColor}`}
+                                            style={{ width: `${Math.min(stockPercent, 100)}%` }}
+                                          />
+                                        </div>
+                                        <span className={`text-[11px] font-semibold tabular-nums w-9 text-right ${
+                                          health === "CRITICAL"
+                                            ? "text-red-600 dark:text-red-400"
+                                            : health === "LOW"
+                                              ? "text-amber-600 dark:text-amber-400"
+                                              : "text-emerald-600 dark:text-emerald-400"
+                                        }`}>
+                                          {stockPercent}%
+                                        </span>
+                                      </div>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Click to quick-edit stock level</TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )}
                           </TableCell>
                           <TableCell>
                             <Badge
@@ -1076,6 +1544,18 @@ export function StockView() {
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {item.supplier || <span className="text-muted-foreground/60 italic text-xs">Not Set</span>}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="cursor-help">{formatRelativeTime(item.updatedAt)}</span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  {formatDateDDMMYYYY(item.updatedAt)}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
@@ -1189,14 +1669,14 @@ export function StockView() {
         <TabsContent value="movements" className="space-y-4">
           {/* Summary cards */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Card className="card-hover">
+            <Card className="card-hover card-elevated metric-card">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/40">
                     <ArrowDownLeft className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
                       Total Purchases
                     </p>
                     <p className="text-xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400 truncate">
@@ -1206,14 +1686,14 @@ export function StockView() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="card-hover">
+            <Card className="card-hover card-elevated metric-card">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/40">
                     <ArrowUpRight className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
                       Total Consumption
                     </p>
                     <p className="text-xl font-bold tabular-nums text-amber-600 dark:text-amber-400 truncate">
@@ -1223,14 +1703,14 @@ export function StockView() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="card-hover">
+            <Card className="card-hover card-elevated metric-card">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-100 dark:bg-rose-900/40">
                     <Trash2 className="h-4 w-4 text-rose-600 dark:text-rose-400" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">
                       Total Wastage
                     </p>
                     <p className="text-xl font-bold tabular-nums text-rose-600 dark:text-rose-400 truncate">
@@ -1243,7 +1723,7 @@ export function StockView() {
           </div>
 
           {/* Filters & Movement Table */}
-          <Card>
+          <Card className="card-elevated">
             <CardHeader className="pb-4">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>

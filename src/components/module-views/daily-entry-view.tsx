@@ -59,6 +59,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from '@/components/ui/chart';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Legend,
+} from 'recharts';
 
 import {
   ClipboardList,
@@ -85,7 +98,10 @@ import {
   Sparkles,
   Zap,
   Copy,
+  Keyboard,
+  PieChart as PieChartIcon,
 } from 'lucide-react';
+import { formatINR } from '@/lib/utils';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -165,13 +181,7 @@ type MealType = (typeof MEAL_TYPES)[number];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const formatCurrency = (amount: number) => {
-  const formatted = new Intl.NumberFormat('en-IN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount || 0);
-  return `₹${formatted}`;
-};
+// Currency formatting is provided by formatINR from @/lib/utils — imported above.
 
 const formatDate = (dateStr: string) => {
   const d = new Date(dateStr);
@@ -497,15 +507,47 @@ export function DailyEntryView() {
       Dinner: 0,
       Snack: 0,
     };
+    const costByType: Record<string, number> = {
+      Breakfast: 0,
+      Lunch: 0,
+      Dinner: 0,
+      Snack: 0,
+    };
     meals.forEach((m) => {
       if (byType[m.mealType] !== undefined) {
         byType[m.mealType] += m.mealsServed;
+        costByType[m.mealType] += estimateMealCost(m);
       } else {
         byType[m.mealType] = m.mealsServed;
+        costByType[m.mealType] = estimateMealCost(m);
       }
     });
-    return { totalMeals, totalCost, byType };
+    const avgCostPerMeal = totalMeals > 0 ? totalCost / totalMeals : 0;
+    return { totalMeals, totalCost, byType, costByType, avgCostPerMeal };
   }, [meals]);
+
+  // ── Meal distribution data (for pie chart) ───────────────────────────────
+  const mealDistributionData = useMemo(
+    () =>
+      MEAL_TYPES.map((mt) => ({
+        name: mt,
+        value: dailySummary.byType[mt] || 0,
+        cost: dailySummary.costByType[mt] || 0,
+      })).filter((d) => d.value > 0),
+    [dailySummary]
+  );
+
+  // ── Meal distribution chart colors (oklch — amber theme) ─────────────────
+  const MEAL_TYPE_CHART_COLORS: Record<string, string> = {
+    Breakfast: 'oklch(0.769 0.188 70)',   // amber
+    Lunch: 'oklch(0.705 0.213 47)',       // orange
+    Dinner: 'oklch(0.606 0.25 292)',      // violet
+    Snack: 'oklch(0.696 0.17 162)',       // emerald
+  };
+
+  const mealDistChartConfig: ChartConfig = {
+    value: { label: 'Meals', color: 'oklch(0.769 0.188 70)' },
+  };
 
   // ── Handle Add Meal ─────────────────────────────────────────────────────
   const handleAddMeal = () => {
@@ -756,8 +798,10 @@ export function DailyEntryView() {
               transition={{ duration: 0.25, ease: 'easeOut' }}
               className="space-y-4"
             >
+              {/* Daily Summary Card + Meal Distribution Pie Chart — side by side */}
+              <div className="grid gap-4 lg:grid-cols-3">
               {/* Daily Summary Card — gradient amber/orange */}
-              <Card className="card-hover card-elevated overflow-hidden border-amber-200/60 dark:border-amber-800/40">
+              <Card className="card-hover card-elevated overflow-hidden border-amber-200/60 dark:border-amber-800/40 lg:col-span-2">
                 <div className="bg-gradient-to-br from-amber-50 via-orange-50 to-amber-50 dark:from-amber-950/30 dark:via-orange-950/20 dark:to-amber-950/30">
                   <CardContent className="p-6">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -777,43 +821,149 @@ export function DailyEntryView() {
                               meals served
                             </span>
                           </div>
-                          <p className="mt-1 text-sm text-amber-800 dark:text-amber-300">
-                            Estimated cost:{' '}
-                            <span className="font-semibold tabular-nums">
-                              {formatCurrency(dailySummary.totalCost)}
-                            </span>
-                          </p>
+                          <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm text-amber-800 dark:text-amber-300">
+                            <p>
+                              Total cost:{' '}
+                              <span className="font-semibold tabular-nums">
+                                {formatINR(dailySummary.totalCost)}
+                              </span>
+                            </p>
+                            <p>
+                              Avg / meal:{' '}
+                              <span className="font-semibold tabular-nums">
+                                {formatINR(dailySummary.avgCostPerMeal)}
+                              </span>
+                            </p>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Breakdown by meal type */}
+                      {/* Breakdown by meal type — now also shows cost per type */}
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 lg:gap-3">
-                        {MEAL_TYPES.map((mt) => (
-                          <div
-                            key={mt}
-                            className="flex flex-col gap-1 rounded-lg border border-amber-200/50 bg-white/60 dark:border-amber-800/30 dark:bg-amber-950/20 px-3 py-2 backdrop-blur-sm"
-                          >
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-amber-700 dark:text-amber-400">
-                                {mealTypeIcon(mt, 'h-3.5 w-3.5')}
+                        {MEAL_TYPES.map((mt) => {
+                          const mealCount = dailySummary.byType[mt] || 0;
+                          const mealCost = dailySummary.costByType[mt] || 0;
+                          const pct =
+                            dailySummary.totalMeals > 0
+                              ? Math.round((mealCount / dailySummary.totalMeals) * 100)
+                              : 0;
+                          return (
+                            <div
+                              key={mt}
+                              className="flex flex-col gap-1 rounded-lg border border-amber-200/50 bg-white/60 dark:border-amber-800/30 dark:bg-amber-950/20 px-3 py-2 backdrop-blur-sm"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-amber-700 dark:text-amber-400">
+                                  {mealTypeIcon(mt, 'h-3.5 w-3.5')}
+                                </span>
+                                <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                                  {mt}
+                                </span>
+                              </div>
+                              <span className="text-xl font-bold tabular-nums text-amber-900 dark:text-amber-100">
+                                {mealCount}
                               </span>
-                              <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
-                                {mt}
+                              <span className="text-[10px] text-amber-700/80 dark:text-amber-400/80 tabular-nums">
+                                {formatINR(mealCost)} · {pct}%
                               </span>
                             </div>
-                            <span className="text-xl font-bold tabular-nums text-amber-900 dark:text-amber-100">
-                              {dailySummary.byType[mt] || 0}
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </CardContent>
                 </div>
               </Card>
 
+              {/* Meal Distribution Pie Chart */}
+              <Card className="card-elevated overflow-hidden">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <PieChartIcon className="h-4 w-4 text-amber-600" />
+                    Meal Distribution
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Share of meals by type
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {mealDistributionData.length > 0 ? (
+                    <ChartContainer
+                      config={mealDistChartConfig}
+                      className="mx-auto aspect-square max-h-[220px]"
+                    >
+                      <PieChart>
+                        <ChartTooltip
+                          content={
+                            <ChartTooltipContent
+                              formatter={(value, name, props) => {
+                                const cost = (props.payload as { cost?: number })?.cost ?? 0;
+                                return (
+                                  <div>
+                                    <p className="font-medium">{name}</p>
+                                    <p className="tabular-nums text-muted-foreground">
+                                      {value} meals · {formatINR(cost)}
+                                    </p>
+                                  </div>
+                                );
+                              }}
+                            />
+                          }
+                        />
+                        <Pie
+                          data={mealDistributionData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={45}
+                          outerRadius={80}
+                          paddingAngle={2}
+                          dataKey="value"
+                          nameKey="name"
+                          labelLine={false}
+                          label={({ name, percent }) =>
+                            percent && percent >= 0.05 ? (
+                              <text
+                                fill="currentColor"
+                                fontSize={10}
+                                fontWeight={600}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                className="text-amber-900 dark:text-amber-100"
+                              >
+                                {`${(percent * 100).toFixed(0)}%`}
+                              </text>
+                            ) : null
+                          }
+                        >
+                          {mealDistributionData.map((entry) => (
+                            <Cell
+                              key={entry.name}
+                              fill={MEAL_TYPE_CHART_COLORS[entry.name] ?? 'oklch(0.551 0.016 285)'}
+                            />
+                          ))}
+                        </Pie>
+                        <Legend
+                          verticalAlign="bottom"
+                          height={28}
+                          iconType="circle"
+                          formatter={(value) => (
+                            <span className="text-[10px]">{value}</span>
+                          )}
+                        />
+                      </PieChart>
+                    </ChartContainer>
+                  ) : (
+                    <div className="flex h-[220px] flex-col items-center justify-center text-center text-muted-foreground">
+                      <PieChartIcon className="h-8 w-8 mb-2 opacity-40" />
+                      <p className="text-xs">No meals recorded for this date.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+              </div>
+
               {/* Filters & Actions */}
-              <Card>
+              <Card className="card-elevated">
                 <CardContent className="p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -829,10 +979,13 @@ export function DailyEntryView() {
                           <PopoverTrigger asChild>
                             <Button
                               variant="outline"
-                              className="w-[160px] justify-start text-left font-normal"
+                              className="input-enhanced w-[180px] justify-start text-left font-normal gap-2 rounded-lg border-amber-200 hover:border-amber-400 dark:border-amber-800/60 dark:hover:border-amber-700"
                             >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {format(selectedDate, 'dd/MM/yyyy')}
+                              <CalendarIcon className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                              <span className="tabular-nums">{format(selectedDate, 'dd/MM/yyyy')}</span>
+                              <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground">
+                                {format(selectedDate, 'EEE')}
+                              </span>
                             </Button>
                           </PopoverTrigger>
                           <PopoverContent className="w-auto p-0" align="start">
@@ -860,7 +1013,7 @@ export function DailyEntryView() {
                           value={mealTypeFilter}
                           onValueChange={setMealTypeFilter}
                         >
-                          <SelectTrigger className="w-[140px]">
+                          <SelectTrigger className="input-enhanced w-[160px]">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -873,6 +1026,29 @@ export function DailyEntryView() {
                         </Select>
                       </div>
                     </div>
+
+                    {/* Keyboard shortcuts hint */}
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="hidden md:flex items-center gap-1.5 rounded-md border border-dashed border-muted-foreground/40 bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground">
+                            <Keyboard className="h-3 w-3" />
+                            <span>
+                              <kbd className="rounded bg-background px-1 py-0.5 font-mono">Tab</kbd>{' '}
+                              to navigate ·{' '}
+                              <kbd className="rounded bg-background px-1 py-0.5 font-mono">Enter</kbd>{' '}
+                              to submit
+                            </span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          <p className="text-xs">
+                            Use Tab to move between fields, Enter to submit,
+                            Esc to close dialogs.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
 
                     <div className="flex items-center gap-2">
                       <Button
@@ -941,7 +1117,7 @@ export function DailyEntryView() {
               {/* Meals Table + Side panels */}
               <div className="grid gap-4 lg:grid-cols-3">
                 {/* Main Meals Table — spans 2 cols on large screens */}
-                <Card className="lg:col-span-2">
+                <Card className="card-elevated lg:col-span-2">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between gap-2">
                       <div>
@@ -1035,7 +1211,7 @@ export function DailyEntryView() {
                                   {meal.mealsServed}
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums text-muted-foreground">
-                                  {formatCurrency(estimateMealCost(meal))}
+                                  {formatINR(estimateMealCost(meal))}
                                 </TableCell>
                                 {hasAnyNotes && (
                                   <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
@@ -1056,7 +1232,7 @@ export function DailyEntryView() {
                 {/* Side: Calendar + Recent entries */}
                 <div className="space-y-4">
                   {/* Month Calendar with dots */}
-                  <Card>
+                  <Card className="card-elevated">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2">
                         <CalendarIcon className="h-4 w-4 text-amber-600" />
@@ -1134,7 +1310,7 @@ export function DailyEntryView() {
                   </Card>
 
                   {/* Recent entries quick view */}
-                  <Card>
+                  <Card className="card-elevated">
                     <CardHeader className="pb-3">
                       <CardTitle className="text-base flex items-center gap-2">
                         <History className="h-4 w-4 text-amber-600" />
@@ -1209,7 +1385,7 @@ export function DailyEntryView() {
               className="space-y-4"
             >
               {/* Header */}
-              <Card>
+              <Card className="card-elevated">
                 <CardContent className="p-4">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
@@ -1237,7 +1413,7 @@ export function DailyEntryView() {
               </Card>
 
               {/* Adjustments Table */}
-              <Card>
+              <Card className="card-elevated">
                 <CardHeader className="pb-3">
                   <CardTitle className="text-lg">Recent Adjustments</CardTitle>
                   <CardDescription>
@@ -1313,10 +1489,10 @@ export function DailyEntryView() {
                                   </span>
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">
-                                  {formatCurrency(adj.unitPrice)}
+                                  {formatINR(adj.unitPrice)}
                                 </TableCell>
                                 <TableCell className="text-right font-medium tabular-nums">
-                                  {formatCurrency(adj.totalAmount)}
+                                  {formatINR(adj.totalAmount)}
                                 </TableCell>
                                 <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
                                   {hasNotes ? adj.notes : ''}
@@ -1935,7 +2111,7 @@ export function DailyEntryView() {
                   <div>
                     <span className="text-muted-foreground">Avg Cost:</span>{' '}
                     <span className="font-medium tabular-nums">
-                      {formatCurrency(selectedIngredient.avgCost)}/{selectedIngredient.unit}
+                      {formatINR(selectedIngredient.avgCost)}/{selectedIngredient.unit}
                     </span>
                   </div>
                 </div>
@@ -2034,7 +2210,7 @@ export function DailyEntryView() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Total Amount:</span>
                   <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">
-                    {formatCurrency(
+                    {formatINR(
                       parseFloat(adjustmentForm.quantity) *
                         parseFloat(adjustmentForm.unitPrice)
                     )}

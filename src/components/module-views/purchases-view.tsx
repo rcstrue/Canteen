@@ -72,11 +72,29 @@ import {
   Printer,
   Flame,
   ListChecks,
+  XCircle,
+  TrendingUp,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { downloadCSV } from "@/lib/export-utils";
 import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
+import { formatINR } from "@/lib/utils";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Cell as RechartsCell,
+} from "recharts";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -127,15 +145,6 @@ interface NewPurchaseItem {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
-
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   const day = String(d.getDate()).padStart(2, "0");
@@ -160,9 +169,14 @@ function getInvoiceNumber(purchase: Purchase): string {
 }
 
 // Purchase status based on date (simulated since no status field in DB)
-type PurchaseStatus = "Pending" | "Received" | "Paid";
+type PurchaseStatus = "Pending" | "Received" | "Paid" | "Cancelled";
 
 function getPurchaseStatus(purchase: Purchase): PurchaseStatus {
+  // If the purchase has no items and no supplier, treat as cancelled
+  // (placeholder logic — in production this would come from the API).
+  if (purchase.totalAmount === 0 && (!purchase.items || purchase.items.length === 0)) {
+    return "Cancelled";
+  }
   const purchaseDate = new Date(purchase.date);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -181,20 +195,33 @@ function getStatusConfig(status: PurchaseStatus): {
     case "Pending":
       return {
         label: "Pending",
-        badgeClass: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+        // amber — warning
+        badgeClass:
+          "badge-warning border bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800",
         Icon: Clock,
       };
     case "Received":
       return {
         label: "Received",
-        badgeClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
+        // green — success
+        badgeClass:
+          "badge-success border bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
         Icon: CheckCircle2,
       };
     case "Paid":
       return {
         label: "Paid",
-        badgeClass: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800",
+        badgeClass:
+          "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 border-teal-200 dark:border-teal-800",
         Icon: Banknote,
+      };
+    case "Cancelled":
+      return {
+        label: "Cancelled",
+        // red — danger
+        badgeClass:
+          "badge-danger border bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800",
+        Icon: XCircle,
       };
   }
 }
@@ -597,10 +624,53 @@ export function PurchasesView() {
 
   const totalPurchaseAmount = purchases.reduce((sum, p) => sum + p.totalAmount, 0);
 
+  // ── Month-to-date totals (used for the "Total Purchases This Month" card) ─
+  const monthToDateStats = useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthPurchases = purchases.filter((p) => new Date(p.date) >= monthStart);
+    const total = monthPurchases.reduce((s, p) => s + p.totalAmount, 0);
+    return {
+      total,
+      count: monthPurchases.length,
+    };
+  }, [purchases]);
+
+  // ── Top suppliers (for mini-chart) ────────────────────────────────────────
+  // Aggregate purchases by supplier (this page only). The API paginates, so
+  // we aggregate what's currently visible — a simple approximation that's
+  // good enough for a "top suppliers" overview.
+  const topSuppliers = useMemo(() => {
+    const map = new Map<string, { supplier: string; total: number; count: number }>();
+    for (const p of purchases) {
+      const name = p.supplier?.trim() || "Unknown Supplier";
+      const existing = map.get(name) ?? { supplier: name, total: 0, count: 0 };
+      existing.total += p.totalAmount;
+      existing.count += 1;
+      map.set(name, existing);
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
+  }, [purchases]);
+
+  // Color palette for the top-suppliers chart — oklch() amber/orange theme.
+  const SUPPLIER_PALETTE = [
+    "oklch(0.769 0.188 70)",   // amber
+    "oklch(0.705 0.213 47)",   // orange
+    "oklch(0.645 0.246 16)",   // rose
+    "oklch(0.696 0.17 162)",   // emerald
+    "oklch(0.606 0.25 292)",   // violet
+  ];
+
+  const supplierChartConfig: ChartConfig = {
+    total: { label: "Purchase Value", color: "oklch(0.769 0.188 70)" },
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 view-enter">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
@@ -644,13 +714,13 @@ export function PurchasesView() {
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Card className="transition-all hover:shadow-md">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Card className="card-elevated card-hover metric-card transition-all">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Purchases</p>
-                <p className="text-2xl font-bold">{total}</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Total Purchases</p>
+                <p className="text-2xl font-bold tabular-nums">{total}</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
                 <FileText className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -658,13 +728,13 @@ export function PurchasesView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-elevated card-hover metric-card transition-all">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Page Total</p>
-                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                  {formatCurrency(totalPurchaseAmount)}
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Page Total</p>
+                <p className="text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                  {formatINR(totalPurchaseAmount)}
                 </p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/30">
@@ -673,12 +743,12 @@ export function PurchasesView() {
             </div>
           </CardContent>
         </Card>
-        <Card className="transition-all hover:shadow-md">
+        <Card className="card-elevated card-hover metric-card transition-all">
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Items on Page</p>
-                <p className="text-2xl font-bold">{purchases.length}</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Items on Page</p>
+                <p className="text-2xl font-bold tabular-nums">{purchases.length}</p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
                 <Package className="h-5 w-5 text-amber-600 dark:text-amber-400" />
@@ -686,10 +756,115 @@ export function PurchasesView() {
             </div>
           </CardContent>
         </Card>
+        {/* NEW: Total Purchases This Month */}
+        <Card className="card-elevated card-hover metric-card transition-all">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  This Month
+                </p>
+                <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">
+                  {formatINR(monthToDateStats.total)}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  {monthToDateStats.count} purchase{monthToDateStats.count === 1 ? "" : "s"} this month
+                </p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-900/30">
+                <TrendingUp className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
+      {/* Top Suppliers mini-chart — only show when there's data */}
+      {topSuppliers.length > 0 && (
+        <Card className="card-elevated">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CircleDot className="h-4 w-4 text-amber-600" />
+              Top Suppliers
+            </CardTitle>
+            <CardDescription>
+              Purchase distribution by supplier (current page)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <ChartContainer config={supplierChartConfig} className="aspect-[2/1] w-full">
+                <BarChart
+                  data={topSuppliers}
+                  layout="vertical"
+                  margin={{ top: 5, right: 30, bottom: 5, left: 0 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                  <XAxis type="number" tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                  <YAxis
+                    type="category"
+                    dataKey="supplier"
+                    width={110}
+                    tick={{ fontSize: 11 }}
+                    className="text-muted-foreground"
+                    tickFormatter={(v: string) =>
+                      v.length > 14 ? `${v.substring(0, 14)}…` : v
+                    }
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(value, _name, props) => {
+                          const count = (props.payload as { count?: number })?.count ?? 0;
+                          return (
+                            <span className="tabular-nums">
+                              {formatINR(Number(value))} · {count} purchase{count === 1 ? "" : "s"}
+                            </span>
+                          );
+                        }}
+                      />
+                    }
+                  />
+                  <Bar dataKey="total" radius={[0, 4, 4, 0]}>
+                    {topSuppliers.map((_, idx) => (
+                      <RechartsCell
+                        key={idx}
+                        fill={SUPPLIER_PALETTE[idx % SUPPLIER_PALETTE.length]}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ChartContainer>
+              <div className="space-y-2">
+                {topSuppliers.map((s, idx) => {
+                  const totalOfAll = topSuppliers.reduce((sum, x) => sum + x.total, 0);
+                  const sharePct = totalOfAll > 0 ? (s.total / totalOfAll) * 100 : 0;
+                  return (
+                    <div key={s.supplier} className="flex items-center gap-3 rounded-lg border p-2.5">
+                      <div
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{ background: SUPPLIER_PALETTE[idx % SUPPLIER_PALETTE.length] }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{s.supplier}</p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          {s.count} purchase{s.count === 1 ? "" : "s"} · {sharePct.toFixed(1)}% of page
+                        </p>
+                      </div>
+                      <p className="text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-400">
+                        {formatINR(s.total)}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filters */}
-      <Card>
+      <Card className="card-elevated">
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
             <div className="flex-1">
@@ -765,7 +940,7 @@ export function PurchasesView() {
       </Card>
 
       {/* Purchases Table */}
-      <Card>
+      <Card className="card-elevated">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <ShoppingCart className="h-5 w-5 text-amber-600" />
@@ -908,7 +1083,7 @@ export function PurchasesView() {
                       <TableRow
                         key={purchase.id}
                         data-state={isSelected ? "selected" : undefined}
-                        className={`cursor-pointer transition-colors ${
+                        className={`table-row-interactive cursor-pointer transition-colors ${
                           isSelected
                             ? "bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/40"
                             : "hover:bg-amber-50/50 dark:hover:bg-amber-950/20"
@@ -963,7 +1138,7 @@ export function PurchasesView() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-semibold text-amber-700 dark:text-amber-400">
-                          {formatCurrency(purchase.totalAmount)}
+                          {formatINR(purchase.totalAmount)}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -1051,7 +1226,7 @@ export function PurchasesView() {
                           </div>
                         </div>
                         <p className="font-bold text-amber-700 dark:text-amber-400">
-                          {formatCurrency(purchase.totalAmount)}
+                          {formatINR(purchase.totalAmount)}
                         </p>
                       </div>
                       <div className="flex items-center justify-between mt-3">
@@ -1125,7 +1300,7 @@ export function PurchasesView() {
 
       {/* Recent Purchase Activity Timeline */}
       {purchases.length > 0 && (
-        <Card>
+        <Card className="card-elevated">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <CircleDot className="h-5 w-5 text-amber-600" />
@@ -1174,7 +1349,7 @@ export function PurchasesView() {
                               {statusConfig.label}
                             </Badge>
                             <span className="text-sm font-semibold text-amber-700 dark:text-amber-400 tabular-nums">
-                              {formatCurrency(purchase.totalAmount)}
+                              {formatINR(purchase.totalAmount)}
                             </span>
                           </div>
                         </div>
@@ -1317,10 +1492,10 @@ export function PurchasesView() {
                             {item.quantity} {item.ingredient?.unit || ""}
                           </TableCell>
                           <TableCell className="text-sm text-right">
-                            {formatCurrency(item.unitPrice)}
+                            {formatINR(item.unitPrice)}
                           </TableCell>
                           <TableCell className="text-sm text-right font-semibold">
-                            {formatCurrency(item.totalAmount)}
+                            {formatINR(item.totalAmount)}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1333,7 +1508,7 @@ export function PurchasesView() {
               <div className="flex items-center justify-between rounded-lg bg-amber-50 dark:bg-amber-900/20 p-4 border border-amber-200 dark:border-amber-800">
                 <span className="font-semibold text-amber-800 dark:text-amber-300">Grand Total</span>
                 <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
-                  {formatCurrency(selectedPurchase.totalAmount)}
+                  {formatINR(selectedPurchase.totalAmount)}
                 </span>
               </div>
             </div>
@@ -1529,7 +1704,7 @@ export function PurchasesView() {
                           <span className="text-xs text-muted-foreground">
                             Row Total:{" "}
                             <span className="font-semibold text-amber-700 dark:text-amber-400">
-                              {formatCurrency(item.totalAmount)}
+                              {formatINR(item.totalAmount)}
                             </span>
                           </span>
                         </div>
@@ -1545,7 +1720,7 @@ export function PurchasesView() {
                   Grand Total
                 </span>
                 <span className="text-xl font-bold text-amber-700 dark:text-amber-400">
-                  {formatCurrency(formGrandTotal)}
+                  {formatINR(formGrandTotal)}
                 </span>
               </div>
             </div>
@@ -1656,7 +1831,7 @@ export function PurchasesView() {
                     </span>
                   </span>
                   <span className="shrink-0 font-semibold tabular-nums">
-                    {formatCurrency(p.totalAmount)}
+                    {formatINR(p.totalAmount)}
                   </span>
                 </li>
               ))}
@@ -1740,7 +1915,7 @@ export function PurchasesView() {
                 </div>
                 <div className="text-right">
                   <p className="text-sm font-bold text-amber-700 dark:text-amber-400 tabular-nums">
-                    {formatCurrency(p.totalAmount)}
+                    {formatINR(p.totalAmount)}
                   </p>
                   <p className="text-[10px] text-muted-foreground">
                     {p.items?.length || 0} items
@@ -1903,10 +2078,10 @@ export function PurchasesView() {
                             {item.ingredient?.unit || ""}
                           </TableCell>
                           <TableCell className="text-sm text-right tabular-nums">
-                            {formatCurrency(item.unitPrice)}
+                            {formatINR(item.unitPrice)}
                           </TableCell>
                           <TableCell className="text-sm text-right font-semibold tabular-nums">
-                            {formatCurrency(item.totalAmount)}
+                            {formatINR(item.totalAmount)}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1928,17 +2103,17 @@ export function PurchasesView() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Subtotal</span>
                     <span className="font-medium tabular-nums">
-                      {formatCurrency(selectedPurchase.totalAmount)}
+                      {formatINR(selectedPurchase.totalAmount)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Discount</span>
-                    <span className="font-medium tabular-nums">{formatCurrency(0)}</span>
+                    <span className="font-medium tabular-nums">{formatINR(0)}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-md bg-amber-500 text-white p-3 mt-2">
                     <span className="font-semibold">Grand Total</span>
                     <span className="text-lg font-bold tabular-nums">
-                      {formatCurrency(selectedPurchase.totalAmount)}
+                      {formatINR(selectedPurchase.totalAmount)}
                     </span>
                   </div>
                 </div>

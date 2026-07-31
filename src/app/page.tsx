@@ -32,6 +32,7 @@ import { ReportsView } from "@/components/module-views/reports-view";
 import { BudgetView } from "@/components/module-views/budget-view";
 import { ExpensesView } from "@/components/module-views/expenses-view";
 import { SettingsView } from "@/components/module-views/settings-view";
+import { FloatingActions } from "@/components/floating-actions";
 
 const viewLabels: Record<ViewId, string> = {
   dashboard: "Dashboard",
@@ -262,6 +263,9 @@ function AuthenticatedApp() {
         onOpenChange={setPaletteOpen}
         onNavigate={setActiveView}
       />
+
+      {/* Mobile-only floating quick-actions button */}
+      <FloatingActions onNavigate={setActiveView} />
     </SidebarProvider>
   );
 }

@@ -1,0 +1,602 @@
+   600→      <MonthlyTrendSection
+   601→        data={trendData}
+   602→        loading={trendLoading}
+   603→        error={trendError}
+   604→        onRetry={fetchMonthlyTrend}
+   605→      />
+   606→
+   607→      {/* Tabs */}
+   608→      <Tabs value={activeTab} onValueChange={setActiveTab}>
+   609→        <TabsList className="w-full sm:w-auto">
+   610→          <TabsTrigger value="cost" className="gap-1.5">
+   611→            <IndianRupee className="h-4 w-4" />
+   612→            Cost Report
+   613→          </TabsTrigger>
+   614→          <TabsTrigger value="consumption" className="gap-1.5">
+   615→            <Package className="h-4 w-4" />
+   616→            Consumption Report
+   617→          </TabsTrigger>
+   618→          <TabsTrigger value="variance" className="gap-1.5">
+   619→            <AlertTriangle className="h-4 w-4" />
+   620→            Variance Report
+   621→          </TabsTrigger>
+   622→        </TabsList>
+   623→
+   624→        <AnimatePresence mode="wait">
+   625→          <motion.div
+   626→            key={activeTab}
+   627→            initial={{ opacity: 0, y: 8 }}
+   628→            animate={{ opacity: 1, y: 0 }}
+   629→            exit={{ opacity: 0, y: -8 }}
+   630→            transition={{ duration: 0.2, ease: 'easeOut' }}
+   631→          >
+   632→            {/* ─── Cost Report Tab ──────────────────────────────────────────── */}
+   633→            <TabsContent value="cost" className="space-y-6 mt-4">
+   634→              {costLoading ? (
+   635→                <CostReportSkeleton />
+   636→              ) : costError ? (
+   637→                <ErrorState message={costError} onRetry={fetchCostReport} />
+   638→              ) : costData ? (
+   639→                <>
+   640→                  {/* Report Summary Header */}
+   641→                  <ReportSummaryHeader
+   642→                    title="Cost Report"
+   643→                    metric={fmt.format(costData.totalOperatingCost)}
+   644→                    metricLabel="Total Operating Cost"
+   645→                    periodStart={costData.period.start}
+   646→                    periodEnd={costData.period.end}
+   647→                    onExport={exportCostCSV}
+   648→                    accent="amber"
+   649→                  />
+   650→
+   651→                  {/* KPI Cards — integrated with operating cost context */}
+   652→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   653→                    <SummaryCard
+   654→                      title="Food Cost"
+   655→                      value={fmt.format(costData.foodCost.total)}
+   656→                      icon={<IndianRupee className="h-5 w-5" />}
+   657→                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+   658→                      iconColor="text-amber-600 dark:text-amber-400"
+   659→                      subtitle={`${fmtNum.format(costData.meals.total)} meals served`}
+   660→                      previousValue={
+   661→                        compareMode && prevCostData
+   662→                          ? fmt.format(prevCostData.foodCost.total)
+   663→                          : undefined
+   664→                      }
+   665→                      goodWhenDown
+   666→                    />
+   667→                    <SummaryCard
+   668→                      title="Food Cost / Meal"
+   669→                      value={fmt.format(costData.foodCost.costPerMeal)}
+   670→                      icon={<Utensils className="h-5 w-5" />}
+   671→                      iconBg="bg-orange-100 dark:bg-orange-900/30"
+   672→                      iconColor="text-orange-600 dark:text-orange-400"
+   673→                      subtitle="Raw ingredient cost per meal"
+   674→                      previousValue={
+   675→                        compareMode && prevCostData
+   676→                          ? fmt.format(prevCostData.foodCost.costPerMeal)
+   677→                          : undefined
+   678→                      }
+   679→                      goodWhenDown
+   680→                    />
+   681→                    <SummaryCard
+   682→                      title="Operating Cost / Meal"
+   683→                      value={fmt.format(costData.operatingCostPerMeal)}
+   684→                      icon={<Wallet className="h-5 w-5" />}
+   685→                      iconBg="bg-rose-100 dark:bg-rose-900/30"
+   686→                      iconColor="text-rose-600 dark:text-rose-400"
+   687→                      subtitle="Food + expenses per meal"
+   688→                      previousValue={
+   689→                        compareMode && prevCostData
+   690→                          ? fmt.format(prevCostData.operatingCostPerMeal)
+   691→                          : undefined
+   692→                      }
+   693→                      goodWhenDown
+   694→                    />
+   695→                    <SummaryCard
+   696→                      title="Operating Expenses"
+   697→                      value={fmt.format(costData.expenses.total)}
+   698→                      icon={<TrendingUp className="h-5 w-5" />}
+   699→                      iconBg="bg-violet-100 dark:bg-violet-900/30"
+   700→                      iconColor="text-violet-600 dark:text-violet-400"
+   701→                      subtitle={`Based on ${totalEmployees} employees`}
+   702→                      previousValue={
+   703→                        compareMode && prevCostData
+   704→                          ? fmt.format(prevCostData.expenses.total)
+   705→                          : undefined
+   706→                      }
+   707→                      goodWhenDown
+   708→                    />
+   709→                  </div>
+   710→
+   711→                  {/* Charts Row */}
+   712→                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+   713→                    {/* Cost Breakdown by Category (Donut with % labels) */}
+   714→                    <Card className="transition-all hover:shadow-md">
+   715→                      <CardHeader className="pb-2">
+   716→                        <CardTitle className="text-base">Cost Breakdown by Category</CardTitle>
+   717→                        <CardDescription>Food cost distribution across ingredient categories</CardDescription>
+   718→                      </CardHeader>
+   719→                      <CardContent>
+   720→                        {costData.foodCost.categoryBreakdown.length > 0 ? (
+   721→                          <ChartContainer
+   722→                            config={costBreakdownConfig}
+   723→                            className="mx-auto aspect-square max-h-[320px]"
+   724→                          >
+   725→                            <PieChart>
+   726→                              <ChartTooltip
+   727→                                content={
+   728→                                  <ChartTooltipContent
+   729→                                    formatter={(value, name) => (
+   730→                                      <span>
+   731→                                        {name}: <span className="font-semibold tabular-nums">{fmt.format(Number(value))}</span>
+   732→                                      </span>
+   733→                                    )}
+   734→                                  />
+   735→                                }
+   736→                              />
+   737→                              <Pie
+   738→                                data={costData.foodCost.categoryBreakdown.map((c) => ({
+   739→                                  name: c.category,
+   740→                                  value: c.totalCost,
+   741→                                }))}
+   742→                                cx="50%"
+   743→                                cy="50%"
+   744→                                innerRadius={55}
+   745→                                outerRadius={95}
+   746→                                paddingAngle={2}
+   747→                                dataKey="value"
+   748→                                nameKey="name"
+   749→                                labelLine={false}
+   750→                                label={renderPiePercentLabel}
+   751→                              >
+   752→                                {costData.foodCost.categoryBreakdown.map((entry) => (
+   753→                                  <Cell key={entry.category} fill={getCategoryColor(entry.category)} />
+   754→                                ))}
+   755→                              </Pie>
+   756→                              <Legend
+   757→                                verticalAlign="bottom"
+   758→                                height={36}
+   759→                                iconType="circle"
+   760→                                formatter={(value) => (
+   761→                                  <span className="text-xs">{value}</span>
+   762→                                )}
+   763→                              />
+   764→                            </PieChart>
+   765→                          </ChartContainer>
+   766→                        ) : (
+   767→                          <EmptyState message="No category data available" />
+   768→                        )}
+   769→                      </CardContent>
+   770→                    </Card>
+   771→
+   772→                    {/* Daily Cost Trend (with chart-type toggle) */}
+   773→                    <Card className="transition-all hover:shadow-md">
+   774→                      <CardHeader className="pb-2">
+   775→                        <div className="flex items-start justify-between">
+   776→                          <div>
+   777→                            <CardTitle className="text-base">Daily Cost Trend</CardTitle>
+   778→                            <CardDescription>Food cost trend over the selected period</CardDescription>
+   779→                          </div>
+   780→                          <ChartTypeToggle value={trendChartType} onChange={setTrendChartType} />
+   781→                        </div>
+   782→                      </CardHeader>
+   783→                      <CardContent>
+   784→                        {costData.foodCost.dailyTrend.length > 0 ? (
+   785→                          <ChartContainer config={costTrendConfig} className="aspect-[2/1] w-full">
+   786→                            {trendChartType === 'line' ? (
+   787→                              <LineChart data={costData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+   788→                                <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+   789→                                <XAxis
+   790→                                  dataKey="date"
+   791→                                  tickFormatter={formatShortDate}
+   792→                                  tick={{ fontSize: 11 }}
+   793→                                  tickMargin={8}
+   794→                                  interval="preserveStartEnd"
+   795→                                  angle={-15}
+   796→                                  textAnchor="end"
+   797→                                  height={50}
+   798→                                  className="text-muted-foreground"
+   799→                                />
+   800→                                <YAxis
+   801→                                  tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+   802→                                  tick={{ fontSize: 11 }}
+   803→                                  className="text-muted-foreground"
+   804→                                />
+   805→                                <ChartTooltip
+   806→                                  content={
+   807→                                    <ChartTooltipContent
+   808→                                      labelFormatter={(label) => formatDate(label as string)}
+   809→                                      formatter={(value) => (
+   810→                                        <span className="tabular-nums">{fmt.format(Number(value))}</span>
+   811→                                      )}
+   812→                                    />
+   813→                                  }
+   814→                                />
+   815→                                <Line
+   816→                                  type="monotone"
+   817→                                  dataKey="cost"
+   818→                                  stroke="#f59e0b"
+   819→                                  strokeWidth={2}
+   820→                                  dot={{ r: 3, fill: '#f59e0b' }}
+   821→                                  activeDot={{ r: 5, fill: '#d97706' }}
+   822→                                />
+   823→                              </LineChart>
+   824→                            ) : (
+   825→                              <BarChart data={costData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+   826→                                <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+   827→                                <XAxis
+   828→                                  dataKey="date"
+   829→                                  tickFormatter={formatShortDate}
+   830→                                  tick={{ fontSize: 11 }}
+   831→                                  tickMargin={8}
+   832→                                  interval="preserveStartEnd"
+   833→                                  angle={-15}
+   834→                                  textAnchor="end"
+   835→                                  height={50}
+   836→                                  className="text-muted-foreground"
+   837→                                />
+   838→                                <YAxis
+   839→                                  tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+   840→                                  tick={{ fontSize: 11 }}
+   841→                                  className="text-muted-foreground"
+   842→                                />
+   843→                                <ChartTooltip
+   844→                                  content={
+   845→                                    <ChartTooltipContent
+   846→                                      labelFormatter={(label) => formatDate(label as string)}
+   847→                                      formatter={(value) => (
+   848→                                        <span className="tabular-nums">{fmt.format(Number(value))}</span>
+   849→                                      )}
+   850→                                    />
+   851→                                  }
+   852→                                />
+   853→                                <Bar dataKey="cost" fill="#f59e0b" radius={[4, 4, 0, 0]}>
+   854→                                  <RechartsLabel
+   855→                                    dataKey="cost"
+   856→                                    position="top"
+   857→                                    formatter={(v: number) => `₹${fmtNum.format(v)}`}
+   858→                                    style={{ fontSize: 9, fill: '#92400e' }}
+   859→                                  />
+   860→                                </Bar>
+   861→                              </BarChart>
+   862→                            )}
+   863→                          </ChartContainer>
+   864→                        ) : (
+   865→                          <EmptyState message="No daily trend data available" />
+   866→                        )}
+   867→                      </CardContent>
+   868→                    </Card>
+   869→                  </div>
+   870→
+   871→                  {/* Cost Table */}
+   872→                  <Card className="transition-all hover:shadow-md">
+   873→                    <CardHeader className="pb-2">
+   874→                      <CardTitle className="text-base">Daily Cost Details</CardTitle>
+   875→                      <CardDescription>Breakdown of daily costs and meals served</CardDescription>
+   876→                    </CardHeader>
+   877→                    <CardContent>
+   878→                      {costData.foodCost.dailyTrend.length > 0 ? (
+   879→                        <div className="max-h-96 overflow-y-auto">
+   880→                          <Table>
+   881→                            <TableHeader>
+   882→                              <TableRow>
+   883→                                <TableHead>Date</TableHead>
+   884→                                <TableHead className="text-right">Total Cost</TableHead>
+   885→                                <TableHead className="text-right">Meals Served</TableHead>
+   886→                                <TableHead className="text-right">Cost Per Meal</TableHead>
+   887→                              </TableRow>
+   888→                            </TableHeader>
+   889→                            <TableBody>
+   890→                              {costData.foodCost.dailyTrend.map((row) => {
+   891→                                const mealsForDay = costData.foodCost.dailyTrend.length
+   892→                                  ? costData.meals.total / costData.foodCost.dailyTrend.length
+   893→                                  : 0;
+   894→                                const costPerMeal =
+   895→                                  mealsForDay > 0 ? row.cost / mealsForDay : 0;
+   896→                                return (
+   897→                                  <TableRow key={row.date} className="hover:bg-muted/50 transition-colors">
+   898→                                    <TableCell className="font-medium tabular-nums">
+   899→                                      {formatDate(row.date)}
+   900→                                    </TableCell>
+   901→                                    <TableCell className="text-right tabular-nums">
+   902→                                      {fmt.format(row.cost)}
+   903→                                    </TableCell>
+   904→                                    <TableCell className="text-right tabular-nums">
+   905→                                      {fmtNum.format(Math.round(mealsForDay))}
+   906→                                    </TableCell>
+   907→                                    <TableCell className="text-right tabular-nums">
+   908→                                      {fmt.format(costPerMeal)}
+   909→                                    </TableCell>
+   910→                                  </TableRow>
+   911→                                );
+   912→                              })}
+   913→                            </TableBody>
+   914→                          </Table>
+   915→                        </div>
+   916→                      ) : (
+   917→                        <EmptyState message="No daily cost data available" />
+   918→                      )}
+   919→                    </CardContent>
+   920→                  </Card>
+   921→
+   922→                  {/* Expense Breakdown */}
+   923→                  {costData.expenses.breakdown.length > 0 && (
+   924→                    <Card className="transition-all hover:shadow-md">
+   925→                      <CardHeader className="pb-2">
+   926→                        <CardTitle className="text-base">Operating Expenses</CardTitle>
+   927→                        <CardDescription>Expense breakdown by category</CardDescription>
+   928→                      </CardHeader>
+   929→                      <CardContent>
+   930→                        <div className="max-h-64 overflow-y-auto">
+   931→                          <Table>
+   932→                            <TableHeader>
+   933→                              <TableRow>
+   934→                                <TableHead>Category</TableHead>
+   935→                                <TableHead className="text-right">Amount</TableHead>
+   936→                                <TableHead className="text-right">Share</TableHead>
+   937→                              </TableRow>
+   938→                            </TableHeader>
+   939→                            <TableBody>
+   940→                              {costData.expenses.breakdown.map((exp) => (
+   941→                                <TableRow key={exp.category} className="hover:bg-muted/50 transition-colors">
+   942→                                  <TableCell className="font-medium">{exp.category}</TableCell>
+   943→                                  <TableCell className="text-right tabular-nums">{fmt.format(exp.amount)}</TableCell>
+   944→                                  <TableCell className="text-right tabular-nums">
+   945→                                    {costData.expenses.total > 0
+   946→                                      ? ((exp.amount / costData.expenses.total) * 100).toFixed(1)
+   947→                                      : '0'}
+   948→                                    %
+   949→                                  </TableCell>
+   950→                                </TableRow>
+   951→                              ))}
+   952→                              <TableRow className="font-bold bg-amber-50/50 dark:bg-amber-950/20">
+   953→                                <TableCell>Total</TableCell>
+   954→                                <TableCell className="text-right tabular-nums">
+   955→                                  {fmt.format(costData.expenses.total)}
+   956→                                </TableCell>
+   957→                                <TableCell className="text-right">100%</TableCell>
+   958→                              </TableRow>
+   959→                            </TableBody>
+   960→                          </Table>
+   961→                        </div>
+   962→                      </CardContent>
+   963→                    </Card>
+   964→                  )}
+   965→                </>
+   966→              ) : (
+   967→                <Card>
+   968→                  <CardContent className="flex h-40 items-center justify-center text-muted-foreground">
+   969→                    No cost data available
+   970→                  </CardContent>
+   971→                </Card>
+   972→              )}
+   973→            </TabsContent>
+   974→
+   975→            {/* ─── Consumption Report Tab ───────────────────────────────────── */}
+   976→            <TabsContent value="consumption" className="space-y-6 mt-4">
+   977→              {consumptionLoading ? (
+   978→                <ConsumptionReportSkeleton />
+   979→              ) : consumptionError ? (
+   980→                <ErrorState message={consumptionError} onRetry={fetchConsumptionReport} />
+   981→              ) : consumptionData ? (
+   982→                <>
+   983→                  <ReportSummaryHeader
+   984→                    title="Consumption Report"
+   985→                    metric={fmt.format(consumptionData.summary.totalConsumption)}
+   986→                    metricLabel="Total Consumption Value"
+   987→                    periodStart={consumptionData.period.start}
+   988→                    periodEnd={consumptionData.period.end}
+   989→                    onExport={exportConsumptionCSV}
+   990→                    accent="orange"
+   991→                  />
+   992→
+   993→                  {/* Summary Cards */}
+   994→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+   995→                    <SummaryCard
+   996→                      title="Consumption Value"
+   997→                      value={fmt.format(consumptionData.summary.totalConsumption)}
+   998→                      icon={<Package className="h-5 w-5" />}
+   999→                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+  1000→                      iconColor="text-amber-600 dark:text-amber-400"
+  1001→                      subtitle="Total consumption value"
+  1002→                      previousValue={
+  1003→                        compareMode && prevConsumptionData
+  1004→                          ? fmt.format(prevConsumptionData.summary.totalConsumption)
+  1005→                          : undefined
+  1006→                      }
+  1007→                      goodWhenDown
+  1008→                    />
+  1009→                    <SummaryCard
+  1010→                      title="Wastage Value"
+  1011→                      value={fmt.format(consumptionData.summary.totalWastage)}
+  1012→                      icon={<TrendingDown className="h-5 w-5" />}
+  1013→                      iconBg="bg-rose-100 dark:bg-rose-900/30"
+  1014→                      iconColor="text-rose-600 dark:text-rose-400"
+  1015→                      subtitle={`${consumptionData.summary.wastagePercentage.toFixed(1)}% of total`}
+  1016→                      previousValue={
+  1017→                        compareMode && prevConsumptionData
+  1018→                          ? fmt.format(prevConsumptionData.summary.totalWastage)
+  1019→                          : undefined
+  1020→                      }
+  1021→                      goodWhenDown
+  1022→                    />
+  1023→                    <SummaryCard
+  1024→                      title="Ingredients Used"
+  1025→                      value={String(consumptionData.usageByIngredient.length)}
+  1026→                      icon={<BarChart3 className="h-5 w-5" />}
+  1027→                      iconBg="bg-violet-100 dark:bg-violet-900/30"
+  1028→                      iconColor="text-violet-600 dark:text-violet-400"
+  1029→                      subtitle="Distinct ingredients consumed"
+  1030→                    />
+  1031→                    <SummaryCard
+  1032→                      title="Categories"
+  1033→                      value={String(consumptionData.categoryBreakdown.length)}
+  1034→                      icon={<Package className="h-5 w-5" />}
+  1035→                      iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+  1036→                      iconColor="text-emerald-600 dark:text-emerald-400"
+  1037→                      subtitle="Categories tracked"
+  1038→                    />
+  1039→                  </div>
+  1040→
+  1041→                  {/* Charts Row */}
+  1042→                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+  1043→                    {/* Top Consuming Ingredients (Horizontal Bar) */}
+  1044→                    <Card className="transition-all hover:shadow-md">
+  1045→                      <CardHeader className="pb-2">
+  1046→                        <CardTitle className="text-base">Top Consuming Ingredients</CardTitle>
+  1047→                        <CardDescription>By quantity consumed</CardDescription>
+  1048→                      </CardHeader>
+  1049→                      <CardContent>
+  1050→                        {consumptionData.usageByIngredient.length > 0 ? (
+  1051→                          <ChartContainer
+  1052→                            config={consumptionBarConfig}
+  1053→                            className="aspect-[2/1] w-full"
+  1054→                          >
+  1055→                            <BarChart
+  1056→                              data={consumptionData.usageByIngredient.slice(0, 8).map((i) => ({
+  1057→                                name: i.ingredient.name.length > 12
+  1058→                                  ? i.ingredient.name.substring(0, 12) + '…'
+  1059→                                  : i.ingredient.name,
+  1060→                                totalQty: i.consumptionQty,
+  1061→                                wastageQty: i.wastageQty,
+  1062→                                unit: i.ingredient.unit,
+  1063→                              }))}
+  1064→                              layout="vertical"
+  1065→                              margin={{ top: 5, right: 30, bottom: 5, left: 0 }}
+  1066→                            >
+  1067→                              <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1068→                              <XAxis type="number" tick={{ fontSize: 11 }} className="text-muted-foreground" />
+  1069→                              <YAxis
+  1070→                                type="category"
+  1071→                                dataKey="name"
+  1072→                                width={90}
+  1073→                                tick={{ fontSize: 11 }}
+  1074→                                className="text-muted-foreground"
+  1075→                              />
+  1076→                              <ChartTooltip
+  1077→                                content={
+  1078→                                  <ChartTooltipContent
+  1079→                                    formatter={(value, _name, props) => {
+  1080→                                      const unit = props.payload?.unit || '';
+  1081→                                      return (
+  1082→                                        <span className="tabular-nums">
+  1083→                                          {fmtNum.format(Number(value))} {unit}
+  1084→                                        </span>
+  1085→                                      );
+  1086→                                    }}
+  1087→                                  />
+  1088→                                }
+  1089→                              />
+  1090→                              <Bar dataKey="totalQty" fill="#f59e0b" radius={[0, 4, 4, 0]}>
+  1091→                                <RechartsLabel
+  1092→                                  dataKey="totalQty"
+  1093→                                  position="right"
+  1094→                                  formatter={(v: number) => fmtNum.format(v)}
+  1095→                                  style={{ fontSize: 9, fill: '#92400e' }}
+  1096→                                />
+  1097→                              </Bar>
+  1098→                              <Bar dataKey="wastageQty" fill="#f43f5e" radius={[0, 4, 4, 0]} />
+  1099→                            </BarChart>
+  1100→                          </ChartContainer>
+  1101→                        ) : (
+  1102→                          <EmptyState message="No consumption data available" />
+  1103→                        )}
+  1104→                      </CardContent>
+  1105→                    </Card>
+  1106→
+  1107→                    {/* Consumption by Category (Donut with % labels) */}
+  1108→                    <Card className="transition-all hover:shadow-md">
+  1109→                      <CardHeader className="pb-2">
+  1110→                        <CardTitle className="text-base">Consumption by Category</CardTitle>
+  1111→                        <CardDescription>Cost distribution by ingredient category</CardDescription>
+  1112→                      </CardHeader>
+  1113→                      <CardContent>
+  1114→                        {consumptionData.categoryBreakdown.length > 0 ? (
+  1115→                          <ChartContainer
+  1116→                            config={consumptionCategoryConfig}
+  1117→                            className="mx-auto aspect-square max-h-[320px]"
+  1118→                          >
+  1119→                            <PieChart>
+  1120→                              <ChartTooltip
+  1121→                                content={
+  1122→                                  <ChartTooltipContent
+  1123→                                    formatter={(value, name) => (
+  1124→                                      <span>
+  1125→                                        {name}: <span className="font-semibold tabular-nums">{fmt.format(Number(value))}</span>
+  1126→                                      </span>
+  1127→                                    )}
+  1128→                                  />
+  1129→                                }
+  1130→                              />
+  1131→                              <Pie
+  1132→                                data={consumptionData.categoryBreakdown.map((c) => ({
+  1133→                                  name: c.category,
+  1134→                                  value: c.totalCost,
+  1135→                                }))}
+  1136→                                cx="50%"
+  1137→                                cy="50%"
+  1138→                                innerRadius={55}
+  1139→                                outerRadius={95}
+  1140→                                paddingAngle={2}
+  1141→                                dataKey="value"
+  1142→                                nameKey="name"
+  1143→                                labelLine={false}
+  1144→                                label={renderPiePercentLabel}
+  1145→                              >
+  1146→                                {consumptionData.categoryBreakdown.map((entry) => (
+  1147→                                  <Cell key={entry.category} fill={getCategoryColor(entry.category)} />
+  1148→                                ))}
+  1149→                              </Pie>
+  1150→                              <Legend
+  1151→                                verticalAlign="bottom"
+  1152→                                height={36}
+  1153→                                iconType="circle"
+  1154→                                formatter={(value) => (
+  1155→                                  <span className="text-xs">{value}</span>
+  1156→                                )}
+  1157→                              />
+  1158→                            </PieChart>
+  1159→                          </ChartContainer>
+  1160→                        ) : (
+  1161→                          <EmptyState message="No category data available" />
+  1162→                        )}
+  1163→                      </CardContent>
+  1164→                    </Card>
+  1165→                  </div>
+  1166→
+  1167→                  {/* Consumption Table */}
+  1168→                  <Card className="transition-all hover:shadow-md">
+  1169→                    <CardHeader className="pb-2">
+  1170→                      <CardTitle className="text-base">Ingredient Consumption Details</CardTitle>
+  1171→                      <CardDescription>Detailed breakdown of consumed and wasted ingredients</CardDescription>
+  1172→                    </CardHeader>
+  1173→                    <CardContent>
+  1174→                      {consumptionData.usageByIngredient.length > 0 ? (
+  1175→                        <div className="max-h-96 overflow-y-auto">
+  1176→                          <Table>
+  1177→                            <TableHeader>
+  1178→                              <TableRow>
+  1179→                                <TableHead>Ingredient</TableHead>
+  1180→                                <TableHead>Category</TableHead>
+  1181→                                <TableHead className="text-right">Qty Consumed</TableHead>
+  1182→                                <TableHead className="text-right">Unit</TableHead>
+  1183→                                <TableHead className="text-right">Total Cost</TableHead>
+  1184→                                <TableHead className="text-right">Wastage Qty</TableHead>
+  1185→                              </TableRow>
+  1186→                            </TableHeader>
+  1187→                            <TableBody>
+  1188→                              {consumptionData.usageByIngredient.map((item) => (
+  1189→                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
+  1190→                                  <TableCell className="font-medium">{item.ingredient.name}</TableCell>
+  1191→                                  <TableCell>
+  1192→                                    <Badge
+  1193→                                      variant="outline"
+  1194→                                      className="text-xs"
+  1195→                                      style={{
+  1196→                                        borderColor: getCategoryColor(item.ingredient.category),
+  1197→                                        color: getCategoryColor(item.ingredient.category),
+  1198→                                      }}
+  1199→                                    >
+
+[showing lines 600-1199 of 2431; use offset=1200 with limit to continue reading]

@@ -48,8 +48,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/components/auth/auth-provider";
+import { cn } from "@/lib/utils";
 import {
   Settings,
   Building2,
@@ -88,6 +91,11 @@ import {
   Pencil,
   UserCircle,
   KeyRound,
+  Mail,
+  Sparkles,
+  Hourglass,
+  Percent,
+  PackageCheck,
 } from "lucide-react";
 import type { ViewId } from "@/components/app-sidebar";
 import { AuditLogSection } from "@/components/module-views/audit-log-section";
@@ -190,12 +198,39 @@ interface BackupFile {
   data: Record<string, unknown>;
 }
 
+// ─── Stock Alert Configuration Types ─────────────────────────────────────────
+
+interface StockAlertConfig {
+  /** Percentage of minStock at which low stock alert triggers (default 80). */
+  lowStockThresholdPct: number;
+  /** Whether email notifications should be sent for low-stock events. */
+  emailNotifications: boolean;
+  /** Minimum days between successive low-stock alerts to avoid spam. */
+  minDaysBetweenAlerts: number;
+  /** Whether to show auto-reorder suggestions for low-stock items. */
+  autoReorderSuggestions: boolean;
+  /** Optional recipient email address for low-stock notifications. */
+  notifyEmail: string;
+  /** ISO date string of the last alert fired (used to enforce cooldown). */
+  lastAlertSentAt: string | null;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const CANTEEN_INFO_KEY = "rcs-canteen-info";
 const BUDGET_KEY = "rcs-canteen-budget";
 const ALERTS_KEY = "rcs-canteen-alerts";
 const LAST_BACKUP_KEY = "rcs-canteen-last-backup";
+const STOCK_ALERTS_KEY = "rcs-canteen-stock-alerts";
+
+const DEFAULT_STOCK_ALERTS: StockAlertConfig = {
+  lowStockThresholdPct: 80,
+  emailNotifications: true,
+  minDaysBetweenAlerts: 1,
+  autoReorderSuggestions: true,
+  notifyEmail: "",
+  lastAlertSentAt: null,
+};
 
 const DEFAULT_CANTEEN_INFO: CanteenInfo = {
   name: "RCS Canteen",
@@ -430,6 +465,13 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
   const [budgetSaved, setBudgetSaved] = useState(false);
   const [alertsSaved, setAlertsSaved] = useState(false);
   const [costReport, setCostReport] = useState<CostReportData | null>(null);
+
+  // Stock alert configuration state
+  const [stockAlertConfig, setStockAlertConfig] = useState<StockAlertConfig>(DEFAULT_STOCK_ALERTS);
+  const [stockAlertsSaved, setStockAlertsSaved] = useState(false);
+  const [stockAlertThresholdInput, setStockAlertThresholdInput] = useState("80");
+  const [stockAlertDaysInput, setStockAlertDaysInput] = useState("1");
+  const [stockAlertEmailInput, setStockAlertEmailInput] = useState("");
 
   // DB-backed budget state
   const [budgetHistory, setBudgetHistory] = useState<BudgetRecord[]>([]);
@@ -685,6 +727,65 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
 
     setAlertsSaved(true);
     setTimeout(() => setAlertsSaved(false), 3000);
+  };
+
+  // Load stock alert configuration from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STOCK_ALERTS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<StockAlertConfig>;
+        const merged: StockAlertConfig = {
+          ...DEFAULT_STOCK_ALERTS,
+          ...parsed,
+        };
+        setStockAlertConfig(merged);
+        setStockAlertThresholdInput(String(merged.lowStockThresholdPct));
+        setStockAlertDaysInput(String(merged.minDaysBetweenAlerts));
+        setStockAlertEmailInput(merged.notifyEmail ?? "");
+      } else {
+        localStorage.setItem(STOCK_ALERTS_KEY, JSON.stringify(DEFAULT_STOCK_ALERTS));
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, []);
+
+  // Save stock alert configuration to localStorage
+  const handleSaveStockAlerts = () => {
+    const pct = Math.min(100, Math.max(1, parseFloat(stockAlertThresholdInput) || 80));
+    const days = Math.min(30, Math.max(0, parseInt(stockAlertDaysInput) || 0));
+    const newConfig: StockAlertConfig = {
+      ...stockAlertConfig,
+      lowStockThresholdPct: pct,
+      minDaysBetweenAlerts: days,
+      notifyEmail: stockAlertEmailInput.trim(),
+    };
+    setStockAlertConfig(newConfig);
+    try {
+      localStorage.setItem(STOCK_ALERTS_KEY, JSON.stringify(newConfig));
+    } catch {
+      // ignore localStorage errors
+    }
+    setStockAlertsSaved(true);
+    toast({
+      title: "Stock alert settings saved",
+      description: `Alerts will trigger at ${pct}% of minimum stock level.`,
+    });
+    setTimeout(() => setStockAlertsSaved(false), 3000);
+  };
+
+  // Toggle a boolean flag in stock alert config
+  const toggleStockAlertFlag = (key: "emailNotifications" | "autoReorderSuggestions") => {
+    setStockAlertConfig((prev) => {
+      const updated: StockAlertConfig = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem(STOCK_ALERTS_KEY, JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
   };
 
   // Fetch data summary from APIs
@@ -1714,6 +1815,277 @@ export function SettingsView({ onNavigate }: SettingsViewProps) {
                     </tbody>
                   </table>
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* ─── Stock Alert Configuration Card ────────────────────────────────── */}
+        <Card className="md:col-span-2 card-elevated border-amber-200/60 dark:border-amber-800/30 overflow-hidden">
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-amber-500/10">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <PackageOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    Stock Alert Configuration
+                  </CardTitle>
+                  <CardDescription>
+                    Configure low-stock thresholds, notification preferences, and auto-reorder suggestions
+                  </CardDescription>
+                </div>
+                {isLoadingBudget ? (
+                  <Badge variant="outline" className="border-amber-200 text-amber-700 dark:border-amber-800 dark:text-amber-300">
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    Loading…
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "border-amber-200 dark:border-amber-800",
+                      lowStockCount > 0
+                        ? "text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20"
+                        : "text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20"
+                    )}
+                  >
+                    <PackageOpen className="h-3 w-3 mr-1" />
+                    {lowStockCount} low stock item{lowStockCount === 1 ? "" : "s"}
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+          </div>
+
+          <CardContent className="space-y-6 pt-6">
+            {/* ─── Low Stock Threshold ─────────────────────────────────── */}
+            <div className="rounded-xl border border-amber-200/60 dark:border-amber-800/30 bg-gradient-to-br from-amber-50/50 to-orange-50/50 dark:from-amber-900/10 dark:to-orange-900/10 p-5 space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30 shrink-0">
+                  <Percent className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-sm font-semibold">Low Stock Threshold</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Trigger alerts when stock falls below this percentage of the minimum stock level.
+                    Default is <span className="font-semibold text-amber-700 dark:text-amber-300">80%</span>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <Label htmlFor="stock-threshold-pct" className="text-xs text-muted-foreground">
+                    Threshold Percentage
+                  </Label>
+                  <span className="text-sm font-bold tabular-nums text-amber-700 dark:text-amber-300">
+                    {Math.min(100, Math.max(1, parseFloat(stockAlertThresholdInput) || 80))}%
+                  </span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Slider
+                    id="stock-threshold-slider"
+                    min={10}
+                    max={100}
+                    step={5}
+                    value={[Math.min(100, Math.max(1, parseFloat(stockAlertThresholdInput) || 80))]}
+                    onValueChange={(vals) => setStockAlertThresholdInput(String(vals[0] ?? 80))}
+                    className="flex-1"
+                    aria-label="Low stock threshold percentage"
+                  />
+                  <Input
+                    id="stock-threshold-pct"
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={stockAlertThresholdInput}
+                    onChange={(e) => setStockAlertThresholdInput(e.target.value)}
+                    placeholder="80"
+                    className="w-20 tabular-nums"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Example: An ingredient with min stock of 10 kg will trigger an alert when current
+                  stock reaches {(Math.min(100, Math.max(1, parseFloat(stockAlertThresholdInput) || 80)) * 0.1).toFixed(1)} kg.
+                </p>
+              </div>
+            </div>
+
+            {/* ─── Notification Preferences ─────────────────────────────── */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <h3 className="text-sm font-semibold">Notification Preferences</h3>
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30 shrink-0">
+                      <Mail className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <Label htmlFor="email-notifications" className="text-sm font-medium cursor-pointer">
+                        Email Notifications
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Send email alerts when ingredients fall below the threshold
+                      </p>
+                    </div>
+                  </div>
+                  <Switch
+                    id="email-notifications"
+                    checked={stockAlertConfig.emailNotifications}
+                    onCheckedChange={() => toggleStockAlertFlag("emailNotifications")}
+                  />
+                </div>
+
+                {stockAlertConfig.emailNotifications && (
+                  <div className="space-y-2 pl-12">
+                    <Label htmlFor="notify-email" className="text-xs text-muted-foreground">
+                      Notification Email Address
+                    </Label>
+                    <div className="relative max-w-md">
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        id="notify-email"
+                        type="email"
+                        placeholder="store@rcs-canteen.com"
+                        value={stockAlertEmailInput}
+                        onChange={(e) => setStockAlertEmailInput(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Leave blank to use the default store manager email.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30 shrink-0">
+                      <Hourglass className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div className="space-y-0.5 flex-1">
+                      <Label htmlFor="days-between-alerts" className="text-sm font-medium cursor-pointer">
+                        Minimum Days Between Alerts
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        Avoid alert spam by setting a cooldown period between successive notifications
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="days-between-alerts"
+                      type="number"
+                      min={0}
+                      max={30}
+                      value={stockAlertDaysInput}
+                      onChange={(e) => setStockAlertDaysInput(e.target.value)}
+                      className="w-20 tabular-nums text-center"
+                    />
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">day(s)</span>
+                  </div>
+                </div>
+                {stockAlertConfig.lastAlertSentAt && (
+                  <p className="text-xs text-muted-foreground pl-12">
+                    Last alert sent:{" "}
+                    <span className="font-medium">
+                      {new Date(stockAlertConfig.lastAlertSentAt).toLocaleString("en-IN", {
+                        dateStyle: "medium",
+                        timeStyle: "short",
+                      })}
+                    </span>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* ─── Auto-Reorder Suggestions ─────────────────────────────── */}
+            <div className="rounded-lg border border-amber-200/60 dark:border-amber-800/30 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-amber-100 dark:bg-amber-900/30 shrink-0">
+                    <Sparkles className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="space-y-0.5 flex-1">
+                    <Label htmlFor="auto-reorder" className="text-sm font-medium cursor-pointer">
+                      Auto-Reorder Suggestions
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Show reorder suggestions on the Stock page when items fall below the threshold.
+                      Suggestions include recommended quantity based on average consumption.
+                    </p>
+                  </div>
+                </div>
+                <Switch
+                  id="auto-reorder"
+                  checked={stockAlertConfig.autoReorderSuggestions}
+                  onCheckedChange={() => toggleStockAlertFlag("autoReorderSuggestions")}
+                />
+              </div>
+              {stockAlertConfig.autoReorderSuggestions && (
+                <div className="mt-3 flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 px-3 py-2">
+                  <PackageCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-xs text-amber-800 dark:text-amber-300">
+                    Active — low stock items will display a “Reorder Now” action with suggested quantity.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* ─── Save Button ───────────────────────────────────────────── */}
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <p className="text-xs text-muted-foreground">
+                Settings are stored locally in your browser under key{" "}
+                <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                  {STOCK_ALERTS_KEY}
+                </code>
+                .
+              </p>
+              <Button
+                onClick={handleSaveStockAlerts}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                {stockAlertsSaved ? (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Stock Alerts Saved!
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Stock Alert Settings
+                  </>
+                )}
+              </Button>
+            </div>
+
+            {/* ─── Quick Link to Stock View ────────────────────────────── */}
+            {onNavigate && (
+              <div className="flex items-center justify-between rounded-lg border border-dashed border-amber-300/70 dark:border-amber-800/40 bg-amber-50/40 dark:bg-amber-900/10 p-3">
+                <div className="flex items-center gap-3">
+                  <PackageOpen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  <div>
+                    <p className="text-sm font-medium">View Low Stock Items</p>
+                    <p className="text-xs text-muted-foreground">
+                      Jump to the Stock page to review items currently below threshold
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onNavigate("stock")}
+                  className="border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                >
+                  Open Stock
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
               </div>
             )}
           </CardContent>

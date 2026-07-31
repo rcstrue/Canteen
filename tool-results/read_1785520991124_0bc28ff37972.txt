@@ -1,0 +1,702 @@
+  1100→                          </ChartContainer>
+  1101→                        ) : (
+  1102→                          <EmptyState message="No consumption data available" />
+  1103→                        )}
+  1104→                      </CardContent>
+  1105→                    </Card>
+  1106→
+  1107→                    {/* Consumption by Category (Donut with % labels) */}
+  1108→                    <Card className="transition-all hover:shadow-md">
+  1109→                      <CardHeader className="pb-2">
+  1110→                        <CardTitle className="text-base">Consumption by Category</CardTitle>
+  1111→                        <CardDescription>Cost distribution by ingredient category</CardDescription>
+  1112→                      </CardHeader>
+  1113→                      <CardContent>
+  1114→                        {consumptionData.categoryBreakdown.length > 0 ? (
+  1115→                          <ChartContainer
+  1116→                            config={consumptionCategoryConfig}
+  1117→                            className="mx-auto aspect-square max-h-[320px]"
+  1118→                          >
+  1119→                            <PieChart>
+  1120→                              <ChartTooltip
+  1121→                                content={
+  1122→                                  <ChartTooltipContent
+  1123→                                    formatter={(value, name) => (
+  1124→                                      <span>
+  1125→                                        {name}: <span className="font-semibold tabular-nums">{fmt.format(Number(value))}</span>
+  1126→                                      </span>
+  1127→                                    )}
+  1128→                                  />
+  1129→                                }
+  1130→                              />
+  1131→                              <Pie
+  1132→                                data={consumptionData.categoryBreakdown.map((c) => ({
+  1133→                                  name: c.category,
+  1134→                                  value: c.totalCost,
+  1135→                                }))}
+  1136→                                cx="50%"
+  1137→                                cy="50%"
+  1138→                                innerRadius={55}
+  1139→                                outerRadius={95}
+  1140→                                paddingAngle={2}
+  1141→                                dataKey="value"
+  1142→                                nameKey="name"
+  1143→                                labelLine={false}
+  1144→                                label={renderPiePercentLabel}
+  1145→                              >
+  1146→                                {consumptionData.categoryBreakdown.map((entry) => (
+  1147→                                  <Cell key={entry.category} fill={getCategoryColor(entry.category)} />
+  1148→                                ))}
+  1149→                              </Pie>
+  1150→                              <Legend
+  1151→                                verticalAlign="bottom"
+  1152→                                height={36}
+  1153→                                iconType="circle"
+  1154→                                formatter={(value) => (
+  1155→                                  <span className="text-xs">{value}</span>
+  1156→                                )}
+  1157→                              />
+  1158→                            </PieChart>
+  1159→                          </ChartContainer>
+  1160→                        ) : (
+  1161→                          <EmptyState message="No category data available" />
+  1162→                        )}
+  1163→                      </CardContent>
+  1164→                    </Card>
+  1165→                  </div>
+  1166→
+  1167→                  {/* Consumption Table */}
+  1168→                  <Card className="transition-all hover:shadow-md">
+  1169→                    <CardHeader className="pb-2">
+  1170→                      <CardTitle className="text-base">Ingredient Consumption Details</CardTitle>
+  1171→                      <CardDescription>Detailed breakdown of consumed and wasted ingredients</CardDescription>
+  1172→                    </CardHeader>
+  1173→                    <CardContent>
+  1174→                      {consumptionData.usageByIngredient.length > 0 ? (
+  1175→                        <div className="max-h-96 overflow-y-auto">
+  1176→                          <Table>
+  1177→                            <TableHeader>
+  1178→                              <TableRow>
+  1179→                                <TableHead>Ingredient</TableHead>
+  1180→                                <TableHead>Category</TableHead>
+  1181→                                <TableHead className="text-right">Qty Consumed</TableHead>
+  1182→                                <TableHead className="text-right">Unit</TableHead>
+  1183→                                <TableHead className="text-right">Total Cost</TableHead>
+  1184→                                <TableHead className="text-right">Wastage Qty</TableHead>
+  1185→                              </TableRow>
+  1186→                            </TableHeader>
+  1187→                            <TableBody>
+  1188→                              {consumptionData.usageByIngredient.map((item) => (
+  1189→                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
+  1190→                                  <TableCell className="font-medium">{item.ingredient.name}</TableCell>
+  1191→                                  <TableCell>
+  1192→                                    <Badge
+  1193→                                      variant="outline"
+  1194→                                      className="text-xs"
+  1195→                                      style={{
+  1196→                                        borderColor: getCategoryColor(item.ingredient.category),
+  1197→                                        color: getCategoryColor(item.ingredient.category),
+  1198→                                      }}
+  1199→                                    >
+  1200→                                      {item.ingredient.category}
+  1201→                                    </Badge>
+  1202→                                  </TableCell>
+  1203→                                  <TableCell className="text-right tabular-nums">
+  1204→                                    {fmtNum.format(item.consumptionQty)}
+  1205→                                  </TableCell>
+  1206→                                  <TableCell className="text-right text-muted-foreground">
+  1207→                                    {item.ingredient.unit}
+  1208→                                  </TableCell>
+  1209→                                  <TableCell className="text-right tabular-nums">
+  1210→                                    {fmt.format(item.totalCost)}
+  1211→                                  </TableCell>
+  1212→                                  <TableCell className="text-right tabular-nums">
+  1213→                                    {item.wastageQty > 0 ? (
+  1214→                                      <span className="text-rose-600 dark:text-rose-400 font-medium">
+  1215→                                        {fmtNum.format(item.wastageQty)}
+  1216→                                      </span>
+  1217→                                    ) : (
+  1218→                                      <span className="text-muted-foreground">0</span>
+  1219→                                    )}
+  1220→                                  </TableCell>
+  1221→                                </TableRow>
+  1222→                              ))}
+  1223→                            </TableBody>
+  1224→                          </Table>
+  1225→                        </div>
+  1226→                      ) : (
+  1227→                        <EmptyState message="No consumption data available" />
+  1228→                      )}
+  1229→                    </CardContent>
+  1230→                  </Card>
+  1231→
+  1232→                  {/* Daily Consumption Trend (with chart-type toggle) */}
+  1233→                  {consumptionData.dailyTrend.length > 0 && (
+  1234→                    <Card className="transition-all hover:shadow-md">
+  1235→                      <CardHeader className="pb-2">
+  1236→                        <div className="flex items-start justify-between">
+  1237→                          <div>
+  1238→                            <CardTitle className="text-base">Daily Consumption Trend</CardTitle>
+  1239→                            <CardDescription>Consumption vs wastage over time</CardDescription>
+  1240→                          </div>
+  1241→                          <ChartTypeToggle value={trendChartType} onChange={setTrendChartType} />
+  1242→                        </div>
+  1243→                      </CardHeader>
+  1244→                      <CardContent>
+  1245→                        <ChartContainer
+  1246→                          config={consumptionTrendConfig}
+  1247→                          className="aspect-[2/1] w-full"
+  1248→                        >
+  1249→                          {trendChartType === 'line' ? (
+  1250→                            <LineChart
+  1251→                              data={consumptionData.dailyTrend.map((d) => ({
+  1252→                                date: d.date,
+  1253→                                consumption: d.consumption,
+  1254→                                wastage: d.wastage,
+  1255→                              }))}
+  1256→                              margin={{ top: 10, right: 12, bottom: 5, left: 0 }}
+  1257→                            >
+  1258→                              <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1259→                              <XAxis
+  1260→                                dataKey="date"
+  1261→                                tickFormatter={formatShortDate}
+  1262→                                tick={{ fontSize: 11 }}
+  1263→                                tickMargin={8}
+  1264→                                interval="preserveStartEnd"
+  1265→                                angle={-15}
+  1266→                                textAnchor="end"
+  1267→                                height={50}
+  1268→                                className="text-muted-foreground"
+  1269→                              />
+  1270→                              <YAxis
+  1271→                                tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+  1272→                                tick={{ fontSize: 11 }}
+  1273→                                className="text-muted-foreground"
+  1274→                              />
+  1275→                              <ChartTooltip
+  1276→                                content={
+  1277→                                  <ChartTooltipContent
+  1278→                                    labelFormatter={(label) => formatDate(label as string)}
+  1279→                                    formatter={(value) => (
+  1280→                                      <span className="tabular-nums">{fmt.format(Number(value))}</span>
+  1281→                                    )}
+  1282→                                  />
+  1283→                                }
+  1284→                              />
+  1285→                              <Line
+  1286→                                type="monotone"
+  1287→                                dataKey="consumption"
+  1288→                                stroke="#f59e0b"
+  1289→                                strokeWidth={2}
+  1290→                                dot={{ r: 3, fill: '#f59e0b' }}
+  1291→                                activeDot={{ r: 5 }}
+  1292→                              />
+  1293→                              <Line
+  1294→                                type="monotone"
+  1295→                                dataKey="wastage"
+  1296→                                stroke="#f43f5e"
+  1297→                                strokeWidth={2}
+  1298→                                dot={{ r: 3, fill: '#f43f5e' }}
+  1299→                                activeDot={{ r: 5 }}
+  1300→                              />
+  1301→                            </LineChart>
+  1302→                          ) : (
+  1303→                            <BarChart
+  1304→                              data={consumptionData.dailyTrend.map((d) => ({
+  1305→                                date: d.date,
+  1306→                                consumption: d.consumption,
+  1307→                                wastage: d.wastage,
+  1308→                              }))}
+  1309→                              margin={{ top: 10, right: 12, bottom: 5, left: 0 }}
+  1310→                            >
+  1311→                              <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1312→                              <XAxis
+  1313→                                dataKey="date"
+  1314→                                tickFormatter={formatShortDate}
+  1315→                                tick={{ fontSize: 11 }}
+  1316→                                tickMargin={8}
+  1317→                                interval="preserveStartEnd"
+  1318→                                angle={-15}
+  1319→                                textAnchor="end"
+  1320→                                height={50}
+  1321→                                className="text-muted-foreground"
+  1322→                              />
+  1323→                              <YAxis
+  1324→                                tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+  1325→                                tick={{ fontSize: 11 }}
+  1326→                                className="text-muted-foreground"
+  1327→                              />
+  1328→                              <ChartTooltip
+  1329→                                content={
+  1330→                                  <ChartTooltipContent
+  1331→                                    labelFormatter={(label) => formatDate(label as string)}
+  1332→                                    formatter={(value) => (
+  1333→                                      <span className="tabular-nums">{fmt.format(Number(value))}</span>
+  1334→                                    )}
+  1335→                                  />
+  1336→                                }
+  1337→                              />
+  1338→                              <Bar dataKey="consumption" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+  1339→                              <Bar dataKey="wastage" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+  1340→                            </BarChart>
+  1341→                          )}
+  1342→                        </ChartContainer>
+  1343→                      </CardContent>
+  1344→                    </Card>
+  1345→                  )}
+  1346→                </>
+  1347→              ) : (
+  1348→                <Card>
+  1349→                  <CardContent className="flex h-40 items-center justify-center text-muted-foreground">
+  1350→                    No consumption data available
+  1351→                  </CardContent>
+  1352→                </Card>
+  1353→              )}
+  1354→            </TabsContent>
+  1355→
+  1356→            {/* ─── Variance Report Tab ──────────────────────────────────────── */}
+  1357→            <TabsContent value="variance" className="space-y-6 mt-4">
+  1358→              {varianceLoading ? (
+  1359→                <VarianceReportSkeleton />
+  1360→              ) : varianceError ? (
+  1361→                <ErrorState message={varianceError} onRetry={fetchVarianceReport} />
+  1362→              ) : varianceData ? (
+  1363→                <>
+  1364→                  <ReportSummaryHeader
+  1365→                    title="Variance Report"
+  1366→                    metric={fmt.format(varianceData.summary.totalVarianceCost)}
+  1367→                    metricLabel="Total Variance Cost"
+  1368→                    periodStart={varianceData.period.start}
+  1369→                    periodEnd={varianceData.period.end}
+  1370→                    onExport={exportVarianceCSV}
+  1371→                    accent="rose"
+  1372→                  />
+  1373→
+  1374→                  {/* Explanation Banner */}
+  1375→                  <Card className="border-amber-200 dark:border-amber-800/50 bg-amber-50/50 dark:bg-amber-950/20">
+  1376→                    <CardContent className="p-4">
+  1377→                      <div className="flex gap-3">
+  1378→                        <Info className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+  1379→                        <div className="text-sm">
+  1380→                          <p className="font-medium text-amber-800 dark:text-amber-300 mb-1">
+  1381→                            Understanding Variance Report
+  1382→                          </p>
+  1383→                          <p className="text-amber-700 dark:text-amber-400">
+  1384→                            <strong>Theoretical consumption</strong> is calculated from recipe quantities × meals served.{' '}
+  1385→                            <strong>Actual consumption</strong> is recorded from stock movements. The difference (variance)
+  1386→                            helps identify potential waste, over-portioning, or theft. A positive variance means more was
+  1387→                            consumed than expected.
+  1388→                          </p>
+  1389→                        </div>
+  1390→                      </div>
+  1391→                    </CardContent>
+  1392→                  </Card>
+  1393→
+  1394→                  {/* Summary Cards */}
+  1395→                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  1396→                    <SummaryCard
+  1397→                      title="Total Variance"
+  1398→                      value={fmt.format(varianceData.summary.totalVarianceCost)}
+  1399→                      icon={<Scale className="h-5 w-5" />}
+  1400→                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+  1401→                      iconColor="text-amber-600 dark:text-amber-400"
+  1402→                      subtitle={`${fmtPct(varianceData.summary.variancePercentage)} of theoretical`}
+  1403→                      trend={varianceData.summary.totalVarianceCost > 0 ? 'up' : 'down'}
+  1404→                      previousValue={
+  1405→                        compareMode && prevVarianceData
+  1406→                          ? fmt.format(prevVarianceData.summary.totalVarianceCost)
+  1407→                          : undefined
+  1408→                      }
+  1409→                      goodWhenDown
+  1410→                    />
+  1411→                    <SummaryCard
+  1412→                      title="Normal"
+  1413→                      value={String(
+  1414→                        varianceData.varianceByIngredient.filter((i) => i.status === 'normal').length
+  1415→                      )}
+  1416→                      icon={<CheckCircle2 className="h-5 w-5" />}
+  1417→                      iconBg="bg-emerald-100 dark:bg-emerald-900/30"
+  1418→                      iconColor="text-emerald-600 dark:text-emerald-400"
+  1419→                      subtitle="≤5% variance"
+  1420→                    />
+  1421→                    <SummaryCard
+  1422→                      title="Warning"
+  1423→                      value={String(varianceData.summary.warningCount)}
+  1424→                      icon={<AlertCircle className="h-5 w-5" />}
+  1425→                      iconBg="bg-amber-100 dark:bg-amber-900/30"
+  1426→                      iconColor="text-amber-600 dark:text-amber-400"
+  1427→                      subtitle="≤15% variance"
+  1428→                    />
+  1429→                    <SummaryCard
+  1430→                      title="Critical"
+  1431→                      value={String(varianceData.summary.criticalCount)}
+  1432→                      icon={<XCircle className="h-5 w-5" />}
+  1433→                      iconBg="bg-rose-100 dark:bg-rose-900/30"
+  1434→                      iconColor="text-rose-600 dark:text-rose-400"
+  1435→                      subtitle=">15% variance"
+  1436→                    />
+  1437→                  </div>
+  1438→
+  1439→                  {/* Variance Bar Chart */}
+  1440→                  <Card className="transition-all hover:shadow-md">
+  1441→                    <CardHeader className="pb-2">
+  1442→                      <CardTitle className="text-base">Theoretical vs Actual Consumption</CardTitle>
+  1443→                      <CardDescription>Comparison of expected vs actual ingredient usage</CardDescription>
+  1444→                    </CardHeader>
+  1445→                    <CardContent>
+  1446→                      {varianceData.varianceByIngredient.length > 0 ? (
+  1447→                        <ChartContainer
+  1448→                          config={varianceBarConfig}
+  1449→                          className="aspect-[2/1] w-full"
+  1450→                        >
+  1451→                          <BarChart
+  1452→                            data={varianceData.varianceByIngredient.slice(0, 10).map((i) => ({
+  1453→                              name: i.ingredient.name.length > 15
+  1454→                                ? i.ingredient.name.substring(0, 15) + '…'
+  1455→                                : i.ingredient.name,
+  1456→                              theoretical: i.theoreticalQty,
+  1457→                              actual: i.actualQty,
+  1458→                              unit: i.ingredient.unit,
+  1459→                            }))}
+  1460→                            margin={{ top: 10, right: 12, bottom: 5, left: 0 }}
+  1461→                          >
+  1462→                            <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+  1463→                            <XAxis
+  1464→                              dataKey="name"
+  1465→                              tick={{ fontSize: 11 }}
+  1466→                              tickMargin={8}
+  1467→                              interval={0}
+  1468→                              angle={-20}
+  1469→                              textAnchor="end"
+  1470→                              height={70}
+  1471→                              className="text-muted-foreground"
+  1472→                            />
+  1473→                            <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
+  1474→                            <ChartTooltip
+  1475→                              content={
+  1476→                                <ChartTooltipContent
+  1477→                                  formatter={(value, _name, props) => {
+  1478→                                    const unit = props.payload?.unit || '';
+  1479→                                    return (
+  1480→                                      <span className="tabular-nums">
+  1481→                                        {fmtNum.format(Number(value))} {unit}
+  1482→                                      </span>
+  1483→                                    );
+  1484→                                  }}
+  1485→                                />
+  1486→                              }
+  1487→                            />
+  1488→                            <Legend iconType="circle" />
+  1489→                            <Bar dataKey="theoretical" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+  1490→                            <Bar dataKey="actual" fill="#f97316" radius={[4, 4, 0, 0]} />
+  1491→                          </BarChart>
+  1492→                        </ChartContainer>
+  1493→                      ) : (
+  1494→                        <EmptyState message="No variance data available" />
+  1495→                      )}
+  1496→                    </CardContent>
+  1497→                  </Card>
+  1498→
+  1499→                  {/* Variance Table */}
+  1500→                  <Card className="transition-all hover:shadow-md">
+  1501→                    <CardHeader className="pb-2">
+  1502→                      <CardTitle className="text-base">Variance by Ingredient</CardTitle>
+  1503→                      <CardDescription>
+  1504→                        Detailed comparison of theoretical vs actual consumption
+  1505→                      </CardDescription>
+  1506→                    </CardHeader>
+  1507→                    <CardContent>
+  1508→                      {varianceData.varianceByIngredient.length > 0 ? (
+  1509→                        <div className="max-h-96 overflow-y-auto">
+  1510→                          <Table>
+  1511→                            <TableHeader>
+  1512→                              <TableRow>
+  1513→                                <TableHead>Ingredient</TableHead>
+  1514→                                <TableHead className="text-right">Theoretical Qty</TableHead>
+  1515→                                <TableHead className="text-right">Actual Qty</TableHead>
+  1516→                                <TableHead className="text-right">Variance Qty</TableHead>
+  1517→                                <TableHead className="text-right">Variance %</TableHead>
+  1518→                                <TableHead className="text-center">Status</TableHead>
+  1519→                              </TableRow>
+  1520→                            </TableHeader>
+  1521→                            <TableBody>
+  1522→                              {varianceData.varianceByIngredient.map((item) => (
+  1523→                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
+  1524→                                  <TableCell className="font-medium">
+  1525→                                    {item.ingredient.name}
+  1526→                                    <span className="text-muted-foreground text-xs ml-1">
+  1527→                                      ({item.ingredient.unit})
+  1528→                                    </span>
+  1529→                                  </TableCell>
+  1530→                                  <TableCell className="text-right tabular-nums">
+  1531→                                    {fmtNum.format(item.theoreticalQty)}
+  1532→                                  </TableCell>
+  1533→                                  <TableCell className="text-right tabular-nums">
+  1534→                                    {fmtNum.format(item.actualQty)}
+  1535→                                  </TableCell>
+  1536→                                  <TableCell className="text-right tabular-nums">
+  1537→                                    <span
+  1538→                                      className={
+  1539→                                        item.varianceQty > 0
+  1540→                                          ? 'text-rose-600 dark:text-rose-400'
+  1541→                                          : item.varianceQty < 0
+  1542→                                          ? 'text-emerald-600 dark:text-emerald-400'
+  1543→                                          : ''
+  1544→                                      }
+  1545→                                    >
+  1546→                                      {item.varianceQty > 0 ? '+' : ''}
+  1547→                                      {fmtNum.format(item.varianceQty)}
+  1548→                                    </span>
+  1549→                                  </TableCell>
+  1550→                                  <TableCell className="text-right tabular-nums">
+  1551→                                    <span
+  1552→                                      className={
+  1553→                                        Math.abs(item.variancePercent) > 15
+  1554→                                          ? 'text-rose-600 dark:text-rose-400 font-semibold'
+  1555→                                          : Math.abs(item.variancePercent) > 5
+  1556→                                          ? 'text-amber-600 dark:text-amber-400 font-medium'
+  1557→                                          : 'text-emerald-600 dark:text-emerald-400'
+  1558→                                      }
+  1559→                                    >
+  1560→                                      {fmtPct(item.variancePercent)}
+  1561→                                    </span>
+  1562→                                  </TableCell>
+  1563→                                  <TableCell className="text-center">
+  1564→                                    <VarianceBadge status={item.status} />
+  1565→                                  </TableCell>
+  1566→                                </TableRow>
+  1567→                              ))}
+  1568→                            </TableBody>
+  1569→                          </Table>
+  1570→                        </div>
+  1571→                      ) : (
+  1572→                        <EmptyState message="No variance data available" />
+  1573→                      )}
+  1574→                    </CardContent>
+  1575→                  </Card>
+  1576→
+  1577→                  {/* Variance Cost Summary */}
+  1578→                  {varianceData.varianceByIngredient.length > 0 && (
+  1579→                    <Card className="transition-all hover:shadow-md">
+  1580→                      <CardHeader className="pb-2">
+  1581→                        <CardTitle className="text-base">Variance Cost Impact</CardTitle>
+  1582→                        <CardDescription>Financial impact of variance by ingredient</CardDescription>
+  1583→                      </CardHeader>
+  1584→                      <CardContent>
+  1585→                        <div className="max-h-64 overflow-y-auto">
+  1586→                          <Table>
+  1587→                            <TableHeader>
+  1588→                              <TableRow>
+  1589→                                <TableHead>Ingredient</TableHead>
+  1590→                                <TableHead className="text-right">Theoretical Cost</TableHead>
+  1591→                                <TableHead className="text-right">Actual Cost</TableHead>
+  1592→                                <TableHead className="text-right">Variance Cost</TableHead>
+  1593→                                <TableHead className="text-center">Status</TableHead>
+  1594→                              </TableRow>
+  1595→                            </TableHeader>
+  1596→                            <TableBody>
+  1597→                              {varianceData.varianceByIngredient.map((item) => (
+  1598→                                <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
+  1599→                                  <TableCell className="font-medium">{item.ingredient.name}</TableCell>
+  1600→                                  <TableCell className="text-right tabular-nums">
+  1601→                                    {fmt.format(item.theoreticalCost)}
+  1602→                                  </TableCell>
+  1603→                                  <TableCell className="text-right tabular-nums">
+  1604→                                    {fmt.format(item.actualCost)}
+  1605→                                  </TableCell>
+  1606→                                  <TableCell className="text-right tabular-nums">
+  1607→                                    <span
+  1608→                                      className={
+  1609→                                        item.varianceCost > 0
+  1610→                                          ? 'text-rose-600 dark:text-rose-400'
+  1611→                                          : item.varianceCost < 0
+  1612→                                          ? 'text-emerald-600 dark:text-emerald-400'
+  1613→                                          : ''
+  1614→                                      }
+  1615→                                    >
+  1616→                                      {item.varianceCost > 0 ? '+' : ''}
+  1617→                                      {fmt.format(item.varianceCost)}
+  1618→                                    </span>
+  1619→                                  </TableCell>
+  1620→                                  <TableCell className="text-center">
+  1621→                                    <VarianceBadge status={item.status} />
+  1622→                                  </TableCell>
+  1623→                                </TableRow>
+  1624→                              ))}
+  1625→                              <TableRow className="font-bold bg-amber-50/50 dark:bg-amber-950/20">
+  1626→                                <TableCell>Total</TableCell>
+  1627→                                <TableCell className="text-right tabular-nums">
+  1628→                                  {fmt.format(varianceData.summary.totalTheoreticalCost)}
+  1629→                                </TableCell>
+  1630→                                <TableCell className="text-right tabular-nums">
+  1631→                                  {fmt.format(varianceData.summary.totalActualCost)}
+  1632→                                </TableCell>
+  1633→                                <TableCell className="text-right tabular-nums">
+  1634→                                  <span
+  1635→                                    className={
+  1636→                                      varianceData.summary.totalVarianceCost > 0
+  1637→                                        ? 'text-rose-600 dark:text-rose-400'
+  1638→                                        : 'text-emerald-600 dark:text-emerald-400'
+  1639→                                    }
+  1640→                                  >
+  1641→                                    {varianceData.summary.totalVarianceCost > 0 ? '+' : ''}
+  1642→                                    {fmt.format(varianceData.summary.totalVarianceCost)}
+  1643→                                  </span>
+  1644→                                </TableCell>
+  1645→                                <TableCell />
+  1646→                              </TableRow>
+  1647→                            </TableBody>
+  1648→                          </Table>
+  1649→                        </div>
+  1650→                      </CardContent>
+  1651→                    </Card>
+  1652→                  )}
+  1653→                </>
+  1654→              ) : (
+  1655→                <Card>
+  1656→                  <CardContent className="flex h-40 items-center justify-center text-muted-foreground">
+  1657→                    No variance data available
+  1658→                  </CardContent>
+  1659→                </Card>
+  1660→              )}
+  1661→            </TabsContent>
+  1662→          </motion.div>
+  1663→        </AnimatePresence>
+  1664→      </Tabs>
+  1665→    </div>
+  1666→  );
+  1667→}
+  1668→
+  1669→// ─── Sub-Components ──────────────────────────────────────────────────────────
+  1670→
+  1671→function SummaryCard({
+  1672→  title,
+  1673→  value,
+  1674→  icon,
+  1675→  iconBg,
+  1676→  iconColor,
+  1677→  subtitle,
+  1678→  trend,
+  1679→  previousValue,
+  1680→  goodWhenDown,
+  1681→}: {
+  1682→  title: string;
+  1683→  value: string;
+  1684→  icon: React.ReactNode;
+  1685→  iconBg: string;
+  1686→  iconColor: string;
+  1687→  subtitle?: string;
+  1688→  trend?: 'up' | 'down';
+  1689→  previousValue?: string;
+  1690→  goodWhenDown?: boolean;
+  1691→}) {
+  1692→  // Compute delta vs previous value
+  1693→  const delta = useMemo(() => {
+  1694→    if (!previousValue) return null;
+  1695→    const currNum = parseFloat(value.replace(/[^0-9.-]/g, '')) || 0;
+  1696→    const prevNum = parseFloat(previousValue.replace(/[^0-9.-]/g, '')) || 0;
+  1697→    if (prevNum === 0) return null;
+  1698→    return ((currNum - prevNum) / Math.abs(prevNum)) * 100;
+  1699→  }, [value, previousValue]);
+  1700→
+  1701→  const deltaPositive = delta !== null && delta > 0;
+  1702→  const deltaIsGood =
+  1703→    delta !== null
+  1704→      ? goodWhenDown
+  1705→        ? !deltaPositive
+  1706→        : deltaPositive
+  1707→      : null;
+  1708→
+  1709→  return (
+  1710→    <Card className="transition-all hover:shadow-md">
+  1711→      <CardContent className="p-4">
+  1712→        <div className="flex items-center justify-between">
+  1713→          <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconBg}`}>
+  1714→            <span className={iconColor}>{icon}</span>
+  1715→          </div>
+  1716→          {trend && (
+  1717→            <span
+  1718→              className={
+  1719→                trend === 'up'
+  1720→                  ? 'flex items-center text-rose-500 text-xs font-medium'
+  1721→                  : 'flex items-center text-emerald-500 text-xs font-medium'
+  1722→              }
+  1723→            >
+  1724→              {trend === 'up' ? (
+  1725→                <ArrowUpRight className="h-3.5 w-3.5" />
+  1726→              ) : (
+  1727→                <ArrowDownRight className="h-3.5 w-3.5" />
+  1728→              )}
+  1729→            </span>
+  1730→          )}
+  1731→        </div>
+  1732→        <div className="mt-3">
+  1733→          <p className="text-sm text-muted-foreground">{title}</p>
+  1734→          <p className="text-2xl font-bold tabular-nums">{value}</p>
+  1735→          {previousValue && (
+  1736→            <p className="text-xs text-muted-foreground mt-0.5">
+  1737→              Prev: <span className="tabular-nums">{previousValue}</span>
+  1738→              {delta !== null && (
+  1739→                <span
+  1740→                  className={`ml-1 font-medium ${
+  1741→                    deltaIsGood ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+  1742→                  }`}
+  1743→                >
+  1744→                  ({delta >= 0 ? '+' : ''}{delta.toFixed(1)}%)
+  1745→                </span>
+  1746→              )}
+  1747→            </p>
+  1748→          )}
+  1749→          {subtitle && !previousValue && (
+  1750→            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+  1751→          )}
+  1752→        </div>
+  1753→      </CardContent>
+  1754→    </Card>
+  1755→  );
+  1756→}
+  1757→
+  1758→function VarianceBadge({ status }: { status: 'normal' | 'warning' | 'critical' }) {
+  1759→  switch (status) {
+  1760→    case 'normal':
+  1761→      return (
+  1762→        <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800">
+  1763→          <CheckCircle2 className="h-3 w-3 mr-1" />
+  1764→          Normal
+  1765→        </Badge>
+  1766→      );
+  1767→    case 'warning':
+  1768→      return (
+  1769→        <Badge className="bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800">
+  1770→          <AlertCircle className="h-3 w-3 mr-1" />
+  1771→          Warning
+  1772→        </Badge>
+  1773→      );
+  1774→    case 'critical':
+  1775→      return (
+  1776→        <Badge className="bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800">
+  1777→          <XCircle className="h-3 w-3 mr-1" />
+  1778→          Critical
+  1779→        </Badge>
+  1780→      );
+  1781→  }
+  1782→}
+  1783→
+  1784→function ChartTypeToggle({
+  1785→  value,
+  1786→  onChange,
+  1787→}: {
+  1788→  value: TrendChartType;
+  1789→  onChange: (v: TrendChartType) => void;
+  1790→}) {
+  1791→  return (
+  1792→    <div className="inline-flex rounded-md border bg-muted/50 p-0.5">
+  1793→      <button
+  1794→        type="button"
+  1795→        onClick={() => onChange('line')}
+  1796→        className={`flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-all ${
+  1797→          value === 'line'
+  1798→            ? 'bg-background shadow-sm text-foreground'
+  1799→            : 'text-muted-foreground hover:text-foreground'
+
+[showing lines 1100-1799 of 2431; use offset=1800 with limit to continue reading]

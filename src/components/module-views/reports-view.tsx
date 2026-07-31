@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Card,
   CardContent,
@@ -55,6 +54,8 @@ import {
   Scale,
   Flame,
   Sparkles,
+  Columns2,
+  FileDown,
 } from 'lucide-react';
 import {
   LineChart,
@@ -73,6 +74,7 @@ import {
   Label as RechartsLabel,
 } from 'recharts';
 import { downloadCSV } from '@/lib/export-utils';
+import { formatINR } from '@/lib/utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -155,38 +157,35 @@ interface MonthlyTrendResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmt = new Intl.NumberFormat('en-IN', {
-  style: 'currency',
-  currency: 'INR',
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
-
 const fmtNum = new Intl.NumberFormat('en-IN', {
   maximumFractionDigits: 2,
 });
 
 const fmtPct = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
 
-// Cohesive palette per spec: amber-500, orange-500, rose-500, emerald-500, violet-500, cyan-500
+/**
+ * Color palette expressed in oklch() — matches the amber/orange canteen theme
+ * and the CSS custom properties in globals.css. oklch() is a valid CSS color
+ * function and recharts accepts it for fills/strokes.
+ */
 const PALETTE = [
-  '#f59e0b', // amber-500
-  '#f97316', // orange-500
-  '#f43f5e', // rose-500
-  '#10b981', // emerald-500
-  '#8b5cf6', // violet-500
-  '#06b6d4', // cyan-500
+  'oklch(0.769 0.188 70)',    // amber-500
+  'oklch(0.705 0.213 47)',    // orange-500
+  'oklch(0.645 0.246 16)',    // rose-500
+  'oklch(0.696 0.17 162)',    // emerald-500
+  'oklch(0.606 0.25 292)',    // violet-500
+  'oklch(0.715 0.143 215)',   // cyan-500
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
-  Grains: '#f59e0b', // amber
-  Pulses: '#f97316', // orange
-  Vegetables: '#10b981', // emerald
-  Oil: '#8b5cf6', // violet
-  Spices: '#f43f5e', // rose
-  Dairy: '#06b6d4', // cyan
-  Meat: '#ef4444', // red
-  Other: '#6b7280', // gray
+  Grains: 'oklch(0.769 0.188 70)',    // amber
+  Pulses: 'oklch(0.705 0.213 47)',    // orange
+  Vegetables: 'oklch(0.696 0.17 162)',// emerald
+  Oil: 'oklch(0.606 0.25 292)',       // violet
+  Spices: 'oklch(0.645 0.246 16)',    // rose
+  Dairy: 'oklch(0.715 0.143 215)',    // cyan
+  Meat: 'oklch(0.577 0.245 27)',      // red
+  Other: 'oklch(0.551 0.016 285)',    // gray
 };
 
 function getCategoryColor(category: string): string {
@@ -236,7 +235,7 @@ function getPreviousRange(start: string, end: string): { start: string; end: str
 // ─── Chart Configs ────────────────────────────────────────────────────────────
 
 const costTrendConfig: ChartConfig = {
-  cost: { label: 'Daily Cost', color: '#f59e0b' },
+  cost: { label: 'Daily Cost', color: 'oklch(0.769 0.188 70)' },
 };
 
 const costBreakdownConfig: ChartConfig = {
@@ -244,13 +243,13 @@ const costBreakdownConfig: ChartConfig = {
 };
 
 const consumptionBarConfig: ChartConfig = {
-  totalQty: { label: 'Qty Consumed', color: '#f59e0b' },
-  wastageQty: { label: 'Wastage', color: '#f43f5e' },
+  totalQty: { label: 'Qty Consumed', color: 'oklch(0.769 0.188 70)' },
+  wastageQty: { label: 'Wastage', color: 'oklch(0.645 0.246 16)' },
 };
 
 const consumptionTrendConfig: ChartConfig = {
-  consumption: { label: 'Consumption', color: '#f59e0b' },
-  wastage: { label: 'Wastage', color: '#f43f5e' },
+  consumption: { label: 'Consumption', color: 'oklch(0.769 0.188 70)' },
+  wastage: { label: 'Wastage', color: 'oklch(0.645 0.246 16)' },
 };
 
 const consumptionCategoryConfig: ChartConfig = {
@@ -258,13 +257,13 @@ const consumptionCategoryConfig: ChartConfig = {
 };
 
 const varianceBarConfig: ChartConfig = {
-  theoretical: { label: 'Theoretical', color: '#f59e0b' },
-  actual: { label: 'Actual', color: '#f97316' },
+  theoretical: { label: 'Theoretical', color: 'oklch(0.769 0.188 70)' },
+  actual: { label: 'Actual', color: 'oklch(0.705 0.213 47)' },
 };
 
 const monthlyTrendConfig: ChartConfig = {
-  foodCost: { label: 'Food Cost', color: '#f59e0b' },
-  operatingCost: { label: 'Operating Cost', color: '#10b981' },
+  foodCost: { label: 'Food Cost', color: 'oklch(0.769 0.188 70)' },
+  operatingCost: { label: 'Operating Cost', color: 'oklch(0.696 0.17 162)' },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -277,6 +276,7 @@ export function ReportsView() {
 
   // New feature toggles
   const [compareMode, setCompareMode] = useState(false);
+  const [comparisonView, setComparisonView] = useState(false);
   const [trendChartType, setTrendChartType] = useState<TrendChartType>('line');
 
   const [costData, setCostData] = useState<CostReport | null>(null);
@@ -499,7 +499,7 @@ export function ReportsView() {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 view-enter">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30">
@@ -514,7 +514,7 @@ export function ReportsView() {
       </div>
 
       {/* Period Selector + Global Actions */}
-      <Card className="transition-all hover:shadow-md">
+      <Card className="card-elevated transition-all hover:shadow-md">
         <CardContent className="p-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-3">
@@ -582,6 +582,20 @@ export function ReportsView() {
                 </Label>
               </div>
 
+              {/* Comparison View toggle — side-by-side charts */}
+              <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
+                <Switch
+                  id="comparison-view"
+                  checked={comparisonView}
+                  onCheckedChange={setComparisonView}
+                  aria-label="Toggle side-by-side comparison view"
+                />
+                <Label htmlFor="comparison-view" className="cursor-pointer text-xs font-medium flex items-center gap-1">
+                  <Columns2 className="h-3 w-3" />
+                  Side-by-Side
+                </Label>
+              </div>
+
               <Button
                 size="sm"
                 variant="outline"
@@ -589,7 +603,24 @@ export function ReportsView() {
                 className="gap-1.5"
               >
                 <Printer className="h-4 w-4" />
-                Print
+                Print Report
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  // Reuse the CSV export of the active tab as the "PDF" export
+                  // for now — a proper PDF export requires a server-side renderer.
+                  if (activeTab === 'cost') exportCostCSV();
+                  else if (activeTab === 'consumption') exportConsumptionCSV();
+                  else if (activeTab === 'variance') exportVarianceCSV();
+                  toast.success('Report exported as CSV (PDF generation coming soon).');
+                }}
+                className="gap-1.5"
+              >
+                <FileDown className="h-4 w-4" />
+                Export PDF
               </Button>
             </div>
           </div>
@@ -621,16 +652,9 @@ export function ReportsView() {
           </TabsTrigger>
         </TabsList>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
-          >
-            {/* ─── Cost Report Tab ──────────────────────────────────────────── */}
-            <TabsContent value="cost" className="space-y-6 mt-4">
+        <div key={activeTab} className="view-enter">
+          {/* ─── Cost Report Tab ──────────────────────────────────────────── */}
+          <TabsContent value="cost" className="space-y-6 mt-4">
               {costLoading ? (
                 <CostReportSkeleton />
               ) : costError ? (
@@ -640,7 +664,7 @@ export function ReportsView() {
                   {/* Report Summary Header */}
                   <ReportSummaryHeader
                     title="Cost Report"
-                    metric={fmt.format(costData.totalOperatingCost)}
+                    metric={formatINR(costData.totalOperatingCost)}
                     metricLabel="Total Operating Cost"
                     periodStart={costData.period.start}
                     periodEnd={costData.period.end}
@@ -652,56 +676,56 @@ export function ReportsView() {
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <SummaryCard
                       title="Food Cost"
-                      value={fmt.format(costData.foodCost.total)}
+                      value={formatINR(costData.foodCost.total)}
                       icon={<IndianRupee className="h-5 w-5" />}
                       iconBg="bg-amber-100 dark:bg-amber-900/30"
                       iconColor="text-amber-600 dark:text-amber-400"
                       subtitle={`${fmtNum.format(costData.meals.total)} meals served`}
                       previousValue={
                         compareMode && prevCostData
-                          ? fmt.format(prevCostData.foodCost.total)
+                          ? formatINR(prevCostData.foodCost.total)
                           : undefined
                       }
                       goodWhenDown
                     />
                     <SummaryCard
                       title="Food Cost / Meal"
-                      value={fmt.format(costData.foodCost.costPerMeal)}
+                      value={formatINR(costData.foodCost.costPerMeal)}
                       icon={<Utensils className="h-5 w-5" />}
                       iconBg="bg-orange-100 dark:bg-orange-900/30"
                       iconColor="text-orange-600 dark:text-orange-400"
                       subtitle="Raw ingredient cost per meal"
                       previousValue={
                         compareMode && prevCostData
-                          ? fmt.format(prevCostData.foodCost.costPerMeal)
+                          ? formatINR(prevCostData.foodCost.costPerMeal)
                           : undefined
                       }
                       goodWhenDown
                     />
                     <SummaryCard
                       title="Operating Cost / Meal"
-                      value={fmt.format(costData.operatingCostPerMeal)}
+                      value={formatINR(costData.operatingCostPerMeal)}
                       icon={<Wallet className="h-5 w-5" />}
                       iconBg="bg-rose-100 dark:bg-rose-900/30"
                       iconColor="text-rose-600 dark:text-rose-400"
                       subtitle="Food + expenses per meal"
                       previousValue={
                         compareMode && prevCostData
-                          ? fmt.format(prevCostData.operatingCostPerMeal)
+                          ? formatINR(prevCostData.operatingCostPerMeal)
                           : undefined
                       }
                       goodWhenDown
                     />
                     <SummaryCard
                       title="Operating Expenses"
-                      value={fmt.format(costData.expenses.total)}
+                      value={formatINR(costData.expenses.total)}
                       icon={<TrendingUp className="h-5 w-5" />}
                       iconBg="bg-violet-100 dark:bg-violet-900/30"
                       iconColor="text-violet-600 dark:text-violet-400"
                       subtitle={`Based on ${totalEmployees} employees`}
                       previousValue={
                         compareMode && prevCostData
-                          ? fmt.format(prevCostData.expenses.total)
+                          ? formatINR(prevCostData.expenses.total)
                           : undefined
                       }
                       goodWhenDown
@@ -711,7 +735,7 @@ export function ReportsView() {
                   {/* Charts Row */}
                   <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {/* Cost Breakdown by Category (Donut with % labels) */}
-                    <Card className="transition-all hover:shadow-md">
+                    <Card className="card-elevated transition-all hover:shadow-md">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base">Cost Breakdown by Category</CardTitle>
                         <CardDescription>Food cost distribution across ingredient categories</CardDescription>
@@ -728,7 +752,7 @@ export function ReportsView() {
                                   <ChartTooltipContent
                                     formatter={(value, name) => (
                                       <span>
-                                        {name}: <span className="font-semibold tabular-nums">{fmt.format(Number(value))}</span>
+                                        {name}: <span className="font-semibold tabular-nums">{formatINR(Number(value))}</span>
                                       </span>
                                     )}
                                   />
@@ -770,7 +794,7 @@ export function ReportsView() {
                     </Card>
 
                     {/* Daily Cost Trend (with chart-type toggle) */}
-                    <Card className="transition-all hover:shadow-md">
+                    <Card className="card-elevated transition-all hover:shadow-md">
                       <CardHeader className="pb-2">
                         <div className="flex items-start justify-between">
                           <div>
@@ -782,85 +806,171 @@ export function ReportsView() {
                       </CardHeader>
                       <CardContent>
                         {costData.foodCost.dailyTrend.length > 0 ? (
-                          <ChartContainer config={costTrendConfig} className="aspect-[2/1] w-full">
-                            {trendChartType === 'line' ? (
-                              <LineChart data={costData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-                                <XAxis
-                                  dataKey="date"
-                                  tickFormatter={formatShortDate}
-                                  tick={{ fontSize: 11 }}
-                                  tickMargin={8}
-                                  interval="preserveStartEnd"
-                                  angle={-15}
-                                  textAnchor="end"
-                                  height={50}
-                                  className="text-muted-foreground"
-                                />
-                                <YAxis
-                                  tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
-                                  tick={{ fontSize: 11 }}
-                                  className="text-muted-foreground"
-                                />
-                                <ChartTooltip
-                                  content={
-                                    <ChartTooltipContent
-                                      labelFormatter={(label) => formatDate(label as string)}
-                                      formatter={(value) => (
-                                        <span className="tabular-nums">{fmt.format(Number(value))}</span>
-                                      )}
+                          <div className={comparisonView ? 'grid grid-cols-1 gap-4 lg:grid-cols-2' : ''}>
+                            <div>
+                              {comparisonView && (
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                                  Current Period
+                                </p>
+                              )}
+                              <ChartContainer config={costTrendConfig} className="aspect-[2/1] w-full">
+                                {trendChartType === 'line' ? (
+                                  <LineChart data={costData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                                    <XAxis
+                                      dataKey="date"
+                                      tickFormatter={formatShortDate}
+                                      tick={{ fontSize: 11 }}
+                                      tickMargin={8}
+                                      interval="preserveStartEnd"
+                                      angle={-15}
+                                      textAnchor="end"
+                                      height={50}
+                                      className="text-muted-foreground"
                                     />
-                                  }
-                                />
-                                <Line
-                                  type="monotone"
-                                  dataKey="cost"
-                                  stroke="#f59e0b"
-                                  strokeWidth={2}
-                                  dot={{ r: 3, fill: '#f59e0b' }}
-                                  activeDot={{ r: 5, fill: '#d97706' }}
-                                />
-                              </LineChart>
-                            ) : (
-                              <BarChart data={costData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
-                                <XAxis
-                                  dataKey="date"
-                                  tickFormatter={formatShortDate}
-                                  tick={{ fontSize: 11 }}
-                                  tickMargin={8}
-                                  interval="preserveStartEnd"
-                                  angle={-15}
-                                  textAnchor="end"
-                                  height={50}
-                                  className="text-muted-foreground"
-                                />
-                                <YAxis
-                                  tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
-                                  tick={{ fontSize: 11 }}
-                                  className="text-muted-foreground"
-                                />
-                                <ChartTooltip
-                                  content={
-                                    <ChartTooltipContent
-                                      labelFormatter={(label) => formatDate(label as string)}
-                                      formatter={(value) => (
-                                        <span className="tabular-nums">{fmt.format(Number(value))}</span>
-                                      )}
+                                    <YAxis
+                                      tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+                                      tick={{ fontSize: 11 }}
+                                      className="text-muted-foreground"
                                     />
-                                  }
-                                />
-                                <Bar dataKey="cost" fill="#f59e0b" radius={[4, 4, 0, 0]}>
-                                  <RechartsLabel
-                                    dataKey="cost"
-                                    position="top"
-                                    formatter={(v: number) => `₹${fmtNum.format(v)}`}
-                                    style={{ fontSize: 9, fill: '#92400e' }}
-                                  />
-                                </Bar>
-                              </BarChart>
+                                    <ChartTooltip
+                                      content={
+                                        <ChartTooltipContent
+                                          labelFormatter={(label) => formatDate(label as string)}
+                                          formatter={(value) => (
+                                            <span className="tabular-nums">{formatINR(Number(value))}</span>
+                                          )}
+                                        />
+                                      }
+                                    />
+                                    <Line
+                                      type="monotone"
+                                      dataKey="cost"
+                                      stroke="oklch(0.769 0.188 70)"
+                                      strokeWidth={2}
+                                      dot={{ r: 3, fill: 'oklch(0.769 0.188 70)' }}
+                                      activeDot={{ r: 5, fill: 'oklch(0.666 0.179 58)' }}
+                                    />
+                                  </LineChart>
+                                ) : (
+                                  <BarChart data={costData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                                    <XAxis
+                                      dataKey="date"
+                                      tickFormatter={formatShortDate}
+                                      tick={{ fontSize: 11 }}
+                                      tickMargin={8}
+                                      interval="preserveStartEnd"
+                                      angle={-15}
+                                      textAnchor="end"
+                                      height={50}
+                                      className="text-muted-foreground"
+                                    />
+                                    <YAxis
+                                      tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+                                      tick={{ fontSize: 11 }}
+                                      className="text-muted-foreground"
+                                    />
+                                    <ChartTooltip
+                                      content={
+                                        <ChartTooltipContent
+                                          labelFormatter={(label) => formatDate(label as string)}
+                                          formatter={(value) => (
+                                            <span className="tabular-nums">{formatINR(Number(value))}</span>
+                                          )}
+                                        />
+                                      }
+                                    />
+                                    <Bar dataKey="cost" fill="oklch(0.769 0.188 70)" radius={[4, 4, 0, 0]} />
+                                  </BarChart>
+                                )}
+                              </ChartContainer>
+                            </div>
+                            {comparisonView && (
+                              <div>
+                                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                  Previous Period
+                                </p>
+                                {prevCostData && prevCostData.foodCost.dailyTrend.length > 0 ? (
+                                  <ChartContainer config={costTrendConfig} className="aspect-[2/1] w-full">
+                                    {trendChartType === 'line' ? (
+                                      <LineChart data={prevCostData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                                        <XAxis
+                                          dataKey="date"
+                                          tickFormatter={formatShortDate}
+                                          tick={{ fontSize: 11 }}
+                                          tickMargin={8}
+                                          interval="preserveStartEnd"
+                                          angle={-15}
+                                          textAnchor="end"
+                                          height={50}
+                                          className="text-muted-foreground"
+                                        />
+                                        <YAxis
+                                          tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+                                          tick={{ fontSize: 11 }}
+                                          className="text-muted-foreground"
+                                        />
+                                        <ChartTooltip
+                                          content={
+                                            <ChartTooltipContent
+                                              labelFormatter={(label) => formatDate(label as string)}
+                                              formatter={(value) => (
+                                                <span className="tabular-nums">{formatINR(Number(value))}</span>
+                                              )}
+                                            />
+                                          }
+                                        />
+                                        <Line
+                                          type="monotone"
+                                          dataKey="cost"
+                                          stroke="oklch(0.551 0.016 285)"
+                                          strokeWidth={2}
+                                          strokeDasharray="5 5"
+                                          dot={{ r: 3, fill: 'oklch(0.551 0.016 285)' }}
+                                          activeDot={{ r: 5 }}
+                                        />
+                                      </LineChart>
+                                    ) : (
+                                      <BarChart data={prevCostData.foodCost.dailyTrend} margin={{ top: 10, right: 12, bottom: 5, left: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" />
+                                        <XAxis
+                                          dataKey="date"
+                                          tickFormatter={formatShortDate}
+                                          tick={{ fontSize: 11 }}
+                                          tickMargin={8}
+                                          interval="preserveStartEnd"
+                                          angle={-15}
+                                          textAnchor="end"
+                                          height={50}
+                                          className="text-muted-foreground"
+                                        />
+                                        <YAxis
+                                          tickFormatter={(v) => `₹${fmtNum.format(v / 1000)}k`}
+                                          tick={{ fontSize: 11 }}
+                                          className="text-muted-foreground"
+                                        />
+                                        <ChartTooltip
+                                          content={
+                                            <ChartTooltipContent
+                                              labelFormatter={(label) => formatDate(label as string)}
+                                              formatter={(value) => (
+                                                <span className="tabular-nums">{formatINR(Number(value))}</span>
+                                              )}
+                                            />
+                                          }
+                                        />
+                                        <Bar dataKey="cost" fill="oklch(0.551 0.016 285)" radius={[4, 4, 0, 0]} />
+                                      </BarChart>
+                                    )}
+                                  </ChartContainer>
+                                ) : (
+                                  <EmptyState message="Enable the Compare toggle to load previous-period data." />
+                                )}
+                              </div>
                             )}
-                          </ChartContainer>
+                          </div>
                         ) : (
                           <EmptyState message="No daily trend data available" />
                         )}
@@ -869,7 +979,7 @@ export function ReportsView() {
                   </div>
 
                   {/* Cost Table */}
-                  <Card className="transition-all hover:shadow-md">
+                  <Card className="card-elevated transition-all hover:shadow-md">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base">Daily Cost Details</CardTitle>
                       <CardDescription>Breakdown of daily costs and meals served</CardDescription>
@@ -899,13 +1009,13 @@ export function ReportsView() {
                                       {formatDate(row.date)}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
-                                      {fmt.format(row.cost)}
+                                      {formatINR(row.cost)}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
                                       {fmtNum.format(Math.round(mealsForDay))}
                                     </TableCell>
                                     <TableCell className="text-right tabular-nums">
-                                      {fmt.format(costPerMeal)}
+                                      {formatINR(costPerMeal)}
                                     </TableCell>
                                   </TableRow>
                                 );
@@ -921,7 +1031,7 @@ export function ReportsView() {
 
                   {/* Expense Breakdown */}
                   {costData.expenses.breakdown.length > 0 && (
-                    <Card className="transition-all hover:shadow-md">
+                    <Card className="card-elevated transition-all hover:shadow-md">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base">Operating Expenses</CardTitle>
                         <CardDescription>Expense breakdown by category</CardDescription>
@@ -940,7 +1050,7 @@ export function ReportsView() {
                               {costData.expenses.breakdown.map((exp) => (
                                 <TableRow key={exp.category} className="hover:bg-muted/50 transition-colors">
                                   <TableCell className="font-medium">{exp.category}</TableCell>
-                                  <TableCell className="text-right tabular-nums">{fmt.format(exp.amount)}</TableCell>
+                                  <TableCell className="text-right tabular-nums">{formatINR(exp.amount)}</TableCell>
                                   <TableCell className="text-right tabular-nums">
                                     {costData.expenses.total > 0
                                       ? ((exp.amount / costData.expenses.total) * 100).toFixed(1)
@@ -952,7 +1062,7 @@ export function ReportsView() {
                               <TableRow className="font-bold bg-amber-50/50 dark:bg-amber-950/20">
                                 <TableCell>Total</TableCell>
                                 <TableCell className="text-right tabular-nums">
-                                  {fmt.format(costData.expenses.total)}
+                                  {formatINR(costData.expenses.total)}
                                 </TableCell>
                                 <TableCell className="text-right">100%</TableCell>
                               </TableRow>
@@ -982,7 +1092,7 @@ export function ReportsView() {
                 <>
                   <ReportSummaryHeader
                     title="Consumption Report"
-                    metric={fmt.format(consumptionData.summary.totalConsumption)}
+                    metric={formatINR(consumptionData.summary.totalConsumption)}
                     metricLabel="Total Consumption Value"
                     periodStart={consumptionData.period.start}
                     periodEnd={consumptionData.period.end}
@@ -994,28 +1104,28 @@ export function ReportsView() {
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <SummaryCard
                       title="Consumption Value"
-                      value={fmt.format(consumptionData.summary.totalConsumption)}
+                      value={formatINR(consumptionData.summary.totalConsumption)}
                       icon={<Package className="h-5 w-5" />}
                       iconBg="bg-amber-100 dark:bg-amber-900/30"
                       iconColor="text-amber-600 dark:text-amber-400"
                       subtitle="Total consumption value"
                       previousValue={
                         compareMode && prevConsumptionData
-                          ? fmt.format(prevConsumptionData.summary.totalConsumption)
+                          ? formatINR(prevConsumptionData.summary.totalConsumption)
                           : undefined
                       }
                       goodWhenDown
                     />
                     <SummaryCard
                       title="Wastage Value"
-                      value={fmt.format(consumptionData.summary.totalWastage)}
+                      value={formatINR(consumptionData.summary.totalWastage)}
                       icon={<TrendingDown className="h-5 w-5" />}
                       iconBg="bg-rose-100 dark:bg-rose-900/30"
                       iconColor="text-rose-600 dark:text-rose-400"
                       subtitle={`${consumptionData.summary.wastagePercentage.toFixed(1)}% of total`}
                       previousValue={
                         compareMode && prevConsumptionData
-                          ? fmt.format(prevConsumptionData.summary.totalWastage)
+                          ? formatINR(prevConsumptionData.summary.totalWastage)
                           : undefined
                       }
                       goodWhenDown
@@ -1041,7 +1151,7 @@ export function ReportsView() {
                   {/* Charts Row */}
                   <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                     {/* Top Consuming Ingredients (Horizontal Bar) */}
-                    <Card className="transition-all hover:shadow-md">
+                    <Card className="card-elevated transition-all hover:shadow-md">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base">Top Consuming Ingredients</CardTitle>
                         <CardDescription>By quantity consumed</CardDescription>
@@ -1087,15 +1197,15 @@ export function ReportsView() {
                                   />
                                 }
                               />
-                              <Bar dataKey="totalQty" fill="#f59e0b" radius={[0, 4, 4, 0]}>
+                              <Bar dataKey="totalQty" fill="oklch(0.769 0.188 70)" radius={[0, 4, 4, 0]}>
                                 <RechartsLabel
                                   dataKey="totalQty"
                                   position="right"
                                   formatter={(v: number) => fmtNum.format(v)}
-                                  style={{ fontSize: 9, fill: '#92400e' }}
+                                  style={{ fontSize: 9, fill: 'oklch(0.463 0.121 41)' }}
                                 />
                               </Bar>
-                              <Bar dataKey="wastageQty" fill="#f43f5e" radius={[0, 4, 4, 0]} />
+                              <Bar dataKey="wastageQty" fill="oklch(0.645 0.246 16)" radius={[0, 4, 4, 0]} />
                             </BarChart>
                           </ChartContainer>
                         ) : (
@@ -1105,7 +1215,7 @@ export function ReportsView() {
                     </Card>
 
                     {/* Consumption by Category (Donut with % labels) */}
-                    <Card className="transition-all hover:shadow-md">
+                    <Card className="card-elevated transition-all hover:shadow-md">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base">Consumption by Category</CardTitle>
                         <CardDescription>Cost distribution by ingredient category</CardDescription>
@@ -1122,7 +1232,7 @@ export function ReportsView() {
                                   <ChartTooltipContent
                                     formatter={(value, name) => (
                                       <span>
-                                        {name}: <span className="font-semibold tabular-nums">{fmt.format(Number(value))}</span>
+                                        {name}: <span className="font-semibold tabular-nums">{formatINR(Number(value))}</span>
                                       </span>
                                     )}
                                   />
@@ -1165,7 +1275,7 @@ export function ReportsView() {
                   </div>
 
                   {/* Consumption Table */}
-                  <Card className="transition-all hover:shadow-md">
+                  <Card className="card-elevated transition-all hover:shadow-md">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base">Ingredient Consumption Details</CardTitle>
                       <CardDescription>Detailed breakdown of consumed and wasted ingredients</CardDescription>
@@ -1207,7 +1317,7 @@ export function ReportsView() {
                                     {item.ingredient.unit}
                                   </TableCell>
                                   <TableCell className="text-right tabular-nums">
-                                    {fmt.format(item.totalCost)}
+                                    {formatINR(item.totalCost)}
                                   </TableCell>
                                   <TableCell className="text-right tabular-nums">
                                     {item.wastageQty > 0 ? (
@@ -1231,7 +1341,7 @@ export function ReportsView() {
 
                   {/* Daily Consumption Trend (with chart-type toggle) */}
                   {consumptionData.dailyTrend.length > 0 && (
-                    <Card className="transition-all hover:shadow-md">
+                    <Card className="card-elevated transition-all hover:shadow-md">
                       <CardHeader className="pb-2">
                         <div className="flex items-start justify-between">
                           <div>
@@ -1277,7 +1387,7 @@ export function ReportsView() {
                                   <ChartTooltipContent
                                     labelFormatter={(label) => formatDate(label as string)}
                                     formatter={(value) => (
-                                      <span className="tabular-nums">{fmt.format(Number(value))}</span>
+                                      <span className="tabular-nums">{formatINR(Number(value))}</span>
                                     )}
                                   />
                                 }
@@ -1285,17 +1395,17 @@ export function ReportsView() {
                               <Line
                                 type="monotone"
                                 dataKey="consumption"
-                                stroke="#f59e0b"
+                                stroke="oklch(0.769 0.188 70)"
                                 strokeWidth={2}
-                                dot={{ r: 3, fill: '#f59e0b' }}
+                                dot={{ r: 3, fill: 'oklch(0.769 0.188 70)' }}
                                 activeDot={{ r: 5 }}
                               />
                               <Line
                                 type="monotone"
                                 dataKey="wastage"
-                                stroke="#f43f5e"
+                                stroke="oklch(0.645 0.246 16)"
                                 strokeWidth={2}
-                                dot={{ r: 3, fill: '#f43f5e' }}
+                                dot={{ r: 3, fill: 'oklch(0.645 0.246 16)' }}
                                 activeDot={{ r: 5 }}
                               />
                             </LineChart>
@@ -1330,13 +1440,13 @@ export function ReportsView() {
                                   <ChartTooltipContent
                                     labelFormatter={(label) => formatDate(label as string)}
                                     formatter={(value) => (
-                                      <span className="tabular-nums">{fmt.format(Number(value))}</span>
+                                      <span className="tabular-nums">{formatINR(Number(value))}</span>
                                     )}
                                   />
                                 }
                               />
-                              <Bar dataKey="consumption" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                              <Bar dataKey="wastage" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="consumption" fill="oklch(0.769 0.188 70)" radius={[4, 4, 0, 0]} />
+                              <Bar dataKey="wastage" fill="oklch(0.645 0.246 16)" radius={[4, 4, 0, 0]} />
                             </BarChart>
                           )}
                         </ChartContainer>
@@ -1363,7 +1473,7 @@ export function ReportsView() {
                 <>
                   <ReportSummaryHeader
                     title="Variance Report"
-                    metric={fmt.format(varianceData.summary.totalVarianceCost)}
+                    metric={formatINR(varianceData.summary.totalVarianceCost)}
                     metricLabel="Total Variance Cost"
                     periodStart={varianceData.period.start}
                     periodEnd={varianceData.period.end}
@@ -1395,7 +1505,7 @@ export function ReportsView() {
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <SummaryCard
                       title="Total Variance"
-                      value={fmt.format(varianceData.summary.totalVarianceCost)}
+                      value={formatINR(varianceData.summary.totalVarianceCost)}
                       icon={<Scale className="h-5 w-5" />}
                       iconBg="bg-amber-100 dark:bg-amber-900/30"
                       iconColor="text-amber-600 dark:text-amber-400"
@@ -1403,7 +1513,7 @@ export function ReportsView() {
                       trend={varianceData.summary.totalVarianceCost > 0 ? 'up' : 'down'}
                       previousValue={
                         compareMode && prevVarianceData
-                          ? fmt.format(prevVarianceData.summary.totalVarianceCost)
+                          ? formatINR(prevVarianceData.summary.totalVarianceCost)
                           : undefined
                       }
                       goodWhenDown
@@ -1437,7 +1547,7 @@ export function ReportsView() {
                   </div>
 
                   {/* Variance Bar Chart */}
-                  <Card className="transition-all hover:shadow-md">
+                  <Card className="card-elevated transition-all hover:shadow-md">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base">Theoretical vs Actual Consumption</CardTitle>
                       <CardDescription>Comparison of expected vs actual ingredient usage</CardDescription>
@@ -1486,8 +1596,8 @@ export function ReportsView() {
                               }
                             />
                             <Legend iconType="circle" />
-                            <Bar dataKey="theoretical" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                            <Bar dataKey="actual" fill="#f97316" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="theoretical" fill="oklch(0.769 0.188 70)" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="actual" fill="oklch(0.705 0.213 47)" radius={[4, 4, 0, 0]} />
                           </BarChart>
                         </ChartContainer>
                       ) : (
@@ -1497,7 +1607,7 @@ export function ReportsView() {
                   </Card>
 
                   {/* Variance Table */}
-                  <Card className="transition-all hover:shadow-md">
+                  <Card className="card-elevated transition-all hover:shadow-md">
                     <CardHeader className="pb-2">
                       <CardTitle className="text-base">Variance by Ingredient</CardTitle>
                       <CardDescription>
@@ -1576,7 +1686,7 @@ export function ReportsView() {
 
                   {/* Variance Cost Summary */}
                   {varianceData.varianceByIngredient.length > 0 && (
-                    <Card className="transition-all hover:shadow-md">
+                    <Card className="card-elevated transition-all hover:shadow-md">
                       <CardHeader className="pb-2">
                         <CardTitle className="text-base">Variance Cost Impact</CardTitle>
                         <CardDescription>Financial impact of variance by ingredient</CardDescription>
@@ -1598,10 +1708,10 @@ export function ReportsView() {
                                 <TableRow key={item.ingredient.id} className="hover:bg-muted/50 transition-colors">
                                   <TableCell className="font-medium">{item.ingredient.name}</TableCell>
                                   <TableCell className="text-right tabular-nums">
-                                    {fmt.format(item.theoreticalCost)}
+                                    {formatINR(item.theoreticalCost)}
                                   </TableCell>
                                   <TableCell className="text-right tabular-nums">
-                                    {fmt.format(item.actualCost)}
+                                    {formatINR(item.actualCost)}
                                   </TableCell>
                                   <TableCell className="text-right tabular-nums">
                                     <span
@@ -1614,7 +1724,7 @@ export function ReportsView() {
                                       }
                                     >
                                       {item.varianceCost > 0 ? '+' : ''}
-                                      {fmt.format(item.varianceCost)}
+                                      {formatINR(item.varianceCost)}
                                     </span>
                                   </TableCell>
                                   <TableCell className="text-center">
@@ -1625,10 +1735,10 @@ export function ReportsView() {
                               <TableRow className="font-bold bg-amber-50/50 dark:bg-amber-950/20">
                                 <TableCell>Total</TableCell>
                                 <TableCell className="text-right tabular-nums">
-                                  {fmt.format(varianceData.summary.totalTheoreticalCost)}
+                                  {formatINR(varianceData.summary.totalTheoreticalCost)}
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">
-                                  {fmt.format(varianceData.summary.totalActualCost)}
+                                  {formatINR(varianceData.summary.totalActualCost)}
                                 </TableCell>
                                 <TableCell className="text-right tabular-nums">
                                   <span
@@ -1639,7 +1749,7 @@ export function ReportsView() {
                                     }
                                   >
                                     {varianceData.summary.totalVarianceCost > 0 ? '+' : ''}
-                                    {fmt.format(varianceData.summary.totalVarianceCost)}
+                                    {formatINR(varianceData.summary.totalVarianceCost)}
                                   </span>
                                 </TableCell>
                                 <TableCell />
@@ -1659,8 +1769,7 @@ export function ReportsView() {
                 </Card>
               )}
             </TabsContent>
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </Tabs>
     </div>
   );
@@ -1707,7 +1816,7 @@ function SummaryCard({
       : null;
 
   return (
-    <Card className="transition-all hover:shadow-md">
+    <Card className="card-elevated transition-all hover:shadow-md">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconBg}`}>
@@ -2013,14 +2122,14 @@ function MonthlyTrendSection({
                     <rect
                       width={6}
                       height={6}
-                      fill="#f59e0b22"
+                      fill="oklch(0.769 0.188 70 / 0.13)"
                     />
                     <line
                       x1="0"
                       y1="0"
                       x2="0"
                       y2={6}
-                      stroke="#f59e0b"
+                      stroke="oklch(0.769 0.188 70)"
                       strokeWidth={2}
                       strokeOpacity={0.45}
                     />
@@ -2062,7 +2171,7 @@ function MonthlyTrendSection({
                             {name === 'foodCost'
                               ? 'Food Cost: '
                               : 'Operating Cost: '}
-                            {fmt.format(Number(value))}
+                            {formatINR(Number(value))}
                           </span>
                         );
                       }}
@@ -2089,7 +2198,7 @@ function MonthlyTrendSection({
                   {data.map((entry) => (
                     <Cell
                       key={entry.month}
-                      fill={entry.hasData ? '#f59e0b' : `url(#${emptyMonthPatternId})`}
+                      fill={entry.hasData ? 'oklch(0.769 0.188 70)' : `url(#${emptyMonthPatternId})`}
                     />
                   ))}
                 </Bar>
@@ -2097,10 +2206,10 @@ function MonthlyTrendSection({
                   type="monotone"
                   dataKey="operatingCost"
                   name="operatingCost"
-                  stroke="#10b981"
+                  stroke="oklch(0.696 0.17 162)"
                   strokeWidth={3}
-                  dot={{ r: 4, fill: '#10b981' }}
-                  activeDot={{ r: 6, fill: '#059669' }}
+                  dot={{ r: 4, fill: 'oklch(0.696 0.17 162)' }}
+                  activeDot={{ r: 6, fill: 'oklch(0.523 0.12 165)' }}
                 />
               </ComposedChart>
             </ChartContainer>
@@ -2121,8 +2230,8 @@ function MonthlyTrendSection({
                         className="inline-block h-3 w-3 rounded-sm"
                         style={{
                           backgroundImage:
-                            'repeating-linear-gradient(45deg, #f59e0b55 0 2px, transparent 2px 4px)',
-                          backgroundColor: '#f59e0b22',
+                            'repeating-linear-gradient(45deg, oklch(0.769 0.188 70 / 0.33) 0 2px, transparent 2px 4px)',
+                          backgroundColor: 'oklch(0.769 0.188 70 / 0.13)',
                         }}
                       />
                       {d.monthLabel}
@@ -2135,7 +2244,7 @@ function MonthlyTrendSection({
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <MonthlyTrendStatCard
                 title="Avg Monthly Cost"
-                value={stats.monthsWithData === 0 ? 'N/A' : fmt.format(stats.avg)}
+                value={stats.monthsWithData === 0 ? 'N/A' : formatINR(stats.avg)}
                 subtitle={
                   stats.monthsWithData === 0
                     ? 'No data recorded yet'
@@ -2184,7 +2293,7 @@ function MonthlyTrendSection({
               />
               <MonthlyTrendStatCard
                 title="Highest Cost Month"
-                value={stats.highest ? fmt.format(stats.highest.total) : 'N/A'}
+                value={stats.highest ? formatINR(stats.highest.total) : 'N/A'}
                 subtitle={stats.highest?.monthLabel ?? 'No data recorded yet'}
                 icon={<TrendingUp className="h-5 w-5" />}
                 iconBg="bg-rose-100 dark:bg-rose-900/30"
@@ -2192,7 +2301,7 @@ function MonthlyTrendSection({
               />
               <MonthlyTrendStatCard
                 title="Lowest Cost Month"
-                value={stats.lowest ? fmt.format(stats.lowest.total) : 'N/A'}
+                value={stats.lowest ? formatINR(stats.lowest.total) : 'N/A'}
                 subtitle={stats.lowest?.monthLabel ?? 'No data recorded yet'}
                 icon={<TrendingDown className="h-5 w-5" />}
                 iconBg="bg-emerald-100 dark:bg-emerald-900/30"
@@ -2237,7 +2346,7 @@ function MonthlyTrendStatCard({
   valueColor?: string;
 }) {
   return (
-    <Card className="transition-all hover:shadow-md">
+    <Card className="card-elevated transition-all hover:shadow-md">
       <CardContent className="p-4">
         <div className="flex items-center justify-between">
           <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${iconBg}`}>

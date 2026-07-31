@@ -47,9 +47,52 @@ const ACTIVITY_META: Record<
   },
   EXPENSE: {
     icon: Receipt,
-    color: "text-blue-600 dark:text-blue-400",
-    ring: "bg-blue-100 dark:bg-blue-900/30",
+    color: "text-teal-600 dark:text-teal-400",
+    ring: "bg-teal-100 dark:bg-teal-900/30",
     label: "Expense",
+  },
+  CONSUMPTION: {
+    icon: Package,
+    color: "text-orange-600 dark:text-orange-400",
+    ring: "bg-orange-100 dark:bg-orange-900/30",
+    label: "Consumption",
+  },
+  // Lowercase aliases for compatibility with consolidated API
+  purchase: {
+    icon: ShoppingCart,
+    color: "text-amber-600 dark:text-amber-400",
+    ring: "bg-amber-100 dark:bg-amber-900/30",
+    label: "Purchase",
+  },
+  meal: {
+    icon: UtensilsCrossed,
+    color: "text-emerald-600 dark:text-emerald-400",
+    ring: "bg-emerald-100 dark:bg-emerald-900/30",
+    label: "Meal",
+  },
+  wastage: {
+    icon: Trash2,
+    color: "text-rose-600 dark:text-rose-400",
+    ring: "bg-rose-100 dark:bg-rose-900/30",
+    label: "Wastage",
+  },
+  expense: {
+    icon: Receipt,
+    color: "text-teal-600 dark:text-teal-400",
+    ring: "bg-teal-100 dark:bg-teal-900/30",
+    label: "Expense",
+  },
+  adjustment: {
+    icon: Package,
+    color: "text-stone-600 dark:text-stone-400",
+    ring: "bg-stone-200 dark:bg-stone-800/50",
+    label: "Adjustment",
+  },
+  consumption: {
+    icon: Package,
+    color: "text-orange-600 dark:text-orange-400",
+    ring: "bg-orange-100 dark:bg-orange-900/30",
+    label: "Consumption",
   },
   ADJUSTMENT: {
     icon: Package,
@@ -109,9 +152,10 @@ export function ActivityTimeline({ activities, loading }: ActivityTimelineProps)
               const meta = ACTIVITY_META[act.type] ?? ACTIVITY_META.ADJUSTMENT;
               const Icon = meta.icon;
               const isLast = idx === activities.length - 1;
+              const ts = act.timestamp || act.createdAt || new Date().toISOString();
               const relativeTime = (() => {
                 try {
-                  return formatDistanceToNow(new Date(act.createdAt), {
+                  return formatDistanceToNow(new Date(ts), {
                     addSuffix: true,
                   });
                 } catch {
@@ -120,7 +164,7 @@ export function ActivityTimeline({ activities, loading }: ActivityTimelineProps)
               })();
               const absoluteTime = (() => {
                 try {
-                  const d = new Date(act.createdAt);
+                  const d = new Date(ts);
                   return d.toLocaleString("en-IN", {
                     day: "2-digit",
                     month: "short",
@@ -132,6 +176,7 @@ export function ActivityTimeline({ activities, loading }: ActivityTimelineProps)
                   return "";
                 }
               })();
+              const displayTitle = act.title || act.description || "Activity";
 
               return (
                 <li key={act.id} className="relative flex gap-3 pb-5 last:pb-0">
@@ -152,8 +197,13 @@ export function ActivityTimeline({ activities, loading }: ActivityTimelineProps)
                   <div className="min-w-0 flex-1 pt-0.5">
                     <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-0.5">
                       <p className="text-sm font-medium leading-snug">
-                        {act.description}
+                        {displayTitle}
                       </p>
+                      {act.description && act.title && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          {act.description}
+                        </p>
+                      )}
                       {act.amount !== null && act.amount > 0 && (
                         <span className="shrink-0 text-sm font-semibold tabular-nums text-amber-700 dark:text-amber-400">
                           {formatCurrency(act.amount)}
