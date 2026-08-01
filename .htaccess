@@ -1,0 +1,18 @@
+# ═══════════════════════════════════════════════════════
+# Passenger + Apache config for RCS Canteen on shared hosting
+# Place this file in: /domains/app.rcsfacility.com/public_html/canteen/
+# ═══════════════════════════════════════════════════════
+
+PassengerEnabled on
+PassengerAppType node
+PassengerStartupFile server.js
+PassengerNodePath /home/rcsfaxhz/.nvm/versions/node/v20.20.2/bin/node
+
+# Set the app root to the standalone build directory
+PassengerAppRoot /home/rcsfaxhz/domains/app.rcsfacility.com/public_html/canteen/.next/standalone
+
+# Fallback: if Passenger not available, proxy to port 3000
+# Uncomment below if your host uses proxy instead of Passenger
+# RewriteEngine On
+# RewriteRule ^(.*)$ http://localhost:3000/$1 [P,L]
+# ProxyPreserveHost On
