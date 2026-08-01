@@ -2722,3 +2722,19 @@ Stage Summary:
 - All 25 ingredients seeded in local SQLite, seed-items.ts ready for MySQL
 - Deploy script created with PM2 support
 - GitHub repo updated: https://github.com/rcstrue/Canteen
+
+---
+Task ID: R7
+Agent: Main Coordinator
+Task: Fix Turbopack build failure on shared hosting (resource limits)
+
+Work Log:
+- Changed build from Turbopack to Webpack (--no-turbopack flag) to avoid spawning too many processes
+- Changed start script from bun to node for better shared hosting compatibility
+- Added .htaccess for Apache Passenger integration
+- Pushed fix to GitHub
+
+Stage Summary:
+- Build command: next build --no-turbopack (Webpack, low resource usage)
+- Start command: NODE_ENV=production node .next/standalone/server.js
+- .htaccess added for Passenger/Proxy configuration
