@@ -2738,3 +2738,23 @@ Stage Summary:
 - Build command: next build --no-turbopack (Webpack, low resource usage)
 - Start command: NODE_ENV=production node .next/standalone/server.js
 - .htaccess added for Passenger/Proxy configuration
+
+---
+Task ID: R8
+Agent: Main Coordinator
+Task: Fix shared hosting build - create pre-built deployment package
+
+Work Log:
+- Next.js 16 Turbopack cannot be disabled (--no-turbopack not supported)
+- Turbopack requires too many processes for shared hosting (EAGAIN error)
+- Solution: Build locally in sandbox (no resource limits), push pre-built output
+- Built project locally successfully (Turbopack works fine with resources)
+- Created dist/ with standalone server.js + node_modules + .next + public
+- Compressed to rcs-canteen-dist.tar.gz (53.2MB)
+- Uploaded as GitHub Release v1.0.0
+- User just extracts and runs - NO build needed on server
+
+Stage Summary:
+- Release URL: https://github.com/rcstrue/Canteen/releases/download/v1.0.0/rcs-canteen-dist.tar.gz
+- User does NOT need to run `bun run build` on their server
+- User just: wget → tar → edit .env → node server.js
