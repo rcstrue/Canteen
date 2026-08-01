@@ -2702,3 +2702,23 @@ The RCS Canteen Stock & Cost Management App is fully functional with:
 - Some icon filled/outlined style inconsistency
 - Budget view empty state is basic
 - Next: Add more features (bulk import/export, notifications, role-based access), improve styling details, responsive polish
+
+---
+Task ID: R6
+Agent: Main Coordinator
+Task: Migrate from SQLite to MySQL for shared hosting, add deployment scripts
+
+Work Log:
+- Switched prisma/schema.prisma from sqlite to mysql provider with relationMode = "prisma"
+- Updated .env with MySQL DATABASE_URL template format
+- Created .env.example with detailed MySQL connection instructions
+- Created deploy.sh - one-click deployment script for shared hosting
+- Created seed-items.ts - standalone Prisma seed script for all 25 ingredients
+- Regenerated Prisma Client for MySQL
+- Pushed all changes to GitHub (rcstrue/Canteen)
+
+Stage Summary:
+- Schema migrated: sqlite → mysql (with Prisma relation mode for compatibility)
+- All 25 ingredients seeded in local SQLite, seed-items.ts ready for MySQL
+- Deploy script created with PM2 support
+- GitHub repo updated: https://github.com/rcstrue/Canteen
