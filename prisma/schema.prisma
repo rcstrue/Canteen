@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  role      String   @default("staff")
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  userName    String?
+  userRole    String?
+  action      String
+  entityType  String
+  entityId    String?
+  entityName  String?
+  description String
+  metadata    String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([action])
+}
+
+model Ingredient {
+  id               String   @id @default(cuid())
+  name             String
+  unit             String
+  category         String
+  currentStock     Float    @default(0)
+  minStock         Float    @default(0)
+  lastPurchasePrice Float   @default(0)
+  avgCost          Float    @default(0)
+  supplier         String?
+  supplierId       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  supplierLink     Supplier? @relation(fields: [supplierId], references: [id])
+
+  recipeIngredients RecipeIngredient[]
+  stockMovements    StockMovement[]
+  purchases         PurchaseItem[]
+}
+
+model Supplier {
+  id             String   @id @default(cuid())
+  name           String
+  contactPerson  String?
+  phone          String?
+  email          String?
+  address        String?
+  gstin          String?
+  category       String?
+  rating         Int?
+  onTimeRate     Float?
+  qualityScore   Int?
+  notes          String?
+  lastOrderDate  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  ingredients Ingredient[]
+  purchases   Purchase[]
+}
+
+model Recipe {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  mealType    String
+  baseServings Int     @default(100)
+  instructions String?
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  ingredients RecipeIngredient[]
+  dailyMeals  DailyMealServed[]
+  costHistory RecipeCostHistory[]
+}
+
+model RecipeCostHistory {
+  id          String   @id @default(cuid())
+  recipeId    String
+  cost        Float
+  costPerServing Float
+  servings    Int
+  trigger     String   @default("manual")
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  recipe Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@index([recipeId])
+  @@index([createdAt])
+}
+
+model RecipeIngredient {
+  id           String  @id @default(cuid())
+  recipeId     String
+  ingredientId String
+  quantity     Float
+  unit         String
+
+  recipe     Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, ingredientId])
+}
+
+model StockMovement {
+  id           String   @id @default(cuid())
+  ingredientId String
+  type         String
+  quantity     Float
+  unitPrice    Float    @default(0)
+  totalAmount  Float    @default(0)
+  date         DateTime
+  notes        String?
+  referenceId  String?
+  createdAt    DateTime @default(now())
+
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
+}
+
+model DailyMealServed {
+  id          String   @id @default(cuid())
+  date        DateTime
+  mealType    String
+  mealsServed Int
+  recipeId    String
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  recipe Recipe @relation(fields: [recipeId], references: [id])
+}
+
+model Purchase {
+  id          String   @id @default(cuid())
+  date        DateTime
+  supplier    String?
+  supplierId  String?
+  invoiceNo   String?
+  totalAmount Float    @default(0)
+  notes       String?
+  deliveryDate DateTime?
+  expectedDate DateTime?
+  status      String   @default("received")
+  createdAt   DateTime @default(now())
+
+  supplierLink Supplier? @relation(fields: [supplierId], references: [id])
+  items PurchaseItem[]
+}
+
+model PurchaseItem {
+  id           String  @id @default(cuid())
+  purchaseId   String
+  ingredientId String
+  quantity     Float
+  unitPrice    Float
+  totalAmount  Float
+
+  purchase   Purchase  @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  date        DateTime
+  category    String
+  amount      Float
+  description String?
+  createdAt   DateTime @default(now())
+}
+
+model Budget {
+  id              String   @id @default(cuid())
+  month           String   @unique
+  foodBudget      Float    @default(0)
+  operatingBudget Float    @default(0)
+  totalBudget     Float    @default(0)
+  alertThreshold  Float    @default(80)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
