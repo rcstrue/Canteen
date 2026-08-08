@@ -1,0 +1,4 @@
+*.db
+*.sqlite
+vendor/
+.DS_Store

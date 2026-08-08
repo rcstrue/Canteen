@@ -1,0 +1,17 @@
+# Protect config and api from direct browsing
+<FilesMatch "^config\\.php$">
+    Deny from all
+</FilesMatch>
+
+# Block access to setup.php after initial setup (uncomment after running setup)
+# <Files setup.php>
+#     Deny from all
+# </Files>
+
+# PHP settings
+<IfModule mod_php.c>
+    php_value display_errors Off
+    php_value log_errors On
+    php_value session.cookie_httponly On
+    php_value session.use_strict_mode On
+</IfModule>
