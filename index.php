@@ -203,14 +203,7 @@ async function loadDashboard() {
     if (!s.recent.length) { rm.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-400">No movements yet</td></tr>'; return; }
     rm.innerHTML = s.recent.map(m => `<tr class="border-t hover:bg-gray-50"><td class="px-4 py-2">${m.date}</td><td class="px-4 py-2 font-medium">${m.ingredient_name}</td><td class="px-4 py-2"><span class="px-2 py-0.5 rounded text-xs font-medium ${m.type==='PURCHASE'?'bg-emerald-100 text-emerald-700':m.type==='CONSUMPTION'?'bg-red-100 text-red-700':'bg-gray-100 text-gray-700'}">${m.type}</span></td><td class="px-4 py-2 text-right">${m.qty} ${m.unit||''}</td><td class="px-4 py-2 text-right">${INR(m.total_amount)}</td></tr>`).join('');
 }
-    document.getElementById('d-summary-total').textContent = INR(s.total_expenses);
-    document.getElementById('d-summary-meals').textContent = s.total_meals.toLocaleString('en-IN');
-    document.getElementById('d-summary-cpm').textContent = INR2(s.cost_per_meal);
-    // Recent movements
-    const rm = document.getElementById('d-recent');
-    if (!s.recent.length) { rm.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-gray-400">No movements yet</td></tr>'; return; }
-    rm.innerHTML = s.recent.map(m => `<tr class="border-t hover:bg-gray-50"><td class="px-4 py-2">${m.date}</td><td class="px-4 py-2 font-medium">${m.ingredient_name}</td><td class="px-4 py-2"><span class="px-2 py-0.5 rounded text-xs font-medium ${m.type==='PURCHASE'?'bg-emerald-100 text-emerald-700':m.type==='CONSUMPTION'?'bg-red-100 text-red-700':'bg-gray-100 text-gray-700'}">${m.type}</span></td><td class="px-4 py-2 text-right">${m.qty} ${m.unit||''}</td><td class="px-4 py-2 text-right">${INR(m.total_amount)}</td></tr>`).join('');
-}
+
 
 // ═══ MEAL COUNTS ══════════════════════════════════════════════
 async function loadMeals() {
